@@ -1,0 +1,29 @@
+
+> ai-learning-engine@0.1.0 test
+> node --test
+
+✔ validateConfig applies safe defaults (9.525292ms)
+✔ validateConfig rejects non-web feed URLs (0.19925ms)
+✔ validateConfig rejects empty interests (0.055458ms)
+✔ parseFeed parses RSS and removes markup (3.118417ms)
+✔ parseFeed parses Atom href links (0.424833ms)
+✔ fetchSources tolerates one failed source and deduplicates items (1.004458ms)
+✔ buildDossier performs four stages and returns a sourced document (10.99325ms)
+✔ buildDossier preserves every required section when source input exceeds the stage limit (0.543083ms)
+✔ buildLaunchAgent creates a 9am plist and escapes paths (0.359083ms)
+✔ saveRun writes a dossier and replaces same-day bounded history (5.076416ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66.322458
+
+> ai-learning-engine@0.1.0 check
+> node --check bin/learn.mjs && find src test -name '*.mjs' -print0 | xargs -0 -n1 node --check
+
+✓ Schedule: installed and loaded
+/Users/vatsalpatel/Library/LaunchAgents/ai.learning-engine.morning.plist
+/Users/vatsalpatel/Library/LaunchAgents/ai.learning-engine.morning.plist: OK
