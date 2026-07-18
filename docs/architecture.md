@@ -25,6 +25,16 @@ CLI / launchd / systemd / Docker
          Delivery Receipt
 ```
 
+The multi-newsletter test phase adds a scheduling and dashboard path without
+changing the Daily Run's generation responsibilities:
+
+```text
+Dashboard ──► SQLite Workspace ◄── Worker
+                   │                 │
+                   │ claim Issue     ▼
+                   └────────────► Daily Run ──► Dossier
+```
+
 ## Deep modules and seams
 
 - The **Daily Run** module owns ordering, reuse, failure policy, persistence,
@@ -35,6 +45,12 @@ CLI / launchd / systemd / Docker
   in tests. Additional destinations do not alter generation.
 - The file run-store implementation owns Daily Run identity, locks, and
   Delivery Receipts. Its interface can later gain a SQLite adapter.
+- The concrete **SQLite Workspace** module owns Newsletter validation,
+  schedules, Issue queueing/claiming, lifecycle transitions, and dashboard
+  projections behind one interface. It does not replace immutable Dossier
+  files or the Daily Run file store.
+- The web and worker modules are thin adapters. HTTP queues an Issue; only the
+  worker invokes Daily Run.
 - Markdown and email are renderings of the canonical **Dossier**, not the
   source of truth.
 
@@ -49,8 +65,12 @@ CLI / launchd / systemd / Docker
 - Direct model and Resend credentials come only from named environment
   variables and are never persisted.
 - Email rendering escapes model/source text and allows only HTTP(S) links.
-- The container runs non-root, opens no port, and excludes local secrets and
-  state from its build context.
+- Every container role runs non-root and excludes local secrets and state from
+  its build context. Only the dashboard role listens, and Compose publishes it
+  to host loopback.
+- The test dashboard adds CSRF protection and browser security headers, binds
+  to host loopback under Compose, and must not be exposed publicly because
+  authentication is not implemented.
 
 ## Failure behavior
 
@@ -66,10 +86,14 @@ CLI / launchd / systemd / Docker
   before removing the stale lock.
 - Atomic writes use unique temporary names and restrictive file modes.
 
-## Deliberate v0.2 limits
+## Deliberate v0.3 test-phase limits
 
 - Daily Run records are atomic JSON rather than SQLite.
 - One trusted operator configures feeds; private-network URL blocking is absent.
 - Source material uses feed summaries rather than extracted article bodies.
 - Resend is the only external delivery adapter.
 - Learner feedback and Notion delivery are not yet implemented.
+- Newsletter workers deliberately suppress every delivery adapter until the
+  Resend phase.
+- A worker crash can leave an Issue in `generating`; automatic recovery is not
+  implemented in this test phase.

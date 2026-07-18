@@ -1,0 +1,80 @@
+# Multi-newsletter dashboard test phase
+
+This phase is deliberately local and single-user. It proves Newsletter
+configuration, scheduling, Issue generation, history, and previews before live
+email delivery is connected.
+
+## Run the offline demo
+
+Use two terminals from the repository.
+
+Terminal one starts the dashboard:
+
+```sh
+npm run dashboard:demo
+```
+
+Open `http://127.0.0.1:3000`, create one or more Newsletters, and select **Run
+now** on each.
+
+Terminal two processes all queued Issues:
+
+```sh
+npm run worker:demo
+```
+
+Refresh a Newsletter detail page to open its generated Dossier preview. Demo
+mode uses deterministic local Source Items and never calls a model or delivery
+adapter.
+
+The SQLite Workspace is stored under `data/workspace.sqlite`; generated
+Dossiers and Learning History remain in the existing profile-scoped
+directories. Each Newsletter ID maps internally to one profile so histories do
+not mix.
+
+## Run with the configured model
+
+```sh
+node bin/learn.mjs serve --config config.json
+node bin/learn.mjs worker --config config.json
+```
+
+The worker explicitly disables every delivery adapter during this phase. Even
+if `config.json` contains an enabled Resend destination, Newsletter Issues are
+generated only for local preview.
+
+The worker checks schedules every 30 seconds. A deterministic scheduled Issue
+is created once per Newsletter and local date. **Run now** creates a separate
+manual Issue and returns immediately; model work never runs inside the HTTP
+request.
+
+## Docker Compose
+
+```sh
+docker compose up -d dashboard worker
+docker compose logs -f dashboard worker
+```
+
+The dashboard is published only at `127.0.0.1:3000` on the VM. To reach it from
+your computer without exposing it publicly:
+
+```sh
+ssh -L 3000:127.0.0.1:3000 user@your-vm
+```
+
+Then open `http://127.0.0.1:3000` locally.
+
+## Security limit
+
+The dashboard has CSRF protection and strict browser security headers, but it
+does not have authentication. Do not publish port 3000 to a public interface.
+The CLI refuses a non-loopback listener unless `--allow-remote` is supplied;
+Compose uses that explicit opt-in inside the container while binding the host
+port to loopback.
+
+## Crash recovery
+
+If generation is interrupted, the Issue can remain `generating` and the Daily
+Run can leave its owner lock. This test phase does not guess that either is
+stale. Confirm that no worker is active before manually removing a stale lock.
+Automatic Issue recovery is a later operational hardening step.
