@@ -134,6 +134,9 @@ async function createLease(lockPath, runId, token, now) {
   const handle = await open(lockPath, "wx", 0o600);
   try {
     await handle.writeFile(`${JSON.stringify(lease)}\n`, "utf8");
+  } catch (error) {
+    await rm(lockPath, { force: true });
+    throw error;
   } finally {
     await handle.close();
   }
