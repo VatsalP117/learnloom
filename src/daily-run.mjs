@@ -18,7 +18,7 @@ export async function runDailyDossier(options) {
     onEvent = () => {},
   } = options;
   const date = formatLocalDate(now, config.timeZone);
-  const runId = `${config.profileId}-${date}`;
+  const runId = options.runId ?? `${config.profileId}-${date}`;
   const store = options.runStore ?? new FileRunStore(paths);
   const release = await store.acquire(runId);
 
@@ -155,6 +155,7 @@ export async function runDailyDossier(options) {
       date,
       generated,
       outputPath,
+      dossier,
       record,
       deliveryErrors,
     };
