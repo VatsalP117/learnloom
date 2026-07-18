@@ -24,6 +24,16 @@ export class SQLiteWorkspace {
       PRAGMA foreign_keys = ON;
       PRAGMA busy_timeout = 5000;
       PRAGMA journal_mode = WAL;
+    `);
+    const currentVersion = Number(
+      this.database.prepare("PRAGMA user_version").get().user_version,
+    );
+    if (currentVersion > 1) {
+      throw new Error(
+        `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
+      );
+    }
+    this.database.exec(`
 
       CREATE TABLE IF NOT EXISTS newsletters (
         id TEXT PRIMARY KEY,
@@ -67,9 +77,10 @@ export class SQLiteWorkspace {
         ON issues(status, created_at);
       CREATE INDEX IF NOT EXISTS issues_newsletter_history
         ON issues(newsletter_id, created_at DESC);
-
-      PRAGMA user_version = 1;
     `);
+    if (currentVersion === 0) {
+      this.database.exec("PRAGMA user_version = 1");
+    }
   }
 
   diagnostics() {

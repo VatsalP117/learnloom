@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { SQLiteWorkspace, nextDailyOccurrence } from "../src/workspace.mjs";
 
@@ -72,6 +75,19 @@ test("SQLiteWorkspace atomically claims a queued Issue once", () => {
   assert.equal(claimed.newsletter.id, newsletter.id);
   assert.equal(secondClaim, null);
   workspace.close();
+});
+
+test("two SQLite connections cannot claim the same queued Issue", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-sqlite-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const first = new SQLiteWorkspace(databasePath);
+  const second = new SQLiteWorkspace(databasePath);
+  const newsletter = first.createNewsletter(newsletterInput("RabbitMQ"));
+  const queued = first.enqueueManualIssue(newsletter.id);
+  assert.equal(first.claimNextIssue().id, queued.id);
+  assert.equal(second.claimNextIssue(), null);
+  first.close();
+  second.close();
 });
 
 test("SQLiteWorkspace completes and fails Issue lifecycle transitions", () => {
