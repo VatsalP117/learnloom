@@ -1,0 +1,11 @@
+0afccad Serialize Newsletter generation claims
+eb2aa45 Fix dashboard review findings
+6619c80 Preserve legacy Compose behavior
+c5c77b0 Document dashboard implementation
+a45e96a Add dashboard and worker runtime roles
+03dda30 Stabilize Workspace summary test
+ff907ad Harden Workspace schema and claims
+b5f2048 Add local Newsletter dashboard
+8ef3a4d Run queued Newsletter Issues
+599e35d Add SQLite Newsletter workspace
+ce77f5d Plan multi-newsletter dashboard test phase

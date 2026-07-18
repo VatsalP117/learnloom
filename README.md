@@ -14,9 +14,13 @@ Use your own DeepSeek or OpenAI-compatible key, a Command Code subscription,
 or the deterministic offline demo. Optionally receive each Dossier through
 Resend email.
 
+The v0.3 test phase also includes a small single-user dashboard for running
+multiple topic-focused Newsletters. Each Newsletter has its own schedule,
+timezone, Issue history, Learning History, and Dossier previews.
+
 ## Five-minute local start
 
-Requirements: Node.js 22 or newer. There are no runtime dependencies.
+Requirements: Node.js 22.13 or newer. There are no runtime dependencies.
 
 ```sh
 git clone https://github.com/VatsalP117/learnloom.git
@@ -55,6 +59,25 @@ Each profile and local date has one deterministic Daily Run:
 
 The application home defaults to the directory containing `config.json`. Set
 `LEARNLOOM_HOME` to place all state under one durable directory.
+
+## Test the multi-newsletter dashboard
+
+Run the dashboard and worker in two terminals:
+
+```sh
+npm run dashboard:demo
+npm run worker:demo
+```
+
+Open `http://127.0.0.1:3000`. Create Newsletters, queue **Run now**, rerun the
+one-shot demo worker, then refresh the Newsletter page to open generated Issue
+previews.
+
+The dashboard is local-only and has no authentication. Live delivery is
+forcibly disabled in the Newsletter worker during this phase, even if the base
+configuration enables Resend.
+
+See [the dashboard test guide](docs/dashboard-test-phase.md).
 
 ## Model providers
 
@@ -143,8 +166,17 @@ docker compose run --rm learnloom run --config /app/config.json
 ```
 
 The image runs as a non-root user, has a read-only root filesystem under
-Compose, opens no inbound ports, and stores durable state in `learnloom-data`.
-Use the supplied host systemd timer for the 9:00 a.m. schedule.
+Compose, and stores durable state in `learnloom-data`. The legacy finite job
+opens no port. Use the supplied host systemd timer for its 9:00 a.m. schedule.
+
+For the multi-newsletter test phase, run the dashboard and worker roles:
+
+```sh
+docker compose up -d dashboard worker
+```
+
+The dashboard is bound to VM loopback at `127.0.0.1:3000`; use an SSH tunnel
+and do not expose it publicly before authentication is implemented.
 
 See [the complete VM guide](docs/vm-deployment.md).
 
@@ -166,6 +198,8 @@ Choose another time with `--hour` and `--minute`; remove the job with
 learn init [--config path] [--force]
 learn run [--config path] [--demo] [--force]
 learn doctor [--config path]
+learn serve [--config path] [--demo] [--host 127.0.0.1] [--port 3000]
+learn worker [--config path] [--demo] [--once] [--interval 30]
 learn schedule install [--config path] [--hour 9] [--minute 0]
 learn schedule status
 learn schedule remove

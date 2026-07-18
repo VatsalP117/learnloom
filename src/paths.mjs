@@ -18,6 +18,7 @@ export function resolveAppPaths(config, options = {}) {
     outputRoot,
     outputDirectory,
     historyPath: path.join(profileDataDirectory, "history.json"),
+    workspacePath: path.join(dataDirectory, "workspace.sqlite"),
     runsDirectory: path.join(profileDataDirectory, "runs"),
     locksDirectory: path.join(dataDirectory, "locks"),
     logsDirectory: path.join(dataDirectory, "logs"),

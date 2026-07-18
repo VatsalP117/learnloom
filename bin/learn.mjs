@@ -28,6 +28,10 @@ try {
     await doctor(args);
   } else if (command === "schedule") {
     await schedule(args);
+  } else if (command === "serve") {
+    await serve(args);
+  } else if (command === "worker") {
+    await worker(args);
   } else if (["help", "--help", "-h"].includes(command)) {
     printHelp();
   } else {
@@ -158,6 +162,99 @@ async function schedule(commandArgs) {
   );
 }
 
+async function serve(commandArgs) {
+  const [{ createDashboardServer }, { SQLiteWorkspace }] = await Promise.all([
+    import("../src/dashboard.mjs"),
+    import("../src/workspace.mjs"),
+  ]);
+  const demo = commandArgs.includes("--demo");
+  const config = demo
+    ? demoConfig()
+    : await loadConfig(option(commandArgs, "--config") ?? "config.json");
+  const paths = resolveAppPaths(config);
+  const workspace = new SQLiteWorkspace(paths.workspacePath);
+  const host = option(commandArgs, "--host") ?? "127.0.0.1";
+  const port = integerOption(commandArgs, "--port", 3000, 1, 65535);
+  if (!isLoopbackHost(host) && !commandArgs.includes("--allow-remote")) {
+    workspace.close();
+    throw new Error(
+      'The test dashboard has no authentication. Use a loopback host or pass "--allow-remote" only behind a trusted access layer.',
+    );
+  }
+  const { server } = createDashboardServer({
+    workspace,
+    baseConfig: config,
+    allowedHosts: [
+      "127.0.0.1",
+      "localhost",
+      "[::1]",
+      ...options(commandArgs, "--allowed-host"),
+    ],
+    onError(error) {
+      process.stderr.write(`Dashboard error: ${error.message}\n`);
+    },
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+  process.stdout.write(`Learnloom dashboard: http://${host}:${port}\n`);
+  process.stdout.write("Test phase: live delivery is disabled in Newsletter workers.\n");
+  const shutdown = () => {
+    server.close(() => {
+      workspace.close();
+      process.exit(0);
+    });
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
+
+async function worker(commandArgs) {
+  const [{ runWorkerCycle }, { SQLiteWorkspace }] = await Promise.all([
+    import("../src/newsletter-worker.mjs"),
+    import("../src/workspace.mjs"),
+  ]);
+  const demo = commandArgs.includes("--demo");
+  const once = commandArgs.includes("--once");
+  const config = demo
+    ? demoConfig()
+    : await loadConfig(option(commandArgs, "--config") ?? "config.json");
+  const paths = resolveAppPaths(config);
+  const workspace = new SQLiteWorkspace(paths.workspacePath);
+  const intervalSeconds = integerOption(
+    commandArgs,
+    "--interval",
+    30,
+    5,
+    3600,
+  );
+  let stopping = false;
+  const stop = () => {
+    stopping = true;
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  try {
+    do {
+      const result = await runWorkerCycle({
+        workspace,
+        baseConfig: config,
+        demo,
+        cwd: projectRoot,
+        onEvent: printWorkerEvent,
+      });
+      process.stdout.write(
+        `Worker cycle: ${result.dispatched.length} scheduled, ${result.processed.length} processed.\n`,
+      );
+      if (once || stopping) break;
+      await delay(intervalSeconds * 1000);
+    } while (!stopping);
+  } finally {
+    workspace.close();
+  }
+}
+
 function demoConfig() {
   return validateConfig(
     {
@@ -183,6 +280,19 @@ function option(commandArgs, name) {
     throw new Error(`${name} requires a value.`);
   }
   return commandArgs[index + 1];
+}
+
+function options(commandArgs, name) {
+  const values = [];
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    if (commandArgs[index] !== name) continue;
+    if (!commandArgs[index + 1] || commandArgs[index + 1].startsWith("--")) {
+      throw new Error(`${name} requires a value.`);
+    }
+    values.push(commandArgs[index + 1]);
+    index += 1;
+  }
+  return values;
 }
 
 function integerOption(commandArgs, name, fallback, minimum, maximum) {
@@ -215,6 +325,26 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
+function isLoopbackHost(host) {
+  return ["127.0.0.1", "::1", "localhost"].includes(host);
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function printWorkerEvent(event) {
+  if (event.type === "issue-claimed") {
+    process.stdout.write(`Claimed Issue ${event.issueId}\n`);
+  }
+  if (event.type === "issue-generated") {
+    process.stdout.write(`Generated Issue ${event.issueId}\n`);
+  }
+  if (event.type === "issue-failed") {
+    process.stderr.write(`Issue ${event.issueId} failed: ${event.message}\n`);
+  }
+}
+
 function printHelp() {
   process.stdout.write(`Learnloom
 
@@ -222,12 +352,15 @@ Usage:
   learn init [--config path] [--force]
   learn run [--config path] [--demo] [--force]
   learn doctor [--config path]
+  learn serve [--config path] [--demo] [--host 127.0.0.1] [--port 3000] [--allowed-host name]
+  learn worker [--config path] [--demo] [--once] [--interval 30]
   learn schedule install [--config path] [--hour 9] [--minute 0]
   learn schedule status
   learn schedule remove
 
 Quick start:
   npm run demo
+  npm run dashboard:demo
   node bin/learn.mjs init
   npm run doctor
   npm start

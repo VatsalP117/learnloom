@@ -2,7 +2,7 @@ services:
   learnloom:
     build:
       context: .
-    image: learnloom:0.2
+    image: learnloom:0.3
     env_file:
       - path: .env
         required: false
@@ -17,6 +17,61 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+
+  dashboard:
+    profiles:
+      - dashboard
+    build:
+      context: .
+    image: learnloom:0.3
+    command:
+      - serve
+      - --config
+      - /app/config.json
+      - --host
+      - 0.0.0.0
+      - --allow-remote
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LEARNLOOM_HOME: /data
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - learnloom-data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  worker:
+    profiles:
+      - dashboard
+    build:
+      context: .
+    image: learnloom:0.3
+    command:
+      - worker
+      - --config
+      - /app/config.json
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LEARNLOOM_HOME: /data
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - learnloom-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
 
 volumes:
   learnloom-data:
