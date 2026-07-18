@@ -59,6 +59,9 @@ export async function runDailyDossier(options) {
           history,
           provider,
           now,
+          fetchImpl: options.fetchImpl,
+          lookupFn: options.lookupFn,
+          enrichItemsFn: options.enrichItemsFn,
           onStage: (stage) => onEvent({ type: "stage", stage }),
         });
         const generationId = randomUUID();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ResendDelivery } from "../src/delivery.mjs";
-import { renderDossierEmail } from "../src/render.mjs";
+import { renderDossierEmail, renderDossierMarkdown } from "../src/render.mjs";
 
 const dossier = {
   version: 1,
@@ -38,6 +38,35 @@ test("renderDossierEmail escapes model content and rejects unsafe source links",
   assert.match(rendered.html, /<strong>Important<\/strong>/);
   assert.doesNotMatch(rendered.html, /href="javascript:/);
   assert.match(rendered.html, /https:\/\/example\.com\/read\?q=one&amp;safe=yes/);
+});
+
+test("Dossier v2 renders AI Exploration as a separate labelled section", () => {
+  const expanded = {
+    ...dossier,
+    version: 2,
+    exploration:
+      "## Synthetic mental model\n\nImagine a <hypothetical> feedback loop.",
+    quality: {
+      score: 92,
+      metrics: { enrichedSources: 1, retrievalQuestions: 3 },
+    },
+    sources: [
+      {
+        ...dossier.sources[0],
+        sourceId: "S4",
+        canonicalUrl: "https://example.com/canonical",
+      },
+    ],
+  };
+  const markdown = renderDossierMarkdown(expanded);
+  const email = renderDossierEmail(expanded, markdown);
+  assert.match(markdown, /## AI Exploration/);
+  assert.match(markdown, /Opt-in synthetic exploration/);
+  assert.match(markdown, /\[S4\]/);
+  assert.match(markdown, /Quality gate: 92\/100/);
+  assert.match(email.html, /AI Exploration · Opt-in/);
+  assert.match(email.html, /&lt;hypothetical&gt;/);
+  assert.match(email.html, /https:\/\/example\.com\/canonical/);
 });
 
 test("ResendDelivery sends deterministic idempotent email", async () => {
