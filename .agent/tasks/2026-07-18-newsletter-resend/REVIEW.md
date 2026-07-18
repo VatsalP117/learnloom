@@ -53,3 +53,19 @@ None required for this phase.
    retryable.
 4. Add the focused tests above and rerun the complete suite.
 
+## Re-Review
+
+### Verdict
+
+`APPROVE`
+
+All three blockers are resolved:
+
+- Busy handling is installed before WAL activation, WAL activation has bounded
+  `SQLITE_BUSY` retry, and migration remains serialized under
+  `BEGIN IMMEDIATE`.
+- Disabling email durably cancels unsent receipts without reviving them later.
+- Ambiguous Resend outcomes are durable and non-retryable.
+
+The packaged suite passes 76/76, and the concurrent migration stress passed
+20/20. No new blocking issue was found.
