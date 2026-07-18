@@ -1,0 +1,21 @@
+{
+  "name": "ai-learning-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A source-grounded daily learning dossier powered by Command Code.",
+  "bin": {
+    "learn": "./bin/learn.mjs"
+  },
+  "scripts": {
+    "check": "node --check bin/learn.mjs && find src test -name '*.mjs' -print0 | xargs -0 -n1 node --check",
+    "demo": "node bin/learn.mjs run --demo",
+    "doctor": "node bin/learn.mjs doctor",
+    "start": "node bin/learn.mjs run",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+

@@ -1,0 +1,38 @@
+{
+  "timeZone": "Asia/Kolkata",
+  "interests": [
+    "artificial intelligence research",
+    "software architecture",
+    "learning science"
+  ],
+  "learner": {
+    "level": "technically experienced",
+    "goal": "build durable understanding and turn useful ideas into experiments",
+    "lessonMinutes": 15
+  },
+  "sources": [
+    {
+      "name": "Hacker News",
+      "url": "https://hnrss.org/frontpage",
+      "limit": 12
+    },
+    {
+      "name": "arXiv Artificial Intelligence",
+      "url": "https://export.arxiv.org/rss/cs.AI",
+      "limit": 12
+    }
+  ],
+  "provider": {
+    "kind": "commandcode",
+    "executable": "cmd",
+    "model": "deepseek-v4-pro",
+    "timeoutSeconds": 600
+  },
+  "limits": {
+    "maxItems": 18,
+    "maxItemCharacters": 1800,
+    "maxIntermediateCharacters": 24000,
+    "historyEntries": 14
+  }
+}
+
