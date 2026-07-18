@@ -17,8 +17,12 @@
 - Required citations to appear in the lesson itself, not only in critique or practice.
 - Continued validating citation identifiers across all grounded sections.
 - Required distinct, substantive retrieval questions.
+- Scoped retrieval-question parsing to the Retrieval practice section only.
 - Required a substantive application challenge.
 - Required a numbered, substantive answer for every retrieval question.
+- Scoped answer parsing to the answer key, required exact number correspondence,
+  and rejected question-form answers.
+- Required every lesson heading exactly once and in the prescribed order.
 - Derived the score from the actual structure, grounding, practice, challenge, answer, continuity, exploration, and enrichment checks.
 - Added an adversarial regression that previously could receive 100/100 with one-character sections, duplicate questions, and an empty answer key.
 

@@ -149,6 +149,15 @@ export function evaluateDossierContent(input) {
     historyCount = 0,
   } = input;
   const lessonSections = parseMarkdownSections(lesson);
+  const requiredHeadingOrder = [
+    ...lesson.matchAll(/^#{1,4}\s+(.+?)\s*$/gim),
+  ]
+    .map((match) => match[1].trim())
+    .filter((heading) =>
+      REQUIRED_LESSON_SECTIONS.some(
+        (required) => required.toLowerCase() === heading.toLowerCase(),
+      ),
+    );
   const missingSections = REQUIRED_LESSON_SECTIONS.filter(
     (section) => !lessonSections.has(section.toLowerCase()),
   );
@@ -157,6 +166,18 @@ export function evaluateDossierContent(input) {
       `Editorial lesson is missing required sections: ${missingSections.join(
         ", ",
       )}.`,
+    );
+  }
+  if (
+    requiredHeadingOrder.length !== REQUIRED_LESSON_SECTIONS.length ||
+    requiredHeadingOrder.some(
+      (heading, index) =>
+        heading.toLowerCase() !==
+        REQUIRED_LESSON_SECTIONS[index].toLowerCase(),
+    )
+  ) {
+    throw new Error(
+      "Editorial lesson must contain every required heading exactly once and in the required order.",
     );
   }
   const shallowSections = REQUIRED_LESSON_SECTIONS.filter((section) => {
@@ -192,7 +213,13 @@ export function evaluateDossierContent(input) {
       `Editorial lesson must cite at least ${requiredCitationCount} Source Items.`,
     );
   }
-  const questions = practice
+  const retrievalPractice = sectionBody(practice, "Retrieval practice");
+  if (retrievalPractice == null) {
+    throw new Error(
+      "Editorial practice is missing a Retrieval practice section.",
+    );
+  }
+  const questions = retrievalPractice
     .split("\n")
     .map((line) => line.match(/^\s*\d+\.\s+(.+\?)\s*$/)?.[1])
     .filter(Boolean);
@@ -243,12 +270,13 @@ export function evaluateDossierContent(input) {
     }));
   const answerNumbers = new Set(answers.map((answer) => answer.number));
   if (
-    answers.length < questions.length ||
+    answers.length !== questions.length ||
     questions.some((_, index) => !answerNumbers.has(index + 1)) ||
     answers.some(
       (answer) =>
         plainText(answer.text).length < 15 ||
-        meaningfulWords(answer.text).length < 3,
+        meaningfulWords(answer.text).length < 3 ||
+        plainText(answer.text).endsWith("?"),
     )
   ) {
     throw new Error(
@@ -277,7 +305,7 @@ export function evaluateDossierContent(input) {
     applicationChallenge:
       plainText(applicationChallenge).length >= 40,
     collapsedAnswerKey:
-      answers.length >= questions.length &&
+      answers.length === questions.length &&
       questions.every((_, index) => answerNumbers.has(index + 1)),
     continuity:
       historyCount === 0 || blueprint.continuityBridge.trim().length > 0,

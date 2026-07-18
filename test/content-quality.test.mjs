@@ -146,6 +146,41 @@ x
       }),
     /substantive content/,
   );
+  assert.throws(
+    () =>
+      evaluateDossierContent({
+        lesson: validLesson(),
+        critique: "A bounded critique [S2].",
+        practice: `## Retrieval practice
+Use recall before opening the answer key.
+
+## Application challenge
+Diagnose a slow consumer in a three-service pipeline and identify where the feedback signal should be applied.
+
+<details>
+<summary>Answer key</summary>
+1. What operating condition causes backpressure to begin?
+2. How do returned credits limit an upstream producer?
+3. Why can additional buffering temporarily hide sustained overload?
+</details>`,
+        exploration: null,
+        sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
+        blueprint: validBlueprint(),
+      }),
+    /at least three retrieval questions/,
+  );
+  assert.throws(
+    () =>
+      evaluateDossierContent({
+        lesson: `${validLesson()}\n## Learning objective\nA duplicate objective adds enough content to look superficially valid.`,
+        critique: "A bounded critique [S2].",
+        practice: validPractice(),
+        exploration: null,
+        sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
+        blueprint: validBlueprint(),
+      }),
+    /exactly once and in the required order/,
+  );
 });
 
 function validBlueprint() {
