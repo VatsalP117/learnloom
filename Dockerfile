@@ -16,4 +16,3 @@ ENV LEARNLOOM_HOME=/data
 
 ENTRYPOINT ["node", "bin/learn.mjs"]
 CMD ["run", "--config", "/app/config.json"]
-

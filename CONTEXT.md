@@ -25,4 +25,3 @@ _Avoid_: Memory, state
 **Delivery Receipt**:
 The durable outcome of attempting to send one Dossier through one configured destination.
 _Avoid_: Send result, notification status
-

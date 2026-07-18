@@ -50,8 +50,8 @@ Each profile and local date has one deterministic Daily Run:
 - Successful destinations are skipped.
 - Failed destinations retry without spending model tokens again.
 - `learn run --force` explicitly regenerates the Dossier.
-- A heartbeating, owner-token filesystem lease prevents overlapping runs for
-  the same profile and date.
+- An owner-token filesystem lock prevents overlapping runs for the same profile
+  and date. Locks are never stolen automatically.
 
 The application home defaults to the directory containing `config.json`. Set
 `LEARNLOOM_HOME` to place all state under one durable directory.

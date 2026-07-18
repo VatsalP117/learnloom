@@ -11,10 +11,12 @@ The first independent review requested changes for four release blockers.
    The run-record pointer is swapped only after those files exist. A
    fault-injection test proves a crash before the swap preserves the earlier
    delivered generation and receipt.
-2. **Lock ownership:** the run lock is now an owner-token lease with a
-   heartbeat. Stale reclamation compares the observed lease after an atomic
-   rename, and release removes a lock only when ownership still matches. A race
-   regression proves an old owner cannot remove a reclaimed lease.
+2. **Lock ownership:** automatic stale reclamation and heartbeat mutation were
+   removed to eliminate ownership races. Release first atomically moves the
+   lock to an owner-specific candidate and validates the moved token. A crashed
+   process leaves a lock that requires deliberate operator cleanup. Regressions
+   prove old locks are never stolen and an old owner cannot delete a
+   replacement lock.
 3. **VM timeout:** the systemd oneshot now uses `TimeoutStartSec=infinity`;
    provider requests and retries remain bounded at the application layer. A
    deployment contract test protects this setting.

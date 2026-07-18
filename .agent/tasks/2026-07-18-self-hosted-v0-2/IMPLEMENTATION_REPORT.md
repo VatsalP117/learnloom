@@ -49,7 +49,7 @@ license.
 
 ## Tests
 
-- 38 Node test-runner tests pass.
+- 39 Node test-runner tests pass.
 - Syntax checks pass for every CLI, source, and test module.
 - The clean-room demo generates once and reuses the same Daily Run on rerun.
 - Current local Command Code diagnostics pass after the provider-aware refactor.
@@ -81,6 +81,9 @@ license.
   this is unsuitable for untrusted multi-tenant input.
 - Atomic JSON is appropriate for one scheduler/profile but is less queryable
   than the planned future SQLite adapter.
+- A process killed mid-run leaves its lock in place. Operators must confirm no
+  run is active before removing that lock; v0.2 deliberately does not guess
+  staleness or steal locks.
 - Resend idempotency keys expire after the provider's retention window; the
   durable local Delivery Receipt remains the primary duplicate-send guard.
 

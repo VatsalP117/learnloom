@@ -56,6 +56,10 @@ Dossier filenames include an immutable generation identifier. The Daily Run
 record points to the active generation, so an interrupted forced regeneration
 cannot overwrite content associated with an earlier Delivery Receipt.
 
+Learnloom never guesses that an existing lock is stale. If the host or
+container is killed mid-run, first confirm no Learnloom process is active, then
+remove the named `.lock` file under `/data/data/locks` before retrying.
+
 ## 4. Install the systemd timer
 
 The supplied files assume the repository lives at `/opt/learnloom`:

@@ -61,8 +61,9 @@ CLI / launchd / systemd / Docker
   before its run-record pointer is atomically swapped and delivery begins.
 - A failed destination records a Delivery Receipt and can retry independently.
 - Successful destinations are not repeated on a same-day rerun.
-- An owner-token lease with heartbeat rejects overlapping execution and lets a
-  later process safely reclaim a lock left by a crashed process.
+- An owner-token lock rejects overlapping execution and is never reclaimed
+  automatically. After a crash, an operator must confirm the process is gone
+  before removing the stale lock.
 - Atomic writes use unique temporary names and restrictive file modes.
 
 ## Deliberate v0.2 limits
