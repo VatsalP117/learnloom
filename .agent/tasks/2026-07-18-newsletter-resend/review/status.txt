@@ -1,0 +1,2 @@
+## agent/newsletter-resend...origin/main [ahead 6]
+?? .agent/tasks/2026-07-18-newsletter-resend/review/

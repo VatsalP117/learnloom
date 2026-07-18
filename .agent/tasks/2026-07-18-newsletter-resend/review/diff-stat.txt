@@ -1,0 +1,18 @@
+ .../IMPLEMENTATION_REPORT.md                       |  76 +++++
+ .agent/tasks/2026-07-18-newsletter-resend/PLAN.md  | 113 ++++++++
+ .agent/tasks/2026-07-18-newsletter-resend/TASK.md  |   7 +
+ .env.example                                       |   2 +-
+ README.md                                          |  27 +-
+ bin/learn.mjs                                      |  19 +-
+ compose.yaml                                       |   6 +-
+ docs/architecture.md                               |  35 ++-
+ docs/dashboard-test-phase.md                       |  27 +-
+ docs/vm-deployment.md                              |  27 +-
+ package.json                                       |   2 +-
+ src/dashboard.mjs                                  | 176 ++++++++++--
+ src/newsletter-worker.mjs                          |  94 ++++++-
+ src/workspace.mjs                                  | 309 +++++++++++++++++++--
+ test/dashboard.test.mjs                            |  88 ++++++
+ test/newsletter-worker.test.mjs                    | 142 +++++++++-
+ test/workspace.test.mjs                            | 166 ++++++++++-
+ 17 files changed, 1219 insertions(+), 97 deletions(-)
