@@ -105,6 +105,21 @@ test("evaluateDossierContent validates structure, citations, practice, and bound
       evaluateDossierContent({
         lesson: validLesson(),
         critique: "Limits [S2].",
+        practice: validPractice().replace(
+          "Demand exceeds service.",
+          "Demand exceeds service [S9].",
+        ),
+        exploration: null,
+        sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
+        blueprint: validBlueprint(),
+      }),
+    /unknown Source Items: S9/,
+  );
+  assert.throws(
+    () =>
+      evaluateDossierContent({
+        lesson: validLesson(),
+        critique: "Limits [S2].",
         practice: validPractice(),
         exploration: "A cited synthetic idea [S1].",
         sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
@@ -164,4 +179,3 @@ Diagnose a slow consumer.
 3. It delays the visible failure.
 </details>`;
 }
-

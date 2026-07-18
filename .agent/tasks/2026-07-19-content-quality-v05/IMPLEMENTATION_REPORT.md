@@ -32,6 +32,7 @@ AI Exploration is opt-in per Newsletter and disabled by default. It is stored an
 - `npm run check`: all JavaScript syntax checks passed.
 - `git diff --check`: passed.
 - `docker compose config --quiet`: passed.
+- `docker compose build`: built `learnloom:0.5` successfully.
 - `npm run doctor`: configuration, Command Code authentication, and configured model checks passed.
 
 ## Live Command Code Exercise

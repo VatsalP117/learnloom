@@ -164,7 +164,7 @@ export function evaluateDossierContent(input) {
   const knownSourceIds = new Set(
     sources.map((source, index) => source.sourceId ?? `S${index + 1}`),
   );
-  const groundedText = `${lesson}\n${critique}`;
+  const groundedText = `${lesson}\n${critique}\n${practice}`;
   const citedSourceIds = [
     ...new Set(
       [...groundedText.matchAll(/\[S(\d+)\]/g)].map(
@@ -277,4 +277,3 @@ function requiredTextArray(value, field, maximumItems) {
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
