@@ -25,6 +25,8 @@ test("buildDossier performs four stages and returns a sourced document", async (
   assert.match(result.markdown, /Learning Dossier — 2026-07-18/);
   assert.match(result.markdown, /Source Index/);
   assert.match(result.markdown, /\[S1\]/);
+  assert.equal(result.dossier.profileId, "default");
+  assert.equal(result.dossier.date, "2026-07-18");
   assert.equal(result.historyEntry.recallQuestions.length, 3);
 });
 
@@ -70,4 +72,28 @@ test("buildDossier preserves every required section when source input exceeds th
   for (const input of [...inputs.values()].slice(1)) {
     assert.ok(input.length <= config.limits.maxIntermediateCharacters);
   }
+});
+
+test("buildDossier excludes prior lessons when historyEntries is zero", async () => {
+  const config = validateConfig({
+    interests: ["systems"],
+    sources: [{ name: "Demo", url: "https://example.com/feed" }],
+    provider: { kind: "demo" },
+    limits: { historyEntries: 0 },
+  });
+  let researcherInput = "";
+  const demo = new DemoProvider();
+  const provider = {
+    async complete(input) {
+      if (input.stage === "researcher") researcherInput = input.input;
+      return demo.complete(input);
+    },
+  };
+  await buildDossier({
+    config,
+    items: DEMO_ITEMS,
+    history: [{ date: "2026-07-17", lessonSummary: "SHOULD-NOT-APPEAR" }],
+    provider,
+  });
+  assert.doesNotMatch(researcherInput, /SHOULD-NOT-APPEAR/);
 });

@@ -14,6 +14,7 @@ export function buildLaunchAgent({
   hour = 9,
   minute = 0,
   environmentPath = process.env.PATH,
+  learnloomHome,
 }) {
   const args = [nodePath, cliPath, "run", "--config", configPath];
   return [
@@ -33,6 +34,12 @@ export function buildLaunchAgent({
     "  <dict>",
     "    <key>PATH</key>",
     `    <string>${escapeXml(environmentPath)}</string>`,
+    ...(learnloomHome
+      ? [
+          "    <key>LEARNLOOM_HOME</key>",
+          `    <string>${escapeXml(learnloomHome)}</string>`,
+        ]
+      : []),
     "  </dict>",
     "  <key>StartCalendarInterval</key>",
     "  <dict>",

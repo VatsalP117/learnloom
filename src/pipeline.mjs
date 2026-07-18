@@ -1,3 +1,5 @@
+import { renderDossierMarkdown } from "./render.mjs";
+
 const STAGE_INSTRUCTIONS = Object.freeze({
   researcher: [
     "Select one coherent, high-value theme from the supplied source bundle.",
@@ -78,34 +80,23 @@ export async function buildDossier({ config, items, history, provider, now = new
   );
 
   const date = formatDate(now, config.timeZone);
-  const markdown = [
-    `# Learning Dossier — ${date}`,
-    "",
-    `> Generated from ${items.length} source items through researcher, skeptic, teacher, and examiner passes.`,
-    "",
-    demoteTopLevelHeadings(lesson),
-    "",
-    demoteTopLevelHeadings(critique),
-    "",
-    demoteTopLevelHeadings(practice),
-    "",
-    "## Source Index",
-    "",
-    ...items.map(
-      (item, index) =>
-        `${index + 1}. **[S${index + 1}] ${escapeMarkdown(item.title)}** — ${
-          item.source
-        }  \n   ${item.url}`,
-    ),
-    "",
-    "---",
-    "",
-    `Generated at ${now.toISOString()} · Model output can be wrong; verify important claims at the linked sources.`,
-    "",
-  ].join("\n");
+  const dossier = {
+    version: 1,
+    profileId: config.profileId,
+    date,
+    title: extractTitle(lesson),
+    generatedAt: now.toISOString(),
+    model: config.provider.model,
+    lesson,
+    critique,
+    practice,
+    sources: items.map((item) => ({ ...item })),
+  };
+  const markdown = renderDossierMarkdown(dossier);
 
   return {
     date,
+    dossier,
     markdown,
     stages: { research, critique, lesson, practice },
     historyEntry: {
@@ -143,7 +134,11 @@ export function formatSourceBundle(items, maxItemCharacters) {
 }
 
 function formatLearnerContext(config, history) {
-  const prior = history.length
+  const retainedHistory =
+    config.limits.historyEntries === 0
+      ? []
+      : history.slice(-config.limits.historyEntries);
+  const prior = retainedHistory.length
     ? history
         .slice(-config.limits.historyEntries)
         .map((entry) => `- ${entry.date}: ${entry.lessonSummary}`)
@@ -200,8 +195,16 @@ function fitSections(maximum, sections) {
     .join("\n\n");
 }
 
-function demoteTopLevelHeadings(markdown) {
-  return markdown.replace(/^# /gm, "## ");
+function extractTitle(lesson) {
+  const headings = lesson
+    .split("\n")
+    .map((line) => line.match(/^#{1,3}\s+(.+)$/)?.[1]?.trim())
+    .filter(Boolean);
+  return (
+    headings.find((heading) => !/^(today'?s lesson|lesson)$/i.test(heading)) ??
+    headings[0] ??
+    "Daily Learning Dossier"
+  );
 }
 
 function stripMarkdown(value) {
@@ -218,10 +221,6 @@ function stripMarkdown(value) {
 function truncate(value, maximum) {
   if (value.length <= maximum) return value;
   return `${value.slice(0, maximum - 16).trimEnd()}\n[truncated]`;
-}
-
-function escapeMarkdown(value) {
-  return value.replace(/([\\[\]*_])/g, "\\$1");
 }
 
 function formatDate(date, timeZone) {

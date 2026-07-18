@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate and deliver the daily Learnloom Dossier
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/learnloom
+ExecStart=/usr/bin/docker compose run --rm --no-deps learnloom run --config /app/config.json
+TimeoutStartSec=infinity

@@ -1,133 +1,92 @@
 # Learnloom
 
-A local, source-grounded morning learning dossier that weaves fresh sources
-with your learning history, powered by the DeepSeek credits in a
-[Command Code](https://commandcode.ai/) subscription.
+Learnloom is a self-hosted personal learning engine. It retrieves fresh
+RSS/Atom material, weaves it together with your Learning History, and produces
+a source-indexed daily Dossier with:
 
-The engine retrieves configured RSS/Atom feeds, remembers recent lessons, and
-uses four separate model passes:
+1. A researched theme
+2. A skeptical evidence review
+3. A focused lesson
+4. Retrieval questions and an application exercise
 
-1. **Researcher** chooses one coherent theme and extracts its important claims.
-2. **Skeptic** challenges the evidence and identifies missing context.
-3. **Teacher** produces a focused lesson at your level.
-4. **Examiner** creates retrieval questions and an application exercise.
+Run it locally, schedule it on macOS, or deploy the finite Docker job to a VM.
+Use your own DeepSeek or OpenAI-compatible key, a Command Code subscription,
+or the deterministic offline demo. Optionally receive each Dossier through
+Resend email.
 
-The result is saved to `output/YYYY-MM-DD.md`. Local learning history is kept
-in `data/history.json`, so later lessons can build on earlier ones. Both
-directories are ignored by Git.
+## Five-minute local start
 
-## Why Command Code works here
-
-Command Code officially supports a headless print mode:
+Requirements: Node.js 22 or newer. There are no runtime dependencies.
 
 ```sh
-cmd --print "prompt" --model deepseek-v4-pro
-```
-
-This project invokes that documented interface directly. It does not extract
-your authentication token or use private endpoints. Each call uses plan
-permissions, a one-turn limit, and an instruction not to use tools. See the
-[official CLI reference](https://commandcode.ai/docs/reference/cli).
-
-Command Code currently lists the full model ID as
-`deepseek/deepseek-v4-pro`; the documented short-name form
-`deepseek-v4-pro` is used in the example configuration.
-
-## Requirements
-
-- macOS, Linux, or Windows for manual runs
-- Node.js 22 or newer
-- macOS for automatic `launchd` scheduling
-- Command Code subscription for live generation
-
-There are no project runtime dependencies.
-
-## Quick start
-
-First verify the entire pipeline without network access or model credits:
-
-```sh
+git clone https://github.com/VatsalP117/learnloom.git
+cd learnloom
+cp config.example.json config.json
+cp .env.example .env
 npm test
 npm run demo
 ```
 
-Open the generated file under `output/`.
+The demo uses no network, model credits, or email. It writes immutable
+generation-versioned Markdown and JSON Dossiers under `output/`.
 
-Then create your local configuration:
-
-```sh
-node bin/learn.mjs init
-```
-
-Edit `config.json` to set your interests, learner profile, and feeds. The file
-is ignored by Git so personal source choices stay local.
-
-Install and authenticate Command Code:
+For a live direct DeepSeek run:
 
 ```sh
-npm install -g command-code
-cmd login
-```
-
-Confirm the complete setup:
-
-```sh
+export DEEPSEEK_API_KEY="your-key"
 npm run doctor
-```
-
-Run a live dossier:
-
-```sh
 npm start
 ```
 
-## Daily 9:00 a.m. schedule
+Secrets are read only from environment variables. Learnloom never reads a key
+from `config.json`, writes one to a run record, or includes one in an error.
 
-After one successful live run:
+## How a Daily Run behaves
 
-```sh
-node bin/learn.mjs schedule install
-node bin/learn.mjs schedule status
-```
+Each profile and local date has one deterministic Daily Run:
 
-The launch agent uses the exact Node executable and project path present at
-installation time. Logs are written under `data/logs/`.
+- The Dossier is persisted before external delivery.
+- A same-day rerun reuses the saved Dossier.
+- Successful destinations are skipped.
+- Failed destinations retry without spending model tokens again.
+- `learn run --force` explicitly regenerates the Dossier.
+- An owner-token filesystem lock prevents overlapping runs for the same profile
+  and date. Locks are never stolen automatically.
 
-To choose another local time:
+The application home defaults to the directory containing `config.json`. Set
+`LEARNLOOM_HOME` to place all state under one durable directory.
 
-```sh
-node bin/learn.mjs schedule install --hour 8 --minute 30
-```
+## Model providers
 
-To remove it:
+### Bring your own OpenAI-compatible key
 
-```sh
-node bin/learn.mjs schedule remove
-```
-
-The scheduled hour follows the Mac's current local time. `timeZone` in
-`config.json` controls the date written in the dossier.
-
-## Configuration
-
-`config.example.json` contains all available settings:
+The public example uses DeepSeek:
 
 ```json
 {
-  "timeZone": "Asia/Kolkata",
-  "interests": ["artificial intelligence research", "learning science"],
-  "learner": {
-    "level": "technically experienced",
-    "goal": "build durable understanding",
-    "lessonMinutes": 15
-  },
-  "sources": [
-    {
-      "name": "Hacker News",
-      "url": "https://hnrss.org/frontpage",
-      "limit": 12
-    }
-  ],
+  "provider": {
+    "kind": "openai-compatible",
+    "baseUrl": "https://api.deepseek.com",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "model": "deepseek-v4-pro",
+    "maxTokens": 8192,
+    "timeoutSeconds": 600,
+    "retries": 2
+  }
+}
+```
+
+Change `baseUrl`, `apiKeyEnv`, and `model` for another compatible provider.
+The configured base URL must use HTTPS and expose `/chat/completions` and
+`/models`. For a local model server only, loopback HTTP can be enabled with
+`"allowInsecureHttp": true`; remote plaintext HTTP is always rejected.
+
+### Command Code subscription
+
+Local Command Code usage remains supported:
+
+```json
+{
   "provider": {
     "kind": "commandcode",
     "executable": "cmd",
@@ -137,56 +96,101 @@ The scheduled hour follows the Mac's current local time. `timeZone` in
 }
 ```
 
-Useful source types include:
+Install and authenticate the official CLI:
 
-- Research category feeds such as arXiv
-- Blogs with RSS or Atom feeds
-- Hacker News or topic-specific news feeds
-- A private feed you generate from your own bookmarks
+```sh
+npm install -g command-code
+cmd login
+npm run doctor
+```
 
-Feed summaries are treated as untrusted data and are placed inside prompts as
-reference material, not instructions. Important model claims should still be
-verified against the linked source.
+Learnloom invokes documented non-interactive print mode with plan permissions,
+one turn, and no model tools.
+
+## Email through Resend
+
+Verify a sending domain in Resend, set `RESEND_API_KEY`, and enable the example
+delivery:
+
+```json
+{
+  "deliveries": [
+    {
+      "id": "morning-email",
+      "kind": "resend",
+      "enabled": true,
+      "apiKeyEnv": "RESEND_API_KEY",
+      "from": "Learnloom <daily@updates.example.com>",
+      "to": "you@example.com",
+      "subjectPrefix": "Learnloom"
+    }
+  ]
+}
+```
+
+Email HTML is rendered from the canonical Dossier with all model/source text
+escaped. Only HTTP(S) source links become clickable. A deterministic Resend
+idempotency key prevents duplicate sends during normal retries.
+
+## Deploy on a VM
+
+```sh
+cp config.example.json config.json
+cp .env.example .env
+docker compose build
+docker compose run --rm learnloom doctor --config /app/config.json
+docker compose run --rm learnloom run --config /app/config.json
+```
+
+The image runs as a non-root user, has a read-only root filesystem under
+Compose, opens no inbound ports, and stores durable state in `learnloom-data`.
+Use the supplied host systemd timer for the 9:00 a.m. schedule.
+
+See [the complete VM guide](docs/vm-deployment.md).
+
+## macOS scheduling
+
+After a successful live run:
+
+```sh
+node bin/learn.mjs schedule install
+node bin/learn.mjs schedule status
+```
+
+Choose another time with `--hour` and `--minute`; remove the job with
+`node bin/learn.mjs schedule remove`.
 
 ## Commands
 
 ```text
 learn init [--config path] [--force]
-learn run [--config path] [--demo]
+learn run [--config path] [--demo] [--force]
 learn doctor [--config path]
 learn schedule install [--config path] [--hour 9] [--minute 0]
 learn schedule status
 learn schedule remove
 ```
 
-You can invoke `learn` through `node bin/learn.mjs`, or install this repository
-as a local command with `npm link`.
+## Sources and safety
 
-## Troubleshooting
+- One failed feed becomes a warning; all feeds failing aborts before model use.
+- Feed text is untrusted reference material, never model instructions.
+- Model adapters expose no downstream tools.
+- Source/model HTML is escaped before email rendering.
+- Feed URLs are operator-controlled. The current fetcher is not suitable for
+  accepting untrusted multi-tenant URLs because it does not block private
+  network destinations.
+- Important claims should be verified through the Dossier's source links.
 
-### `Could not find "cmd"`
-
-Install the official CLI and open a new terminal:
+## Development
 
 ```sh
-npm install -g command-code
+npm test
+npm run check
+npm run demo
 ```
 
-If Node is managed by `nvm`, run schedule installation from the same shell in
-which `cmd` works so its executable directory is captured in the launch agent.
+Architecture vocabulary lives in [CONTEXT.md](CONTEXT.md), and the current
+design is documented in [docs/architecture.md](docs/architecture.md).
 
-### Command Code is installed but not authenticated
-
-Run `cmd login`, complete browser approval, then run `npm run doctor` again.
-Credentials remain in Command Code's own local storage and are never read by
-this project.
-
-### One feed fails
-
-The run continues when at least one configured feed succeeds and prints a
-warning for failed feeds. If all feeds fail, no model credits are spent.
-
-### A model stage fails
-
-The incomplete dossier is not saved. Re-run after fixing authentication,
-connectivity, credit balance, or model availability.
+Learnloom is released under the [MIT License](LICENSE).

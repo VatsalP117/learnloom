@@ -1,50 +1,75 @@
 # Architecture
 
 ```text
-RSS / Atom feeds
-      │
-      ▼
-parse, normalize, deduplicate, bound input
-      │
-      ├────────────── recent local lesson history
-      │                         │
-      ▼                         ▼
- researcher ──► skeptic ──► teacher ──► examiner
-      │             │            │           │
-      └─────────────┴────────────┴───────────┘
-                            │
-                            ▼
-                 Markdown + history JSON
+CLI / launchd / systemd / Docker
+                 │
+                 ▼
+             Daily Run
+                 │
+     ┌───────────┼────────────┐
+     ▼           ▼            ▼
+ Source Items  Model       Learning History
+     │        adapter           │
+     └───────────┼──────────────┘
+                 ▼
+              Dossier
+          (canonical JSON)
+                 │
+        persist Markdown + JSON
+                 │
+                 ▼
+       delivery adapter(s)
+          Resend email
+                 │
+                 ▼
+         Delivery Receipt
 ```
 
-## Trust boundaries
+## Deep modules and seams
+
+- The **Daily Run** module owns ordering, reuse, failure policy, persistence,
+  delivery retry, and locking behind one interface.
+- The model seam has Command Code, OpenAI-compatible HTTP, and deterministic
+  demo adapters.
+- The delivery seam has a Resend adapter and injected deterministic adapters
+  in tests. Additional destinations do not alter generation.
+- The file run-store implementation owns Daily Run identity, locks, and
+  Delivery Receipts. Its interface can later gain a SQLite adapter.
+- Markdown and email are renderings of the canonical **Dossier**, not the
+  source of truth.
+
+## Trust seams
 
 - Source XML and summaries are untrusted network input.
-- Configuration URLs are restricted to HTTP and HTTPS.
-- Source content is explicitly labeled as reference material in provider
-  prompts and cannot request tool use.
-- Command Code is spawned with `shell: false`, so prompt content is never
-  interpreted by a shell.
-- Provider sessions run with plan permissions and are instructed not to browse,
-  edit files, or use tools.
-- Command Code credentials are managed solely by its official CLI.
-- The scheduler stores paths and timing, never credentials.
+- Model endpoints require HTTPS. Loopback HTTP requires explicit insecure-local
+  opt-in; remote plaintext HTTP is rejected before a credential can be sent.
+- Source content is labeled as reference material and model adapters expose no
+  tools.
+- Command Code is spawned with `shell: false`.
+- Direct model and Resend credentials come only from named environment
+  variables and are never persisted.
+- Email rendering escapes model/source text and allows only HTTP(S) links.
+- The container runs non-root, opens no port, and excludes local secrets and
+  state from its build context.
 
 ## Failure behavior
 
-- A single failed feed becomes a warning.
-- All feeds failing aborts before model calls.
-- Any failed or empty model stage aborts the dossier.
-- Markdown and history writes use temporary files followed by atomic renames.
-- Re-running on the same date replaces that date's dossier but preserves each
-  completed history entry.
+- A single failed feed becomes a warning; all feeds failing aborts before model
+  calls.
+- A failed generation creates no delivery attempt.
+- Each canonical Dossier is persisted to immutable, generation-versioned paths
+  before its run-record pointer is atomically swapped and delivery begins.
+- A failed destination records a Delivery Receipt and can retry independently.
+- Successful destinations are not repeated on a same-day rerun.
+- An owner-token lock rejects overlapping execution and is never reclaimed
+  automatically. After a crash, an operator must confirm the process is gone
+  before removing the stale lock.
+- Atomic writes use unique temporary names and restrictive file modes.
 
-## Deliberate MVP limits
+## Deliberate v0.2 limits
 
-- The model receives feed-provided summaries, not full article bodies.
-- There is no email or chat delivery.
-- Learner answers are not yet captured, so personalization uses lesson history
-  rather than demonstrated mastery.
-- RSS/Atom parsing supports common formats without trying to implement the full
-  XML specification.
-
+- Daily Run records are atomic JSON rather than SQLite.
+- One trusted operator configures feeds; private-network URL blocking is absent.
+- Source material uses feed summaries rather than extracted article bodies.
+- Resend is the only external delivery adapter.
+- Learner feedback and Notion delivery are not yet implemented.
