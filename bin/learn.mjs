@@ -4,16 +4,15 @@ import { access, copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, validateConfig } from "../src/config.mjs";
-import { DEMO_ITEMS } from "../src/demo-data.mjs";
-import { fetchSources } from "../src/feeds.mjs";
-import { buildDossier } from "../src/pipeline.mjs";
-import { createProvider, runProcess } from "../src/provider.mjs";
+import { runDailyDossier } from "../src/daily-run.mjs";
+import { checkDeliveries } from "../src/delivery.mjs";
+import { resolveAppPaths } from "../src/paths.mjs";
+import { checkProvider } from "../src/provider.mjs";
 import {
   installSchedule,
   removeSchedule,
   scheduleStatus,
 } from "../src/schedule.mjs";
-import { loadHistory, saveRun } from "../src/state.mjs";
 
 const cliPath = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(cliPath), "..");
@@ -58,38 +57,29 @@ async function initialize(commandArgs) {
 
 async function run(commandArgs) {
   const demo = commandArgs.includes("--demo");
+  const force = commandArgs.includes("--force");
   const configPath = option(commandArgs, "--config") ?? "config.json";
   const config = demo ? demoConfig() : await loadConfig(configPath);
-  const historyPath = path.resolve("data/history.json");
-  const history = await loadHistory(historyPath);
-  let items;
-  let warnings = [];
-
-  if (demo) {
-    items = DEMO_ITEMS;
-  } else {
-    process.stdout.write("Fetching configured feeds…\n");
-    const fetched = await fetchSources(config);
-    items = fetched.items;
-    warnings = fetched.warnings;
-  }
-
-  warnings.forEach((warning) => process.stderr.write(`Warning: ${warning}\n`));
-  process.stdout.write(`Building a dossier from ${items.length} source items…\n`);
-  const provider = createProvider(config, { demo, cwd: projectRoot });
-  const result = await buildDossier({
+  const paths = resolveAppPaths(config);
+  const result = await runDailyDossier({
     config,
-    items,
-    history,
-    provider,
-    onStage: (stage) => process.stdout.write(`  ${stage}\n`),
+    paths,
+    demo,
+    force,
+    cwd: projectRoot,
+    onEvent: printRunEvent,
   });
-  const saved = await saveRun(result, {
-    historyPath,
-    outputDirectory: "output",
-    historyLimit: config.limits.historyEntries || 100,
-  });
-  process.stdout.write(`Dossier ready: ${saved.outputPath}\n`);
+  process.stdout.write(
+    `${result.generated ? "Dossier ready" : "Existing Dossier reused"}: ${result.outputPath}\n`,
+  );
+  if (result.deliveryErrors.length > 0) {
+    for (const failure of result.deliveryErrors) {
+      process.stderr.write(
+        `Delivery ${failure.deliveryId} failed: ${failure.error.message}\n`,
+      );
+    }
+    process.exitCode = 2;
+  }
 }
 
 async function doctor(commandArgs) {
@@ -105,41 +95,15 @@ async function doctor(commandArgs) {
   try {
     config = await loadConfig(configPath);
     checks.push({ name: "Configuration", ok: true, detail: config.configPath });
+    const paths = resolveAppPaths(config);
+    checks.push({ name: "Application home", ok: true, detail: paths.appHome });
   } catch (error) {
     checks.push({ name: "Configuration", ok: false, detail: error.message });
   }
 
-  const executable = config?.provider.executable ?? "cmd";
-  let status;
-  try {
-    status = await runProcess(executable, ["status", "--json"], {
-      timeoutMs: 30_000,
-      acceptedExitCodes: [0, 1],
-    });
-    const parsed = safeJson(status.stdout);
-    const authenticated = inferAuthentication(parsed, status.stdout);
-    checks.push({
-      name: "Command Code login",
-      ok: authenticated,
-      detail: authenticated ? "authenticated" : "CLI found, but login was not confirmed",
-    });
-  } catch (error) {
-    checks.push({ name: "Command Code CLI", ok: false, detail: error.message });
-  }
-
-  if (status) {
-    try {
-      const models = await runProcess(executable, ["--list-models"], { timeoutMs: 60_000 });
-      const wantedModel = config?.provider.model ?? "deepseek-v4-pro";
-      const available = models.stdout.toLowerCase().includes(wantedModel.toLowerCase());
-      checks.push({
-        name: "DeepSeek model",
-        ok: available,
-        detail: available ? wantedModel : `${wantedModel} was not present in cmd --list-models`,
-      });
-    } catch (error) {
-      checks.push({ name: "Model discovery", ok: false, detail: error.message });
-    }
+  if (config) {
+    checks.push(...(await checkProvider(config, { cwd: projectRoot })));
+    checks.push(...checkDeliveries(config));
   }
 
   for (const check of checks) {
@@ -173,10 +137,11 @@ async function schedule(commandArgs) {
   }
 
   const configPath = path.resolve(option(commandArgs, "--config") ?? "config.json");
-  await loadConfig(configPath);
+  const config = await loadConfig(configPath);
+  const paths = resolveAppPaths(config);
   const hour = integerOption(commandArgs, "--hour", 9, 0, 23);
   const minute = integerOption(commandArgs, "--minute", 0, 0, 59);
-  const logDirectory = path.resolve("data/logs");
+  const logDirectory = paths.logsDirectory;
   const plistPath = await installSchedule({
     nodePath: process.execPath,
     cliPath,
@@ -186,6 +151,7 @@ async function schedule(commandArgs) {
     hour,
     minute,
     environmentPath: process.env.PATH,
+    learnloomHome: process.env.LEARNLOOM_HOME,
   });
   process.stdout.write(
     `Installed ${plistPath}\nLearnloom will run daily at ${pad(hour)}:${pad(minute)} local time.\n`,
@@ -204,6 +170,7 @@ function demoConfig() {
       },
       sources: [{ name: "Demo", url: "https://example.com/feed", limit: 10 }],
       provider: { kind: "demo" },
+      deliveries: [],
     },
     "<demo>",
   );
@@ -228,30 +195,20 @@ function integerOption(commandArgs, name, fallback, minimum, maximum) {
   return value;
 }
 
-function safeJson(value) {
-  try {
-    return JSON.parse(value.trim());
-  } catch {
-    return null;
+function printRunEvent(event) {
+  if (event.type === "fetch") process.stdout.write("Fetching configured feeds…\n");
+  if (event.type === "warning") process.stderr.write(`Warning: ${event.message}\n`);
+  if (event.type === "generation") {
+    process.stdout.write(`Building a Dossier from ${event.itemCount} Source Items…\n`);
   }
-}
-
-function inferAuthentication(parsed, raw) {
-  if (parsed) {
-    const serialized = JSON.stringify(parsed).toLowerCase();
-    if (serialized.includes('"authenticated":true') || serialized.includes('"loggedin":true')) {
-      return true;
-    }
-    if (serialized.includes('"authenticated":false') || serialized.includes('"loggedin":false')) {
-      return false;
-    }
+  if (event.type === "stage") process.stdout.write(`  ${event.stage}\n`);
+  if (event.type === "reuse") process.stdout.write(`Reusing Daily Run ${event.runId}…\n`);
+  if (event.type === "delivery") {
+    process.stdout.write(`Delivering through ${event.deliveryId}…\n`);
   }
-  const normalized = raw.toLowerCase();
-  return (
-    normalized.includes("authenticated") &&
-    !normalized.includes("not authenticated") &&
-    !normalized.includes("false")
-  );
+  if (event.type === "delivery-skip") {
+    process.stdout.write(`Delivery ${event.deliveryId} already completed; skipping.\n`);
+  }
 }
 
 function pad(value) {
@@ -263,7 +220,7 @@ function printHelp() {
 
 Usage:
   learn init [--config path] [--force]
-  learn run [--config path] [--demo]
+  learn run [--config path] [--demo] [--force]
   learn doctor [--config path]
   learn schedule install [--config path] [--hour 9] [--minute 0]
   learn schedule status

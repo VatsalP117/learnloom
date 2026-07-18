@@ -20,11 +20,15 @@ export async function saveRun(result, options = {}) {
   const outputDirectory = path.resolve(options.outputDirectory ?? "output");
   const historyPath = path.resolve(options.historyPath ?? "data/history.json");
   const historyLimit = options.historyLimit ?? 100;
-  await mkdir(outputDirectory, { recursive: true });
-  await mkdir(path.dirname(historyPath), { recursive: true });
+  await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(path.dirname(historyPath), { recursive: true, mode: 0o700 });
 
   const outputPath = path.join(outputDirectory, `${result.date}.md`);
   await atomicWrite(outputPath, result.markdown);
+  const dossierPath = path.join(outputDirectory, `${result.date}.json`);
+  if (result.dossier) {
+    await atomicWrite(dossierPath, `${JSON.stringify(result.dossier, null, 2)}\n`);
+  }
 
   const history = await loadHistory(historyPath);
   const withoutSameRun = history.filter(
@@ -37,7 +41,25 @@ export async function saveRun(result, options = {}) {
     historyLimit === 0 ? [] : withoutSameRun.slice(-historyLimit);
   await atomicWrite(historyPath, `${JSON.stringify(retainedHistory, null, 2)}\n`);
 
-  return { outputPath, historyPath };
+  return {
+    outputPath,
+    dossierPath: result.dossier ? dossierPath : null,
+    historyPath,
+  };
+}
+
+export async function loadJson(filePath, description = "JSON file") {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw new Error(`Could not read ${description} at ${filePath}: ${error.message}`);
+  }
+}
+
+export async function writeJsonAtomic(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  await atomicWrite(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function atomicWrite(filePath, contents) {

@@ -25,6 +25,8 @@ test("buildDossier performs four stages and returns a sourced document", async (
   assert.match(result.markdown, /Learning Dossier — 2026-07-18/);
   assert.match(result.markdown, /Source Index/);
   assert.match(result.markdown, /\[S1\]/);
+  assert.equal(result.dossier.profileId, "default");
+  assert.equal(result.dossier.date, "2026-07-18");
   assert.equal(result.historyEntry.recallQuestions.length, 3);
 });
 
