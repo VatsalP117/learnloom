@@ -184,6 +184,43 @@ test("buildDossier repairs one malformed structured model response", async () =>
   assert.equal(result.dossier.version, 2);
 });
 
+test("editor repair receives deterministic quality-gate failures", async () => {
+  const config = validateConfig({
+    interests: ["learning"],
+    sources: [{ name: "Demo", url: "https://example.com/feed" }],
+    provider: { kind: "demo" },
+  });
+  const demo = new DemoProvider();
+  let editorCalls = 0;
+  const provider = {
+    async complete(options) {
+      if (options.stage === "editor") {
+        editorCalls += 1;
+        if (editorCalls === 1) {
+          return JSON.stringify({
+            lesson: "## Learning objective\n\nToo short [S1] [S2].",
+            critique: "Evidence limits [S1].",
+            practice: practiceFixture(),
+            exploration: null,
+            qualityNotes: [],
+          });
+        }
+        assert.match(options.input, /Contract repair/);
+        assert.match(options.input, /missing required sections/);
+      }
+      return demo.complete(options);
+    },
+  };
+  const result = await buildDossier({
+    config,
+    items: DEMO_ITEMS,
+    history: [],
+    provider,
+  });
+  assert.equal(editorCalls, 2);
+  assert.equal(result.dossier.quality.checks.requiredLessonSections, true);
+});
+
 test("curated source budgeting preserves every selected Source Item", async () => {
   const config = validateConfig({
     interests: ["systems"],

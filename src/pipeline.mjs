@@ -233,7 +233,16 @@ export async function buildDossier(options) {
       ["Draft AI Exploration", exploration ?? "Disabled", 2],
     ]),
     onStage,
-    (value) => validateEditorial(value, { explorationEnabled }),
+    (value) => {
+      const candidate = validateEditorial(value, { explorationEnabled });
+      evaluateDossierContent({
+        ...candidate,
+        sources: enrichedItems,
+        blueprint,
+        historyCount: history.length,
+      });
+      return candidate;
+    },
   );
   const quality = evaluateDossierContent({
     ...editorial,
