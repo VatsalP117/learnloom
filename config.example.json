@@ -32,6 +32,11 @@
     "timeoutSeconds": 600,
     "retries": 2
   },
+  "content": {
+    "aiExplorationEnabled": false,
+    "maxArticleBytes": 524288,
+    "maxArticleCharacters": 16000
+  },
   "deliveries": [
     {
       "id": "morning-email",

@@ -36,3 +36,14 @@ _Avoid_: Profile, feed, subscription
 The durable lifecycle record for one scheduled or manual Newsletter occurrence.
 It can point to a Dossier and, after delivery is enabled, Delivery Receipts.
 _Avoid_: Job, execution, newsletter run
+
+**Learning Blueprint**:
+The structured plan for one Dossier: objective, prerequisites, central
+mechanism, worked example, misconception, experiment, and continuity bridge.
+_Avoid_: Outline, prompt plan
+
+**AI Exploration**:
+An optional, explicitly synthetic Dossier section containing uncited analogies,
+deductions, scenarios, and experiments that remains separate from the
+source-grounded lesson.
+_Avoid_: AI facts, enhanced sources, sourced analysis

@@ -155,6 +155,82 @@ test("buildDossier generates a separate uncited AI Exploration only when enabled
   assert.equal(result.dossier.quality.checks.explorationBoundary, true);
 });
 
+test("buildDossier repairs one malformed structured model response", async () => {
+  const config = validateConfig({
+    interests: ["learning"],
+    sources: [{ name: "Demo", url: "https://example.com/feed" }],
+    provider: { kind: "demo" },
+  });
+  const demo = new DemoProvider();
+  let curatorCalls = 0;
+  const provider = {
+    async complete(options) {
+      if (options.stage === "curator") {
+        curatorCalls += 1;
+        if (curatorCalls === 1) return "not json";
+        assert.match(options.input, /Contract repair/);
+        assert.match(options.input, /invalid JSON/);
+      }
+      return demo.complete(options);
+    },
+  };
+  const result = await buildDossier({
+    config,
+    items: DEMO_ITEMS,
+    history: [],
+    provider,
+  });
+  assert.equal(curatorCalls, 2);
+  assert.equal(result.dossier.version, 2);
+});
+
+test("curated source budgeting preserves every selected Source Item", async () => {
+  const config = validateConfig({
+    interests: ["systems"],
+    sources: [{ name: "Demo", url: "https://example.com/feed" }],
+    provider: { kind: "demo" },
+    limits: { maxIntermediateCharacters: 12_000 },
+  });
+  const items = Array.from({ length: 5 }, (_, index) => ({
+    source: "Large source",
+    title: `Source ${index + 1}`,
+    url: `https://example.com/${index + 1}`,
+    summary: `${`SOURCE-${index + 1} `.repeat(900)}`,
+    publishedAt: null,
+  }));
+  const demo = new DemoProvider();
+  let researchInput = "";
+  const provider = {
+    async complete(options) {
+      if (options.stage === "curator") {
+        return JSON.stringify({
+          theme: "Five-source mechanism",
+          rationale: "Each source contributes evidence.",
+          selectedSourceIds: ["S1", "S2", "S3", "S4", "S5"],
+        });
+      }
+      if (options.stage === "researcher") researchInput = options.input;
+      return demo.complete(options);
+    },
+  };
+  await buildDossier({
+    config,
+    items,
+    history: [],
+    provider,
+    enrichItemsFn: async (selected) =>
+      selected.map((item) => ({
+        ...item,
+        contentSource: "article",
+        canonicalUrl: item.url,
+      })),
+  });
+  for (let index = 1; index <= 5; index += 1) {
+    assert.match(researchInput, new RegExp(`\\[S${index}\\] Source ${index}`));
+  }
+  assert.ok(researchInput.length <= config.limits.maxIntermediateCharacters);
+});
+
 function blueprintFixture() {
   return {
     learningObjective: "Explain the mechanism.",

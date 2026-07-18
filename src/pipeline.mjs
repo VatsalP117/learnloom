@@ -87,19 +87,27 @@ export async function buildDossier(options) {
     ...item,
     sourceId: `S${index + 1}`,
   }));
+  const candidateCharacters = Math.max(
+    300,
+    Math.min(
+      config.limits.maxItemCharacters,
+      Math.floor(
+        (config.limits.maxIntermediateCharacters * 0.7) /
+          candidateItems.length,
+      ),
+    ),
+  );
   const candidateBundle = formatSourceBundle(
     candidateItems,
-    config.limits.maxItemCharacters,
+    candidateCharacters,
   );
-  const curation = validateCuration(
-    await runStructuredStage(
-      provider,
-      "curator",
-      STAGE_INSTRUCTIONS.curator,
-      `${learnerContext}\n\n# Candidate sources\n\n${candidateBundle}`,
-      onStage,
-    ),
-    candidateItems.length,
+  const curation = await runStructuredStage(
+    provider,
+    "curator",
+    STAGE_INSTRUCTIONS.curator,
+    `${learnerContext}\n\n# Candidate sources\n\n${candidateBundle}`,
+    onStage,
+    (value) => validateCuration(value, candidateItems.length),
   );
   const curatedItems = curation.selectedSourceIds.map((sourceId, index) => {
     const source = candidateItems[Number(sourceId.slice(1)) - 1];
@@ -120,24 +128,33 @@ export async function buildDossier(options) {
     maximumBytes: config.content?.maxArticleBytes,
     maximumCharacters: config.content?.maxArticleCharacters,
   });
+  const sourcePromptCharacters = Math.max(
+    1_000,
+    Math.min(
+      config.content?.maxArticleCharacters ??
+        config.limits.maxItemCharacters,
+      Math.floor(
+        (config.limits.maxIntermediateCharacters * 0.45) /
+          enrichedItems.length,
+      ),
+    ),
+  );
   const sourceBundle = formatSourceBundle(
     enrichedItems,
-    config.content?.maxArticleCharacters ??
-      config.limits.maxItemCharacters,
+    sourcePromptCharacters,
   );
 
-  const blueprint = validateBlueprint(
-    await runStructuredStage(
-      provider,
-      "blueprint",
-      STAGE_INSTRUCTIONS.blueprint,
-      fitSections(config.limits.maxIntermediateCharacters, [
-        ["Learner context", learnerContext, 2],
-        ["Curated theme", JSON.stringify(curation, null, 2), 1],
-        ["Enriched sources", sourceBundle, 5],
-      ]),
-      onStage,
-    ),
+  const blueprint = await runStructuredStage(
+    provider,
+    "blueprint",
+    STAGE_INSTRUCTIONS.blueprint,
+    fitSections(config.limits.maxIntermediateCharacters, [
+      ["Learner context", learnerContext, 2],
+      ["Curated theme", JSON.stringify(curation, null, 2), 1],
+      ["Enriched sources", sourceBundle, 5],
+    ]),
+    onStage,
+    validateBlueprint,
   );
   const blueprintText = JSON.stringify(blueprint, null, 2);
   const research = await runStage(
@@ -202,23 +219,21 @@ export async function buildDossier(options) {
         onStage,
       )
     : null;
-  const editorial = validateEditorial(
-    await runStructuredStage(
-      provider,
-      "editor",
-      STAGE_INSTRUCTIONS.editor,
-      fitSections(config.limits.maxIntermediateCharacters, [
-        ["AI Exploration enabled", String(explorationEnabled), 1],
-        ["Learning blueprint", blueprintText, 2],
-        ["Enriched sources", sourceBundle, 3],
-        ["Draft lesson", lesson, 5],
-        ["Skeptical review", critique, 2],
-        ["Draft practice", practice, 3],
-        ["Draft AI Exploration", exploration ?? "Disabled", 2],
-      ]),
-      onStage,
-    ),
-    { explorationEnabled },
+  const editorial = await runStructuredStage(
+    provider,
+    "editor",
+    STAGE_INSTRUCTIONS.editor,
+    fitSections(config.limits.maxIntermediateCharacters, [
+      ["AI Exploration enabled", String(explorationEnabled), 1],
+      ["Learning blueprint", blueprintText, 2],
+      ["Enriched sources", sourceBundle, 3],
+      ["Draft lesson", lesson, 5],
+      ["Skeptical review", critique, 2],
+      ["Draft practice", practice, 3],
+      ["Draft AI Exploration", exploration ?? "Disabled", 2],
+    ]),
+    onStage,
+    (value) => validateEditorial(value, { explorationEnabled }),
   );
   const quality = evaluateDossierContent({
     ...editorial,
@@ -284,11 +299,32 @@ async function runStructuredStage(
   instruction,
   input,
   onStage,
+  validate = (value) => value,
 ) {
-  return parseStructuredStage(
-    await runStage(provider, stage, instruction, input, onStage),
-    stage,
-  );
+  let repairReason = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const repairInput = repairReason
+      ? `${input}\n\n# Contract repair\n\nYour previous response was rejected: ${repairReason}\nReturn a corrected response in the exact requested format.`
+      : input;
+    try {
+      return validate(
+        parseStructuredStage(
+          await runStage(
+            provider,
+            stage,
+            instruction,
+            repairInput,
+            onStage,
+          ),
+          stage,
+        ),
+      );
+    } catch (error) {
+      if (attempt === 1) throw error;
+      repairReason = String(error.message).replace(/\s+/g, " ").slice(0, 500);
+    }
+  }
+  throw new Error(`The ${stage} stage could not satisfy its output contract.`);
 }
 
 async function runStage(provider, stage, instruction, input, onStage) {
