@@ -18,10 +18,22 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import NewsletterDetail from "./NewsletterDetail.jsx";
 
 const iconCycle = [Atom, BrainCircuit, BookOpen, LibraryBig];
 
 function App() {
+  const detailMatch = /^\/newsletters\/([a-z0-9_-]+)$/.exec(
+    window.location.pathname,
+  );
+  return detailMatch ? (
+    <NewsletterDetail newsletterId={detailMatch[1]} />
+  ) : (
+    <DashboardHome />
+  );
+}
+
+function DashboardHome() {
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -122,7 +134,7 @@ function Topbar({ onMenu }) {
   );
 }
 
-function Sidebar({ newsletters, open, onClose }) {
+function Sidebar({ newsletters, open, onClose, currentNewsletterId }) {
   return (
     <>
       <button
@@ -142,7 +154,11 @@ function Sidebar({ newsletters, open, onClose }) {
           {newsletters.filter((item) => item.active).slice(0, 6).map((item, index) => {
             const Icon = iconCycle[index % iconCycle.length];
             return (
-              <a key={item.id} href={`/newsletters/${encodeURIComponent(item.id)}`}>
+              <a
+                className={item.id === currentNewsletterId ? "current" : ""}
+                key={item.id}
+                href={`/newsletters/${encodeURIComponent(item.id)}`}
+              >
                 <Icon size={17} />
                 <span>{item.name}</span>
               </a>
@@ -297,3 +313,4 @@ function shortTimeZone(timeZone) {
 }
 
 export default App;
+export { ErrorState, Footer, Sidebar, Topbar };

@@ -69,8 +69,15 @@ test("dashboard creates a Newsletter and queues Run Now through CSRF forms", asy
 
   const detail = await fetch(`${fixture.origin}${run.headers.get("location")}`);
   const html = await detail.text();
-  assert.match(html, /Issue queued/);
-  assert.match(html, /RabbitMQ Deep Dive/);
+  assert.match(html, /Learnloom · Knowledge Dossiers/);
+  const detailApi = await fetch(
+    `${fixture.origin}/api/newsletters/${newsletterId}`,
+  );
+  const detailSnapshot = await detailApi.json();
+  assert.equal(detailSnapshot.newsletter.name, "RabbitMQ Deep Dive");
+  assert.equal(detailSnapshot.issues.length, 1);
+  assert.equal(detailSnapshot.issues[0].status, "queued");
+  assert.equal(detailSnapshot.csrfToken, fixture.csrfToken);
 });
 
 test("dashboard rejects missing CSRF and unsupported methods", async (context) => {
@@ -192,12 +199,15 @@ test("dashboard saves per-Newsletter email settings", async (context) => {
   ]);
 
   const detail = await fetch(
-    `${fixture.origin}${response.headers.get("location")}`,
+    `${fixture.origin}/api/newsletters/${newsletter.id}`,
   );
-  const html = await detail.text();
-  assert.match(html, /Email delivery settings saved/);
-  assert.match(html, /reader@example\.com/);
-  assert.match(html, /No enabled Resend sender is configured/);
+  const snapshot = await detail.json();
+  assert.equal(snapshot.newsletter.emailEnabled, true);
+  assert.deepEqual(snapshot.newsletter.emailRecipients, [
+    "reader@example.com",
+    "team@example.com",
+  ]);
+  assert.equal(snapshot.resendConfigured, false);
 });
 
 test("dashboard saves CSRF-protected AI Exploration preference", async (context) => {
@@ -233,12 +243,10 @@ test("dashboard saves CSRF-protected AI Exploration preference", async (context)
   );
 
   const detail = await fetch(
-    `${fixture.origin}${saved.headers.get("location")}`,
+    `${fixture.origin}/api/newsletters/${newsletter.id}`,
   );
-  const html = await detail.text();
-  assert.match(html, /Content settings saved/);
-  assert.match(html, /Add AI Exploration to future Issues/);
-  assert.match(html, /name="aiExplorationEnabled" checked/);
+  const snapshot = await detail.json();
+  assert.equal(snapshot.newsletter.aiExplorationEnabled, true);
 });
 
 test("dashboard shows failed delivery and queues CSRF-protected retry", async (context) => {
@@ -263,12 +271,14 @@ test("dashboard shows failed delivery and queues CSRF-protected retry", async (c
   );
 
   const detail = await fetch(
-    `${fixture.origin}/newsletters/${newsletter.id}`,
+    `${fixture.origin}/api/newsletters/${newsletter.id}`,
   );
-  const html = await detail.text();
-  assert.match(html, /Retry email/);
-  assert.match(html, /provider rejected &lt;sender&gt;/);
-  assert.doesNotMatch(html, /provider rejected <sender>/);
+  const snapshot = await detail.json();
+  assert.equal(snapshot.issues[0].delivery.status, "failed");
+  assert.equal(
+    snapshot.issues[0].delivery.error,
+    "provider rejected <sender>",
+  );
 
   const rejected = await fetch(
     `${fixture.origin}/issues/${issue.id}/retry-delivery`,

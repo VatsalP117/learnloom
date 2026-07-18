@@ -48,6 +48,26 @@ async function handleRequest(request, response, options) {
     return sendJson(response, 200, dashboardSnapshot(options.workspace));
   }
 
+  const apiNewsletterMatch =
+    /^\/api\/newsletters\/([a-z0-9_-]+)$/.exec(url.pathname);
+  if (apiNewsletterMatch) {
+    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+    const newsletter = options.workspace.getNewsletter(apiNewsletterMatch[1]);
+    if (!newsletter) {
+      return sendJson(response, 404, { error: "Newsletter not found." });
+    }
+    return sendJson(
+      response,
+      200,
+      newsletterDetailSnapshot(
+        options.workspace,
+        newsletter,
+        options.csrfToken,
+        options.baseConfig,
+      ),
+    );
+  }
+
   if (/^\/assets\/[a-zA-Z0-9._-]+$/.test(url.pathname)) {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
     return sendFrontendAsset(response, url.pathname);
@@ -86,18 +106,7 @@ async function handleRequest(request, response, options) {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
     const newsletter = options.workspace.getNewsletter(newsletterMatch[1]);
     if (!newsletter) return notFound(response);
-    const issues = options.workspace.listIssues(newsletter.id);
-    return sendHtml(
-      response,
-      200,
-      renderNewsletterDetail(
-        newsletter,
-        issues,
-        options.csrfToken,
-        url,
-        options.baseConfig,
-      ),
-    );
+    return sendReactApp(response, options.workspace);
   }
 
   const runMatch = /^\/newsletters\/([a-z0-9_-]+)\/run$/.exec(url.pathname);
@@ -235,6 +244,60 @@ function dashboardSnapshot(workspace) {
       sentCount: newsletter.sentCount,
       emailEnabled: newsletter.emailEnabled,
       emailRecipients: newsletter.emailRecipients,
+    })),
+  };
+}
+
+function newsletterDetailSnapshot(workspace, newsletter, csrfToken, baseConfig) {
+  return {
+    csrfToken,
+    resendConfigured: baseConfig.deliveries.some(
+      (delivery) => delivery.kind === "resend" && delivery.enabled,
+    ),
+    newsletter: {
+      id: newsletter.id,
+      name: newsletter.name,
+      topic: newsletter.topic,
+      learnerLevel: newsletter.learnerLevel,
+      learnerGoal: newsletter.learnerGoal,
+      lessonMinutes: newsletter.lessonMinutes,
+      sources: newsletter.sources,
+      active: newsletter.active,
+      scheduleTime: newsletter.scheduleTime,
+      timeZone: newsletter.timeZone,
+      nextRunAt: newsletter.nextRunAt,
+      issueCount: newsletter.issueCount,
+      generatedCount: newsletter.generatedCount,
+      sentCount: newsletter.sentCount,
+      emailEnabled: newsletter.emailEnabled,
+      emailRecipients: newsletter.emailRecipients,
+      aiExplorationEnabled: newsletter.aiExplorationEnabled,
+    },
+    issues: workspace.listIssues(newsletter.id).map((issue) => ({
+      id: issue.id,
+      trigger: issue.trigger,
+      scheduledLocalDate: issue.scheduledLocalDate,
+      status: issue.status,
+      title: issue.title,
+      error: issue.error,
+      createdAt: issue.createdAt,
+      startedAt: issue.startedAt,
+      completedAt: issue.completedAt,
+      delivery: issue.delivery
+        ? {
+            status: issue.delivery.status,
+            attemptCount: issue.delivery.attemptCount,
+            externalId: issue.delivery.externalId,
+            error: issue.delivery.error,
+            startedAt: issue.delivery.startedAt,
+            completedAt: issue.delivery.completedAt,
+          }
+        : null,
+    })),
+    newsletters: workspace.listNewsletters().map((item) => ({
+      id: item.id,
+      name: item.name,
+      active: item.active,
     })),
   };
 }
