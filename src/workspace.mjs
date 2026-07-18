@@ -33,11 +33,13 @@ export class SQLiteWorkspace {
   }
 
   initialize() {
-    this.database.exec(`
-      PRAGMA foreign_keys = ON;
-      PRAGMA busy_timeout = 5000;
-      PRAGMA journal_mode = WAL;
-    `);
+    this.database.exec("PRAGMA busy_timeout = 5000");
+    this.database.exec("PRAGMA foreign_keys = ON");
+    execWithBusyRetry(
+      this.database,
+      "PRAGMA journal_mode = WAL",
+      5_000,
+    );
     this.transaction(() => {
       const currentVersion = Number(
         this.database.prepare("PRAGMA user_version").get().user_version,
@@ -912,4 +914,22 @@ function boundedInteger(value, minimum, maximum, field) {
 
 function pad(value) {
   return String(value).padStart(2, "0");
+}
+
+function execWithBusyRetry(database, statement, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (true) {
+    try {
+      database.exec(statement);
+      return;
+    } catch (error) {
+      if (error?.errcode !== 5 || Date.now() >= deadline) throw error;
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        Math.min(25, Math.max(1, deadline - Date.now())),
+      );
+    }
+  }
 }

@@ -3,8 +3,9 @@
 ## Issues Fixed
 
 1. Moved schema version detection and migration under one `BEGIN IMMEDIATE`
-   transaction. Concurrent dashboard/worker startup now serializes before
-   reading `user_version`.
+   transaction. SQLite's busy timeout is installed before WAL activation, and
+   WAL activation has a bounded busy retry. Concurrent dashboard/worker startup
+   now serializes before reading `user_version`.
 2. Added durable `cancelled` Delivery Receipts. Disabling email atomically
    cancels pending and failed receipts; claim and retry require an enabled
    Newsletter; re-enable does not revive old receipts; an in-flight receipt
@@ -36,10 +37,10 @@
 - `npm test`
 - `npm run check`
 - `git diff --check`
+- Twenty consecutive runs of the two-process schema migration test
 
 ## Remaining Issues
 
 Automatic reconciliation of an `unknown` Resend outcome and stale in-flight
 claim recovery remain deliberately out of scope. Neither state is exposed to
 ordinary retry.
-
