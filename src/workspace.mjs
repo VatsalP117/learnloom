@@ -268,9 +268,14 @@ export class SQLiteWorkspace {
     this.transaction(() => {
       const row = this.database
         .prepare(`
-          SELECT * FROM issues
-          WHERE status = 'queued'
-          ORDER BY created_at ASC, id ASC
+          SELECT queued.* FROM issues AS queued
+          WHERE queued.status = 'queued'
+            AND NOT EXISTS (
+              SELECT 1 FROM issues AS active
+              WHERE active.newsletter_id = queued.newsletter_id
+                AND active.status = 'generating'
+            )
+          ORDER BY queued.created_at ASC, queued.id ASC
           LIMIT 1
         `)
         .get();

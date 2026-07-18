@@ -128,6 +128,48 @@ test("two SQLite connections cannot claim the same queued Issue", async () => {
   second.close();
 });
 
+test("two SQLite connections serialize Issues for one Newsletter", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-serial-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const first = new SQLiteWorkspace(databasePath);
+  const second = new SQLiteWorkspace(databasePath);
+  const newsletter = first.createNewsletter(newsletterInput("RabbitMQ"));
+  first.enqueueManualIssue(newsletter.id);
+  first.enqueueManualIssue(newsletter.id);
+
+  const firstClaim = first.claimNextIssue();
+  assert.equal(second.claimNextIssue(), null);
+  first.completeIssue(firstClaim.id, {
+    title: "First",
+    generationId: "generation-1",
+    artifactPath: "/tmp/first.md",
+    dossierPath: "/tmp/first.json",
+  });
+  const secondClaim = second.claimNextIssue();
+  assert.equal(secondClaim.newsletterId, newsletter.id);
+  assert.notEqual(secondClaim.id, firstClaim.id);
+  first.close();
+  second.close();
+});
+
+test("two SQLite connections may claim different Newsletters", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-parallel-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const first = new SQLiteWorkspace(databasePath);
+  const second = new SQLiteWorkspace(databasePath);
+  const rabbit = first.createNewsletter(newsletterInput("RabbitMQ"));
+  const postgres = first.createNewsletter(
+    newsletterInput("PostgreSQL", { topic: "PostgreSQL planning" }),
+  );
+  first.enqueueManualIssue(rabbit.id);
+  first.enqueueManualIssue(postgres.id);
+  const firstClaim = first.claimNextIssue();
+  const secondClaim = second.claimNextIssue();
+  assert.notEqual(firstClaim.newsletterId, secondClaim.newsletterId);
+  first.close();
+  second.close();
+});
+
 test("SQLiteWorkspace completes and fails Issue lifecycle transitions", () => {
   const workspace = fixtureWorkspace();
   const newsletter = workspace.createNewsletter(newsletterInput("RabbitMQ"));

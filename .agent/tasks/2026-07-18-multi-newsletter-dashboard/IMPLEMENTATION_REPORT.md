@@ -45,7 +45,7 @@ finite CLI job.
 
 ## Tests
 
-- 62 Node test-runner tests pass.
+- 64 Node test-runner tests pass.
 - Syntax checks pass for every CLI, source, and test module.
 - SQLite initialization, safety pragmas, forward-version rejection, schedule
   DST behavior, idempotent dispatch, pause state, and two-connection claims are
