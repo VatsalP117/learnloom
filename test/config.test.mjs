@@ -66,3 +66,50 @@ test("validateConfig rejects environment values in place of environment names", 
     /environment variable name/,
   );
 });
+
+test("validateConfig rejects duplicate delivery identifiers", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        ...valid,
+        deliveries: [
+          {
+            id: "email",
+            kind: "resend",
+            from: "daily@example.com",
+            to: "one@example.com",
+          },
+          {
+            id: "email",
+            kind: "resend",
+            from: "daily@example.com",
+            to: "two@example.com",
+          },
+        ],
+      }),
+    /duplicate id/,
+  );
+});
+
+test("validateConfig refuses API credentials over non-loopback HTTP", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        ...valid,
+        provider: {
+          kind: "openai-compatible",
+          baseUrl: "http://api.example.com",
+        },
+      }),
+    /must use HTTPS/,
+  );
+  const local = validateConfig({
+    ...valid,
+    provider: {
+      kind: "openai-compatible",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      allowInsecureHttp: true,
+    },
+  });
+  assert.equal(local.provider.baseUrl, "http://127.0.0.1:11434/v1");
+});

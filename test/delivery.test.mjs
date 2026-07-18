@@ -60,6 +60,7 @@ test("ResendDelivery sends deterministic idempotent email", async () => {
   );
   const receipt = await adapter.deliver({
     runId: "default-2026-07-18",
+    generationId: "generation-1",
     dossier,
     markdown: "# Text",
   });
@@ -67,7 +68,7 @@ test("ResendDelivery sends deterministic idempotent email", async () => {
   assert.equal(calls[0].url, "https://api.resend.com/emails");
   assert.equal(
     calls[0].init.headers["idempotency-key"],
-    "learnloom/default-2026-07-18/morning-email",
+    "learnloom/default-2026-07-18/generation-1/morning-email",
   );
   assert.equal(calls[0].init.headers.authorization, "Bearer resend-secret");
   const body = JSON.parse(calls[0].init.body);
@@ -94,7 +95,12 @@ test("ResendDelivery reports safe provider errors", async () => {
     },
   );
   await assert.rejects(
-    adapter.deliver({ runId: "run", dossier, markdown: "# Text" }),
+    adapter.deliver({
+      runId: "run",
+      generationId: "generation-1",
+      dossier,
+      markdown: "# Text",
+    }),
     (error) =>
       /HTTP 403/.test(error.message) &&
       /domain not verified/.test(error.message) &&

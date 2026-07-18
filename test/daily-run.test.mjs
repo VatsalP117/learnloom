@@ -13,9 +13,10 @@ test("Daily Run persists a Dossier before delivery", async () => {
   let deliveryObservedArtifacts = false;
   const delivery = {
     id: "test-email",
-    async deliver({ dossier }) {
-      await access(path.join(fixture.paths.outputDirectory, `${dossier.date}.md`));
-      await access(path.join(fixture.paths.outputDirectory, `${dossier.date}.json`));
+    async deliver({ dossier, generationId }) {
+      const stem = `${dossier.date}-${generationId}`;
+      await access(path.join(fixture.paths.outputDirectory, `${stem}.md`));
+      await access(path.join(fixture.paths.outputDirectory, `${stem}.json`));
       deliveryObservedArtifacts = true;
       return { externalId: "sent-1" };
     },
@@ -31,6 +32,7 @@ test("Daily Run persists a Dossier before delivery", async () => {
   assert.equal(result.generated, true);
   assert.equal(deliveryObservedArtifacts, true);
   assert.equal(result.record.status, "complete");
+  assert.equal(typeof result.record.generationId, "string");
   assert.equal(result.record.deliveries["test-email"].externalId, "sent-1");
 });
 
@@ -140,6 +142,85 @@ test("Daily Run regenerates when its recorded artifact is missing", async () => 
   });
   assert.equal(second.generated, true);
   assert.equal(providerCalls, 8);
+});
+
+test("forced Daily Run creates a new delivery generation", async () => {
+  const fixture = await fixtureConfig();
+  const generations = [];
+  const delivery = {
+    id: "test-email",
+    async deliver({ generationId }) {
+      generations.push(generationId);
+      return { externalId: `sent-${generations.length}` };
+    },
+  };
+  await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  const forced = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    force: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  assert.equal(forced.generated, true);
+  assert.equal(generations.length, 2);
+  assert.notEqual(generations[0], generations[1]);
+});
+
+test("crash before record swap preserves the previously delivered generation", async () => {
+  const fixture = await fixtureConfig();
+  let deliveryCalls = 0;
+  const delivery = {
+    id: "test-email",
+    async deliver() {
+      deliveryCalls += 1;
+      return { externalId: `sent-${deliveryCalls}` };
+    },
+  };
+  const first = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  await assert.rejects(
+    runDailyDossier({
+      config: fixture.config,
+      paths: fixture.paths,
+      demo: true,
+      force: true,
+      now: fixture.now,
+      provider: new DemoProvider(),
+      deliveries: [delivery],
+      onEvent(event) {
+        if (event.type === "persisted") throw new Error("simulated crash");
+      },
+    }),
+    /simulated crash/,
+  );
+  const recovered = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  assert.equal(recovered.generated, false);
+  assert.equal(recovered.record.generationId, first.record.generationId);
+  assert.equal(recovered.outputPath, first.outputPath);
+  assert.equal(deliveryCalls, 1);
 });
 
 async function fixtureConfig() {

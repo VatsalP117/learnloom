@@ -52,6 +52,10 @@ docker compose run --rm learnloom run --config /app/config.json
 The named `learnloom-data` volume contains Dossiers, Learning History, Daily
 Run records, locks, and logs. Back up that volume with the VM.
 
+Dossier filenames include an immutable generation identifier. The Daily Run
+record points to the active generation, so an interrupted forced regeneration
+cannot overwrite content associated with an earlier Delivery Receipt.
+
 ## 4. Install the systemd timer
 
 The supplied files assume the repository lives at `/opt/learnloom`:
@@ -73,6 +77,9 @@ journalctl -u learnloom.service -n 200 --no-pager
 
 Edit `OnCalendar` in `learnloom.timer` to change the host-local schedule, then
 run `sudo systemctl daemon-reload && sudo systemctl restart learnloom.timer`.
+The oneshot service intentionally has no host-level start timeout. Each model
+request remains bounded by `provider.timeoutSeconds` and `provider.retries`,
+while the service allows a valid multi-stage run to finish.
 
 ## Updating
 
@@ -84,4 +91,3 @@ sudo systemctl start learnloom.service
 ```
 
 The mounted data volume survives image rebuilds.
-

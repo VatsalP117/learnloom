@@ -8,5 +8,4 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/opt/learnloom
 ExecStart=/usr/bin/docker compose run --rm --no-deps learnloom run --config /app/config.json
-TimeoutStartSec=45min
-
+TimeoutStartSec=infinity

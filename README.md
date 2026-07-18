@@ -27,8 +27,8 @@ npm test
 npm run demo
 ```
 
-The demo uses no network, model credits, or email. It writes a Markdown and
-JSON Dossier under `output/`.
+The demo uses no network, model credits, or email. It writes immutable
+generation-versioned Markdown and JSON Dossiers under `output/`.
 
 For a live direct DeepSeek run:
 
@@ -50,7 +50,8 @@ Each profile and local date has one deterministic Daily Run:
 - Successful destinations are skipped.
 - Failed destinations retry without spending model tokens again.
 - `learn run --force` explicitly regenerates the Dossier.
-- A filesystem lock prevents overlapping runs for the same profile and date.
+- A heartbeating, owner-token filesystem lease prevents overlapping runs for
+  the same profile and date.
 
 The application home defaults to the directory containing `config.json`. Set
 `LEARNLOOM_HOME` to place all state under one durable directory.
@@ -76,7 +77,9 @@ The public example uses DeepSeek:
 ```
 
 Change `baseUrl`, `apiKeyEnv`, and `model` for another compatible provider.
-The configured base URL must expose `/chat/completions` and `/models`.
+The configured base URL must use HTTPS and expose `/chat/completions` and
+`/models`. For a local model server only, loopback HTTP can be enabled with
+`"allowInsecureHttp": true`; remote plaintext HTTP is always rejected.
 
 ### Command Code subscription
 

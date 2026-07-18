@@ -49,7 +49,7 @@ license.
 
 ## Tests
 
-- 32 Node test-runner tests pass.
+- 38 Node test-runner tests pass.
 - Syntax checks pass for every CLI, source, and test module.
 - The clean-room demo generates once and reuses the same Daily Run on rerun.
 - Current local Command Code diagnostics pass after the provider-aware refactor.
@@ -90,4 +90,3 @@ license.
 - Make the GitHub repository public after review approval.
 - Add a Notion delivery adapter that upserts by deterministic Daily Run ID.
 - Add learner ratings/notes and spaced-repetition scheduling.
-

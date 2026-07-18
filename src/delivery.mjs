@@ -21,7 +21,7 @@ export class ResendDelivery {
     this.endpoint = options.resendEndpoint ?? "https://api.resend.com/emails";
   }
 
-  async deliver({ runId, dossier, markdown }) {
+  async deliver({ runId, generationId, dossier, markdown }) {
     const apiKey = this.environment[this.config.apiKeyEnv];
     if (!apiKey) {
       throw new Error(
@@ -34,12 +34,14 @@ export class ResendDelivery {
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
-        "idempotency-key": `learnloom/${runId}/${this.id}`,
+        "idempotency-key": `learnloom/${runId}/${generationId}/${this.id}`,
       },
       body: JSON.stringify({
         from: this.config.from,
         to: this.config.to,
-        subject: `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
+        subject: safeSubject(
+          `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
+        ),
         html: rendered.html,
         text: rendered.text,
       }),
@@ -70,6 +72,14 @@ export class ResendDelivery {
     }
     return { externalId: payload.id };
   }
+}
+
+function safeSubject(value) {
+  return value
+    .replace(/[\u0000-\u001F\u007F]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
 }
 
 export function checkDeliveries(config, options = {}) {

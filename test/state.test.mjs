@@ -18,7 +18,12 @@ test("saveRun writes a dossier and replaces same-day bounded history", async () 
       lessonSummary: "First",
     },
   };
-  await saveRun(base, { historyPath, outputDirectory, historyLimit: 1 });
+  await saveRun(base, {
+    historyPath,
+    outputDirectory,
+    historyLimit: 1,
+    generationId: "generation-one",
+  });
   await saveRun(
     {
       ...base,
@@ -28,10 +33,21 @@ test("saveRun writes a dossier and replaces same-day bounded history", async () 
         lessonSummary: "Second",
       },
     },
-    { historyPath, outputDirectory, historyLimit: 1 },
+    {
+      historyPath,
+      outputDirectory,
+      historyLimit: 1,
+      generationId: "generation-two",
+    },
   );
 
-  assert.equal(await readFile(path.join(outputDirectory, "2026-07-18.md"), "utf8"), "# Lesson\n");
+  assert.equal(
+    await readFile(
+      path.join(outputDirectory, "2026-07-18-generation-two.md"),
+      "utf8",
+    ),
+    "# Lesson\n",
+  );
   const history = await loadHistory(historyPath);
   assert.equal(history.length, 1);
   assert.equal(history[0].lessonSummary, "Second");

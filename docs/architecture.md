@@ -41,7 +41,8 @@ CLI / launchd / systemd / Docker
 ## Trust seams
 
 - Source XML and summaries are untrusted network input.
-- Configured feed/model URLs are restricted to HTTP and HTTPS.
+- Model endpoints require HTTPS. Loopback HTTP requires explicit insecure-local
+  opt-in; remote plaintext HTTP is rejected before a credential can be sent.
 - Source content is labeled as reference material and model adapters expose no
   tools.
 - Command Code is spawned with `shell: false`.
@@ -56,10 +57,12 @@ CLI / launchd / systemd / Docker
 - A single failed feed becomes a warning; all feeds failing aborts before model
   calls.
 - A failed generation creates no delivery attempt.
-- The canonical Dossier is atomically persisted before delivery.
+- Each canonical Dossier is persisted to immutable, generation-versioned paths
+  before its run-record pointer is atomically swapped and delivery begins.
 - A failed destination records a Delivery Receipt and can retry independently.
 - Successful destinations are not repeated on a same-day rerun.
-- An active per-run lock rejects overlapping execution.
+- An owner-token lease with heartbeat rejects overlapping execution and lets a
+  later process safely reclaim a lock left by a crashed process.
 - Atomic writes use unique temporary names and restrictive file modes.
 
 ## Deliberate v0.2 limits
@@ -69,4 +72,3 @@ CLI / launchd / systemd / Docker
 - Source material uses feed summaries rather than extracted article bodies.
 - Resend is the only external delivery adapter.
 - Learner feedback and Notion delivery are not yet implemented.
-

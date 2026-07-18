@@ -23,9 +23,13 @@ export async function saveRun(result, options = {}) {
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
   await mkdir(path.dirname(historyPath), { recursive: true, mode: 0o700 });
 
-  const outputPath = path.join(outputDirectory, `${result.date}.md`);
+  const generationId = options.generationId;
+  const fileStem = generationId
+    ? `${result.date}-${safeFilePart(generationId)}`
+    : result.date;
+  const outputPath = path.join(outputDirectory, `${fileStem}.md`);
   await atomicWrite(outputPath, result.markdown);
-  const dossierPath = path.join(outputDirectory, `${result.date}.json`);
+  const dossierPath = path.join(outputDirectory, `${fileStem}.json`);
   if (result.dossier) {
     await atomicWrite(dossierPath, `${JSON.stringify(result.dossier, null, 2)}\n`);
   }
@@ -46,6 +50,13 @@ export async function saveRun(result, options = {}) {
     dossierPath: result.dossier ? dossierPath : null,
     historyPath,
   };
+}
+
+function safeFilePart(value) {
+  if (typeof value !== "string" || !/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error("generationId must contain only letters, numbers, underscores, or hyphens.");
+  }
+  return value;
 }
 
 export async function loadJson(filePath, description = "JSON file") {

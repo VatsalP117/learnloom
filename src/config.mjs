@@ -98,8 +98,8 @@ export function validateConfig(value, configPath = "config.json") {
   const deliveries = validateDeliveries(value.deliveries ?? []);
   const providerConfig = {
     kind: providerKind,
-    executable: provider.executable ?? "cmd",
-    model: provider.model ?? "deepseek-v4-pro",
+    executable: requireString(provider.executable ?? "cmd", "provider.executable"),
+    model: requireString(provider.model ?? "deepseek-v4-pro", "provider.model"),
     timeoutSeconds: boundedInteger(
       provider.timeoutSeconds ?? 600,
       5,
@@ -109,10 +109,16 @@ export function validateConfig(value, configPath = "config.json") {
     retries: boundedInteger(provider.retries ?? 2, 0, 5, "provider.retries"),
   };
   if (providerKind === "openai-compatible") {
-    providerConfig.baseUrl = requireWebUrl(
+    const allowInsecureHttp = provider.allowInsecureHttp ?? false;
+    if (typeof allowInsecureHttp !== "boolean") {
+      throw new Error("provider.allowInsecureHttp must be a boolean.");
+    }
+    providerConfig.baseUrl = requireProviderUrl(
       provider.baseUrl ?? "https://api.deepseek.com",
       "provider.baseUrl",
+      allowInsecureHttp,
     ).replace(/\/+$/, "");
+    providerConfig.allowInsecureHttp = allowInsecureHttp;
     providerConfig.apiKeyEnv = environmentName(
       provider.apiKeyEnv ?? "DEEPSEEK_API_KEY",
       "provider.apiKeyEnv",
@@ -178,7 +184,7 @@ function validateDeliveries(value) {
   if (!Array.isArray(value)) {
     throw new Error("deliveries must be an array.");
   }
-  return value.map((delivery, index) => {
+  const deliveries = value.map((delivery, index) => {
     const field = `deliveries[${index}]`;
     if (!delivery || typeof delivery !== "object" || Array.isArray(delivery)) {
       throw new Error(`${field} must be an object.`);
@@ -210,6 +216,14 @@ function validateDeliveries(value) {
     }
     return result;
   });
+  const ids = new Set();
+  for (const delivery of deliveries) {
+    if (ids.has(delivery.id)) {
+      throw new Error(`deliveries contains duplicate id "${delivery.id}".`);
+    }
+    ids.add(delivery.id);
+  }
+  return deliveries;
 }
 
 function normalizeRecipients(value, field) {
@@ -236,6 +250,25 @@ function requireWebUrl(value, field) {
     throw new Error(`${field} must use HTTP or HTTPS.`);
   }
   return parsed.toString();
+}
+
+function requireProviderUrl(value, field, allowInsecureHttp) {
+  const parsed = new URL(requireWebUrl(value, field));
+  if (parsed.protocol === "https:") return parsed.toString();
+  if (!allowInsecureHttp || !isLoopbackHost(parsed.hostname)) {
+    throw new Error(
+      `${field} must use HTTPS. Plain HTTP requires provider.allowInsecureHttp=true and a loopback host.`,
+    );
+  }
+  return parsed.toString();
+}
+
+function isLoopbackHost(hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  );
 }
 
 function environmentName(value, field) {

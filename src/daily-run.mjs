@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createDeliveryAdapters } from "./delivery.mjs";
 import { DEMO_ITEMS } from "./demo-data.mjs";
@@ -60,11 +61,14 @@ export async function runDailyDossier(options) {
           now,
           onStage: (stage) => onEvent({ type: "stage", stage }),
         });
+        const generationId = randomUUID();
         const saved = await saveRun(result, {
           historyPath: paths.historyPath,
           outputDirectory: paths.outputDirectory,
           historyLimit: config.limits.historyEntries,
+          generationId,
         });
+        onEvent({ type: "persisted", runId, generationId, outputPath: saved.outputPath });
         dossier = result.dossier;
         markdown = result.markdown;
         outputPath = saved.outputPath;
@@ -77,6 +81,7 @@ export async function runDailyDossier(options) {
           createdAt: record?.createdAt ?? now.toISOString(),
           updatedAt: now.toISOString(),
           generationStatus: "complete",
+          generationId,
           artifactPath: saved.outputPath,
           dossierPath: saved.dossierPath,
           deliveries: {},
@@ -121,7 +126,12 @@ export async function runDailyDossier(options) {
       }
       onEvent({ type: "delivery", deliveryId: adapter.id });
       try {
-        const receipt = await adapter.deliver({ runId, dossier, markdown });
+        const receipt = await adapter.deliver({
+          runId,
+          generationId: record.generationId ?? dossier.generatedAt ?? "legacy",
+          dossier,
+          markdown,
+        });
         record.deliveries[adapter.id] = {
           status: "delivered",
           externalId: receipt.externalId ?? null,
