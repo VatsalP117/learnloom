@@ -30,9 +30,11 @@ test("SQLiteWorkspace creates isolated Newsletters and dashboard counts", () => 
   workspace.enqueueManualIssue(second.id);
 
   const newsletters = workspace.listNewsletters();
+  const firstSummary = newsletters.find((item) => item.id === first.id);
+  const secondSummary = newsletters.find((item) => item.id === second.id);
   assert.equal(newsletters.length, 2);
-  assert.equal(newsletters[0].issueCount, 2);
-  assert.equal(newsletters[1].issueCount, 1);
+  assert.equal(firstSummary.issueCount, 2);
+  assert.equal(secondSummary.issueCount, 1);
   assert.notEqual(first.id, second.id);
   workspace.close();
 });
