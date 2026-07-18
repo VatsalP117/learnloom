@@ -6,11 +6,12 @@ export async function processNextIssue(options) {
   const {
     workspace,
     baseConfig,
-    now = new Date(),
     demo = false,
     onEvent = () => {},
   } = options;
-  const issue = workspace.claimNextIssue(now);
+  const clock = options.clock ?? (() => new Date());
+  const startedAt = options.now ?? clock();
+  const issue = workspace.claimNextIssue(startedAt);
   if (!issue) return null;
   onEvent({
     type: "issue-claimed",
@@ -28,7 +29,7 @@ export async function processNextIssue(options) {
       config,
       paths,
       runId: issue.id,
-      now,
+      now: startedAt,
       demo,
       cwd: options.cwd,
       env: options.env,
@@ -52,7 +53,7 @@ export async function processNextIssue(options) {
         artifactPath: run.record.artifactPath,
         dossierPath: run.record.dossierPath,
       },
-      now,
+      options.now ?? clock(),
     );
     onEvent({
       type: "issue-generated",
@@ -61,7 +62,7 @@ export async function processNextIssue(options) {
     });
     return completed;
   } catch (error) {
-    const failed = workspace.failIssue(issue.id, error, now);
+    const failed = workspace.failIssue(issue.id, error, options.now ?? clock());
     onEvent({
       type: "issue-failed",
       issueId: issue.id,
@@ -78,10 +79,7 @@ export async function runWorkerCycle(options) {
   const processed = [];
   const maximum = options.maximumIssues ?? 100;
   for (let count = 0; count < maximum; count += 1) {
-    const issue = await processNextIssue({
-      ...options,
-      now: options.now ?? new Date(),
-    });
+    const issue = await processNextIssue(options);
     if (!issue) break;
     processed.push(issue);
   }

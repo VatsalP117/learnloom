@@ -76,6 +76,11 @@ The CLI refuses a non-loopback listener unless `--allow-remote` is supplied;
 Compose uses that explicit opt-in inside the container while binding the host
 port to loopback.
 
+Requests also require a loopback `Host` header to prevent localhost DNS
+rebinding. If a trusted reverse proxy uses a different hostname, add it
+explicitly with `--allowed-host dashboard.internal`. The option can be repeated;
+do not add an untrusted public hostname before authentication exists.
+
 ## Crash recovery
 
 If generation is interrupted, the Issue can remain `generating` and the Daily

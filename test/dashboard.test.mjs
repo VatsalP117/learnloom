@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -75,6 +76,16 @@ test("dashboard rejects missing CSRF and unsupported methods", async (context) =
   const unsupported = await fetch(`${fixture.origin}/`, { method: "DELETE" });
   assert.equal(unsupported.status, 405);
   assert.equal(unsupported.headers.get("allow"), "GET");
+});
+
+test("dashboard rejects forged Host headers", async (context) => {
+  const fixture = await dashboardFixture(context);
+  const response = await rawRequest(
+    `${fixture.origin}/newsletters/new`,
+    "attacker.example",
+  );
+  assert.equal(response.statusCode, 421);
+  assert.doesNotMatch(response.body, /name="_csrf"/);
 });
 
 test("dashboard returns useful validation errors", async (context) => {
@@ -199,4 +210,30 @@ function newsletterInput() {
     scheduleTime: "10:00",
     timeZone: "Asia/Kolkata",
   };
+}
+
+function rawRequest(url, host) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname,
+        headers: { host },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            statusCode: response.statusCode,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
 }

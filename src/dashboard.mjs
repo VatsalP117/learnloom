@@ -35,6 +35,7 @@ export function createDashboardServer(options) {
 async function handleRequest(request, response, options) {
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://localhost");
+  requireAllowedHost(request.headers.host, options.allowedHosts);
 
   if (url.pathname === "/healthz") {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
@@ -361,6 +362,26 @@ async function requireForm(request, csrfToken) {
 function tokensEqual(actual, expected) {
   if (typeof actual !== "string" || actual.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+function requireAllowedHost(hostHeader, configuredHosts) {
+  if (typeof hostHeader !== "string" || hostHeader.length > 255) {
+    throw httpError(421, "The request Host is not allowed.");
+  }
+  let hostname;
+  try {
+    hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase();
+  } catch {
+    throw httpError(421, "The request Host is not allowed.");
+  }
+  const allowedHosts = new Set(
+    (configuredHosts ?? ["127.0.0.1", "localhost", "[::1]"]).map((host) =>
+      String(host).toLowerCase(),
+    ),
+  );
+  if (!allowedHosts.has(hostname)) {
+    throw httpError(421, "The request Host is not allowed.");
+  }
 }
 
 function page(title, body) {

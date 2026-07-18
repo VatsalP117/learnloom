@@ -78,6 +78,30 @@ test("SQLiteWorkspace dispatches one scheduled Issue and respects pause state", 
   workspace.close();
 });
 
+test("overdue dispatch preserves the missed schedule date without queueing today early", () => {
+  let now = new Date("2026-07-17T03:00:00.000Z");
+  const workspace = new SQLiteWorkspace(":memory:", { now: () => now });
+  const newsletter = workspace.createNewsletter(
+    newsletterInput("RabbitMQ", {
+      scheduleTime: "10:00",
+      timeZone: "Asia/Kolkata",
+    }),
+  );
+
+  now = new Date("2026-07-18T03:00:00.000Z");
+  const overdue = workspace.dispatchDue(now);
+  assert.equal(overdue.length, 1);
+  assert.equal(overdue[0].scheduledLocalDate, "2026-07-17");
+  assert.equal(workspace.dispatchDue(now).length, 0);
+
+  now = new Date("2026-07-18T04:30:00.000Z");
+  const today = workspace.dispatchDue(now);
+  assert.equal(today.length, 1);
+  assert.equal(today[0].newsletterId, newsletter.id);
+  assert.equal(today[0].scheduledLocalDate, "2026-07-18");
+  workspace.close();
+});
+
 test("SQLiteWorkspace atomically claims a queued Issue once", () => {
   const workspace = fixtureWorkspace();
   const newsletter = workspace.createNewsletter(newsletterInput("RabbitMQ"));

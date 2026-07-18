@@ -60,6 +60,34 @@ test("processNextIssue safely records generation failure", async () => {
   fixture.workspace.close();
 });
 
+test("processNextIssue records a fresh completion timestamp", async () => {
+  const fixture = await createFixture();
+  const newsletter = fixture.workspace.createNewsletter(newsletterInput("RabbitMQ"));
+  fixture.workspace.enqueueManualIssue(newsletter.id);
+  const timestamps = [
+    new Date("2026-07-18T03:00:00.000Z"),
+    new Date("2026-07-18T03:07:00.000Z"),
+  ];
+  const result = await processNextIssue({
+    workspace: fixture.workspace,
+    baseConfig: fixture.baseConfig,
+    clock: () => timestamps.shift(),
+    async runDailyDossierFn() {
+      return {
+        dossier: { title: "Seven-minute generation" },
+        record: {
+          generationId: "generation-1",
+          artifactPath: "/tmp/issue.md",
+          dossierPath: "/tmp/issue.json",
+        },
+      };
+    },
+  });
+  assert.equal(result.startedAt, "2026-07-18T03:00:00.000Z");
+  assert.equal(result.completedAt, "2026-07-18T03:07:00.000Z");
+  fixture.workspace.close();
+});
+
 test("runWorkerCycle generates isolated Dossiers for two Newsletters", async () => {
   const fixture = await createFixture();
   const rabbit = fixture.workspace.createNewsletter(newsletterInput("RabbitMQ"));

@@ -239,7 +239,8 @@ export class SQLiteWorkspace {
       `);
 
       for (const newsletter of newsletters) {
-        const localDate = localDateFor(now, newsletter.timeZone);
+        const scheduledFor = new Date(newsletter.nextRunAt);
+        const localDate = localDateFor(scheduledFor, newsletter.timeZone);
         const issueId = `scheduled-${newsletter.id}-${localDate}`;
         const result = insertIssue.run(
           issueId,

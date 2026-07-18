@@ -184,6 +184,12 @@ async function serve(commandArgs) {
   const { server } = createDashboardServer({
     workspace,
     baseConfig: config,
+    allowedHosts: [
+      "127.0.0.1",
+      "localhost",
+      "[::1]",
+      ...options(commandArgs, "--allowed-host"),
+    ],
     onError(error) {
       process.stderr.write(`Dashboard error: ${error.message}\n`);
     },
@@ -276,6 +282,19 @@ function option(commandArgs, name) {
   return commandArgs[index + 1];
 }
 
+function options(commandArgs, name) {
+  const values = [];
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    if (commandArgs[index] !== name) continue;
+    if (!commandArgs[index + 1] || commandArgs[index + 1].startsWith("--")) {
+      throw new Error(`${name} requires a value.`);
+    }
+    values.push(commandArgs[index + 1]);
+    index += 1;
+  }
+  return values;
+}
+
 function integerOption(commandArgs, name, fallback, minimum, maximum) {
   const raw = option(commandArgs, name);
   if (raw === undefined) return fallback;
@@ -333,7 +352,7 @@ Usage:
   learn init [--config path] [--force]
   learn run [--config path] [--demo] [--force]
   learn doctor [--config path]
-  learn serve [--config path] [--demo] [--host 127.0.0.1] [--port 3000]
+  learn serve [--config path] [--demo] [--host 127.0.0.1] [--port 3000] [--allowed-host name]
   learn worker [--config path] [--demo] [--once] [--interval 30]
   learn schedule install [--config path] [--hour 9] [--minute 0]
   learn schedule status
