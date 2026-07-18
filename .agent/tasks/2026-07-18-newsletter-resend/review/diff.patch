@@ -1,16 +1,17 @@
 diff --git a/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md b/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md
 new file mode 100644
-index 0000000..fc8adca
+index 0000000..830ca29
 --- /dev/null
 +++ b/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,46 @@
 +# Fix Report
 +
 +## Issues Fixed
 +
 +1. Moved schema version detection and migration under one `BEGIN IMMEDIATE`
-+   transaction. Concurrent dashboard/worker startup now serializes before
-+   reading `user_version`.
++   transaction. SQLite's busy timeout is installed before WAL activation, and
++   WAL activation has a bounded busy retry. Concurrent dashboard/worker startup
++   now serializes before reading `user_version`.
 +2. Added durable `cancelled` Delivery Receipts. Disabling email atomically
 +   cancels pending and failed receipts; claim and retry require an enabled
 +   Newsletter; re-enable does not revive old receipts; an in-flight receipt
@@ -42,13 +43,13 @@ index 0000000..fc8adca
 +- `npm test`
 +- `npm run check`
 +- `git diff --check`
++- Twenty consecutive runs of the two-process schema migration test
 +
 +## Remaining Issues
 +
 +Automatic reconciliation of an `unknown` Resend outcome and stale in-flight
 +claim recovery remain deliberately out of scope. Neither state is exposed to
 +ordinary retry.
-+
 diff --git a/.agent/tasks/2026-07-18-newsletter-resend/IMPLEMENTATION_REPORT.md b/.agent/tasks/2026-07-18-newsletter-resend/IMPLEMENTATION_REPORT.md
 new file mode 100644
 index 0000000..e703049
@@ -1215,7 +1216,7 @@ index 18515c5..922fe5f 100644
  
  export function newsletterRuntimeConfig(baseConfig, newsletter) {
 diff --git a/src/workspace.mjs b/src/workspace.mjs
-index f984e36..b9a7289 100644
+index f984e36..031a614 100644
 --- a/src/workspace.mjs
 +++ b/src/workspace.mjs
 @@ -4,6 +4,14 @@ import path from "node:path";
@@ -1233,13 +1234,24 @@ index f984e36..b9a7289 100644
  const MAX_SCHEDULE_SCAN_MINUTES = 8 * 24 * 60;
  
  export class SQLiteWorkspace {
-@@ -30,62 +38,92 @@ export class SQLiteWorkspace {
-       PRAGMA busy_timeout = 5000;
-       PRAGMA journal_mode = WAL;
-     `);
+@@ -25,67 +33,99 @@ export class SQLiteWorkspace {
+   }
+ 
+   initialize() {
+-    this.database.exec(`
+-      PRAGMA foreign_keys = ON;
+-      PRAGMA busy_timeout = 5000;
+-      PRAGMA journal_mode = WAL;
+-    `);
 -    const currentVersion = Number(
 -      this.database.prepare("PRAGMA user_version").get().user_version,
--    );
++    this.database.exec("PRAGMA busy_timeout = 5000");
++    this.database.exec("PRAGMA foreign_keys = ON");
++    execWithBusyRetry(
++      this.database,
++      "PRAGMA journal_mode = WAL",
++      5_000,
+     );
 -    if (currentVersion > 1) {
 -      throw new Error(
 -        `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
@@ -1381,7 +1393,7 @@ index f984e36..b9a7289 100644
    }
  
    diagnostics() {
-@@ -110,8 +148,9 @@ export class SQLiteWorkspace {
+@@ -110,8 +150,9 @@ export class SQLiteWorkspace {
          INSERT INTO newsletters (
            id, name, topic, learner_level, learner_goal, lesson_minutes,
            sources_json, schedule_hour, schedule_minute, time_zone, active,
@@ -1393,7 +1405,7 @@ index f984e36..b9a7289 100644
        `)
        .run(
          newsletter.id,
-@@ -128,6 +167,8 @@ export class SQLiteWorkspace {
+@@ -128,6 +169,8 @@ export class SQLiteWorkspace {
          newsletter.nextRunAt,
          newsletter.createdAt,
          newsletter.updatedAt,
@@ -1402,7 +1414,7 @@ index f984e36..b9a7289 100644
        );
      return this.getNewsletter(newsletter.id);
    }
-@@ -139,6 +180,14 @@ export class SQLiteWorkspace {
+@@ -139,6 +182,14 @@ export class SQLiteWorkspace {
            n.*,
            COUNT(i.id) AS issue_count,
            SUM(CASE WHEN i.status = 'generated' THEN 1 ELSE 0 END) AS generated_count,
@@ -1417,7 +1429,7 @@ index f984e36..b9a7289 100644
            (
              SELECT latest.status
              FROM issues AS latest
-@@ -168,7 +217,15 @@ export class SQLiteWorkspace {
+@@ -168,7 +219,15 @@ export class SQLiteWorkspace {
          SELECT
            n.*,
            COUNT(i.id) AS issue_count,
@@ -1434,7 +1446,7 @@ index f984e36..b9a7289 100644
          FROM newsletters AS n
          LEFT JOIN issues AS i ON i.newsletter_id = n.id
          WHERE n.id = ?
-@@ -202,6 +259,38 @@ export class SQLiteWorkspace {
+@@ -202,6 +261,38 @@ export class SQLiteWorkspace {
      return this.getNewsletter(id);
    }
  
@@ -1473,7 +1485,7 @@ index f984e36..b9a7289 100644
    enqueueManualIssue(newsletterId) {
      this.requireNewsletter(newsletterId);
      const now = this.now().toISOString();
-@@ -315,24 +404,38 @@ export class SQLiteWorkspace {
+@@ -315,24 +406,38 @@ export class SQLiteWorkspace {
        "Issue Dossier path",
        4_000,
      );
@@ -1530,7 +1542,7 @@ index f984e36..b9a7289 100644
      return this.getIssue(id);
    }
  
-@@ -360,9 +463,17 @@ export class SQLiteWorkspace {
+@@ -360,9 +465,17 @@ export class SQLiteWorkspace {
      const offset = boundedInteger(options.offset ?? 0, 0, 1_000_000, "Issue offset");
      return this.database
        .prepare(`
@@ -1551,7 +1563,7 @@ index f984e36..b9a7289 100644
          LIMIT ? OFFSET ?
        `)
        .all(newsletterId, limit, offset)
-@@ -370,10 +481,132 @@ export class SQLiteWorkspace {
+@@ -370,10 +483,132 @@ export class SQLiteWorkspace {
    }
  
    getIssue(id) {
@@ -1685,7 +1697,7 @@ index f984e36..b9a7289 100644
    close() {
      this.database.close();
    }
-@@ -438,6 +671,10 @@ function normalizeNewsletter(input, now) {
+@@ -438,6 +673,10 @@ function normalizeNewsletter(input, now) {
      throw new Error("Newsletter active state must be a boolean.");
    }
    const createdAt = now.toISOString();
@@ -1696,7 +1708,7 @@ index f984e36..b9a7289 100644
    return {
      id,
      name,
-@@ -463,6 +700,8 @@ function normalizeNewsletter(input, now) {
+@@ -463,6 +702,8 @@ function normalizeNewsletter(input, now) {
      scheduleMinute: minute,
      timeZone,
      active,
@@ -1705,7 +1717,7 @@ index f984e36..b9a7289 100644
      nextRunAt: nextDailyOccurrence(now, timeZone, hour, minute).toISOString(),
      createdAt,
      updatedAt: createdAt,
-@@ -520,6 +759,9 @@ function mapNewsletter(row) {
+@@ -520,6 +761,9 @@ function mapNewsletter(row) {
      generatedCount: Number(row.generated_count ?? 0),
      latestStatus: row.latest_status ?? null,
      latestCompletedAt: row.latest_completed_at ?? null,
@@ -1715,7 +1727,7 @@ index f984e36..b9a7289 100644
    };
  }
  
-@@ -541,9 +783,69 @@ function mapIssue(row) {
+@@ -541,9 +785,69 @@ function mapIssue(row) {
      createdAt: row.created_at,
      startedAt: row.started_at,
      completedAt: row.completed_at,
@@ -1785,6 +1797,28 @@ index f984e36..b9a7289 100644
  function parseSchedule(value) {
    const normalized = requireText(value, "Newsletter schedule", 5);
    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+@@ -611,3 +915,21 @@ function boundedInteger(value, minimum, maximum, field) {
+ function pad(value) {
+   return String(value).padStart(2, "0");
+ }
++
++function execWithBusyRetry(database, statement, timeoutMilliseconds) {
++  const deadline = Date.now() + timeoutMilliseconds;
++  while (true) {
++    try {
++      database.exec(statement);
++      return;
++    } catch (error) {
++      if (error?.errcode !== 5 || Date.now() >= deadline) throw error;
++      Atomics.wait(
++        new Int32Array(new SharedArrayBuffer(4)),
++        0,
++        0,
++        Math.min(25, Math.max(1, deadline - Date.now())),
++      );
++    }
++  }
++}
 diff --git a/test/daily-run.test.mjs b/test/daily-run.test.mjs
 index e11962c..80820cc 100644
 --- a/test/daily-run.test.mjs

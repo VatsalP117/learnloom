@@ -1,6 +1,5 @@
-## agent/newsletter-resend...origin/main [ahead 8]
+## agent/newsletter-resend...origin/main [ahead 10]
  M .agent/tasks/2026-07-18-newsletter-resend/review/commits.txt
  M .agent/tasks/2026-07-18-newsletter-resend/review/diff-stat.txt
  M .agent/tasks/2026-07-18-newsletter-resend/review/diff.patch
- M .agent/tasks/2026-07-18-newsletter-resend/review/files-changed.txt
  M .agent/tasks/2026-07-18-newsletter-resend/review/status.txt

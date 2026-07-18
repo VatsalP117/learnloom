@@ -1,4 +1,6 @@
-345b4f4 (HEAD -> agent/newsletter-resend) fix: harden migration and email outcomes
+e990af8 (HEAD -> agent/newsletter-resend) fix: serialize sqlite wal initialization
+304ffad chore: refresh resend review package
+345b4f4 fix: harden migration and email outcomes
 875ace1 chore: package resend phase review
 0903f3c docs: report resend phase implementation
 8b22558 docs: ship resend-enabled self-hosting guide

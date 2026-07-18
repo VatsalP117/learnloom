@@ -1,4 +1,4 @@
- .../2026-07-18-newsletter-resend/FIX_REPORT.md     |  45 ++
+ .../2026-07-18-newsletter-resend/FIX_REPORT.md     |  46 ++
  .../IMPLEMENTATION_REPORT.md                       |  77 ++++
  .agent/tasks/2026-07-18-newsletter-resend/PLAN.md  | 113 +++++
  .../tasks/2026-07-18-newsletter-resend/REVIEW.md   |  55 +++
@@ -15,9 +15,9 @@
  src/dashboard.mjs                                  | 177 ++++++--
  src/delivery.mjs                                   |  55 ++-
  src/newsletter-worker.mjs                          | 103 ++++-
- src/workspace.mjs                                  | 462 +++++++++++++++++----
+ src/workspace.mjs                                  | 490 +++++++++++++++++----
  test/daily-run.test.mjs                            |  37 ++
  test/dashboard.test.mjs                            |  88 ++++
  test/newsletter-worker.test.mjs                    | 202 ++++++++-
- test/workspace.test.mjs                            | 280 ++++++++++++-
- 22 files changed, 1718 insertions(+), 174 deletions(-)
+ test/workspace.test.mjs                            | 280 +++++++++++-
+ 22 files changed, 1743 insertions(+), 178 deletions(-)
