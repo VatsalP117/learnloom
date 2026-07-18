@@ -14,9 +14,9 @@ Use your own DeepSeek or OpenAI-compatible key, a Command Code subscription,
 or the deterministic offline demo. Optionally receive each Dossier through
 Resend email.
 
-The v0.3 test phase also includes a small single-user dashboard for running
-multiple topic-focused Newsletters. Each Newsletter has its own schedule,
-timezone, Issue history, Learning History, and Dossier previews.
+The v0.4 dashboard runs multiple topic-focused Newsletters. Each Newsletter has
+its own schedule, timezone, recipients, Issue history, Learning History,
+Dossier previews, and durable email delivery status.
 
 ## Five-minute local start
 
@@ -60,7 +60,7 @@ Each profile and local date has one deterministic Daily Run:
 The application home defaults to the directory containing `config.json`. Set
 `LEARNLOOM_HOME` to place all state under one durable directory.
 
-## Test the multi-newsletter dashboard
+## Run the multi-newsletter dashboard
 
 Run the dashboard and worker in two terminals:
 
@@ -73,11 +73,13 @@ Open `http://127.0.0.1:3000`. Create Newsletters, queue **Run now**, rerun the
 one-shot demo worker, then refresh the Newsletter page to open generated Issue
 previews.
 
-The dashboard is local-only and has no authentication. Live delivery is
-forcibly disabled in the Newsletter worker during this phase, even if the base
-configuration enables Resend.
+Demo mode has no Resend configuration and does not send email. For live
+generation and delivery, run both commands with `--config config.json`, enable
+the installation-level Resend entry, and configure recipients on each
+Newsletter page.
 
-See [the dashboard test guide](docs/dashboard-test-phase.md).
+The dashboard is local-only and has no authentication. See
+[the dashboard guide](docs/dashboard-test-phase.md).
 
 ## Model providers
 
@@ -155,6 +157,13 @@ Email HTML is rendered from the canonical Dossier with all model/source text
 escaped. Only HTTP(S) source links become clickable. A deterministic Resend
 idempotency key prevents duplicate sends during normal retries.
 
+For dashboard Newsletters, the enabled Resend entry supplies the API-key
+environment variable, sender, and subject prefix. Its `to` value remains the
+recipient for legacy `learn run`; each Newsletter's recipients are managed in
+the dashboard. Generation and email are separate queues: a failure is visible
+on the Issue and **Retry email** reuses the saved Dossier without another model
+call.
+
 ## Deploy on a VM
 
 ```sh
@@ -169,7 +178,7 @@ The image runs as a non-root user, has a read-only root filesystem under
 Compose, and stores durable state in `learnloom-data`. The legacy finite job
 opens no port. Use the supplied host systemd timer for its 9:00 a.m. schedule.
 
-For the multi-newsletter test phase, run the dashboard and worker roles:
+For the multi-newsletter service, run the dashboard and worker roles:
 
 ```sh
 docker compose up -d dashboard worker

@@ -25,14 +25,17 @@ CLI / launchd / systemd / Docker
          Delivery Receipt
 ```
 
-The multi-newsletter test phase adds a scheduling and dashboard path without
+The multi-newsletter path adds scheduling and dashboard control without
 changing the Daily Run's generation responsibilities:
 
 ```text
-Dashboard ──► SQLite Workspace ◄── Worker
-                   │                 │
-                   │ claim Issue     ▼
-                   └────────────► Daily Run ──► Dossier
+Dashboard ──► SQLite Workspace ◄──────── Worker
+                   │                      │
+                   │ claim Issue          ▼
+                   └─────────────────► Daily Run ──► Dossier
+                   │                      │
+                   │ pending receipt      │ persisted artifacts
+                   └──────────────────────┴──► Resend
 ```
 
 ## Deep modules and seams
@@ -46,9 +49,9 @@ Dashboard ──► SQLite Workspace ◄── Worker
 - The file run-store implementation owns Daily Run identity, locks, and
   Delivery Receipts. Its interface can later gain a SQLite adapter.
 - The concrete **SQLite Workspace** module owns Newsletter validation,
-  schedules, Issue queueing/claiming, lifecycle transitions, and dashboard
-  projections behind one interface. It does not replace immutable Dossier
-  files or the Daily Run file store.
+  schedules, Issue and Delivery Receipt queueing/claiming, lifecycle
+  transitions, and dashboard projections behind one interface. It does not
+  replace immutable Dossier files or the Daily Run file store.
 - The web and worker modules are thin adapters. HTTP queues an Issue; only the
   worker invokes Daily Run.
 - Markdown and email are renderings of the canonical **Dossier**, not the
@@ -68,7 +71,7 @@ Dashboard ──► SQLite Workspace ◄── Worker
 - Every container role runs non-root and excludes local secrets and state from
   its build context. Only the dashboard role listens, and Compose publishes it
   to host loopback.
-- The test dashboard adds CSRF protection and browser security headers, binds
+- The dashboard adds CSRF protection and browser security headers, binds
   to host loopback under Compose, and must not be exposed publicly because
   authentication is not implemented.
 
@@ -80,20 +83,26 @@ Dashboard ──► SQLite Workspace ◄── Worker
 - Each canonical Dossier is persisted to immutable, generation-versioned paths
   before its run-record pointer is atomically swapped and delivery begins.
 - A failed destination records a Delivery Receipt and can retry independently.
+- Newsletter generation and email have separate queues. Completing generation
+  and enqueueing its email receipt is one SQLite transaction.
+- Failed Newsletter email is manually retried from persisted artifacts and
+  never regenerates the Issue.
 - Successful destinations are not repeated on a same-day rerun.
 - An owner-token lock rejects overlapping execution and is never reclaimed
   automatically. After a crash, an operator must confirm the process is gone
   before removing the stale lock.
 - Atomic writes use unique temporary names and restrictive file modes.
 
-## Deliberate v0.3 test-phase limits
+## Deliberate v0.4 limits
 
 - Daily Run records are atomic JSON rather than SQLite.
 - One trusted operator configures feeds; private-network URL blocking is absent.
 - Source material uses feed summaries rather than extracted article bodies.
 - Resend is the only external delivery adapter.
 - Learner feedback and Notion delivery are not yet implemented.
-- Newsletter workers deliberately suppress every delivery adapter until the
-  Resend phase.
 - A worker crash can leave an Issue in `generating`; automatic recovery is not
-  implemented in this test phase.
+  implemented.
+- A worker crash can leave a Delivery Receipt in `delivering`; automatic stale
+  claim recovery and backoff are not implemented.
+- Newsletter recipients are a trusted owner's addresses, not public subscriber
+  lists; unsubscribe management is not implemented.

@@ -1,8 +1,8 @@
-# Multi-newsletter dashboard test phase
+# Multi-newsletter dashboard
 
-This phase is deliberately local and single-user. It proves Newsletter
-configuration, scheduling, Issue generation, history, and previews before live
-email delivery is connected.
+The dashboard is deliberately local and single-user. It manages Newsletter
+configuration, scheduling, Issue generation, history, previews, recipients,
+and Resend delivery receipts.
 
 ## Run the offline demo
 
@@ -39,9 +39,14 @@ node bin/learn.mjs serve --config config.json
 node bin/learn.mjs worker --config config.json
 ```
 
-The worker explicitly disables every delivery adapter during this phase. Even
-if `config.json` contains an enabled Resend destination, Newsletter Issues are
-generated only for local preview.
+The worker generates queued Issues, then drains pending email deliveries. An
+enabled Resend entry in `config.json` supplies the sender, subject prefix, and
+API-key environment variable. Newsletter recipient lists are configured in the
+dashboard and override that entry's legacy `to` field.
+
+Generation completion and the pending email receipt are committed together in
+SQLite. A failed email remains failed until **Retry email** is selected; retry
+loads the immutable Dossier files and does not invoke the model again.
 
 The worker checks schedules every 30 seconds. A deterministic scheduled Issue
 is created once per Newsletter and local date. **Run now** creates a separate
@@ -84,6 +89,8 @@ do not add an untrusted public hostname before authentication exists.
 ## Crash recovery
 
 If generation is interrupted, the Issue can remain `generating` and the Daily
-Run can leave its owner lock. This test phase does not guess that either is
-stale. Confirm that no worker is active before manually removing a stale lock.
-Automatic Issue recovery is a later operational hardening step.
+Run can leave its owner lock. Learnloom does not guess that either is stale.
+Confirm that no worker is active before manually removing a stale lock.
+
+A worker interrupted while a receipt is `delivering` also requires operator
+inspection; automatic stale-claim recovery is later operational hardening.
