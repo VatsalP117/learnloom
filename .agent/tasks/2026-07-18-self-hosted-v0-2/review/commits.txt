@@ -1,0 +1,9 @@
+efba1a3 Make Daily Run locking race-free
+269eb13 Clean up failed lease creation
+666ad2b Fix release review findings
+421afe5 Document self-hosted implementation
+9d40037 Harden Daily Run recovery and isolation
+40b0401 Package Learnloom for self-hosting
+d3f758b Add idempotent Dossier email delivery
+13935cc Add bring-your-own model provider
+246c1f0 Plan self-hosted Learnloom release
