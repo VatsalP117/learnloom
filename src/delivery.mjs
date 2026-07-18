@@ -29,24 +29,31 @@ export class ResendDelivery {
       );
     }
     const rendered = renderDossierEmail(dossier, markdown);
-    const response = await this.fetchImpl(this.endpoint, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "idempotency-key": `learnloom/${runId}/${generationId}/${this.id}`,
-      },
-      body: JSON.stringify({
-        from: this.config.from,
-        to: this.config.to,
-        subject: safeSubject(
-          `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
-        ),
-        html: rendered.html,
-        text: rendered.text,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    let response;
+    try {
+      response = await this.fetchImpl(this.endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "idempotency-key": `learnloom/${runId}/${generationId}/${this.id}`,
+        },
+        body: JSON.stringify({
+          from: this.config.from,
+          to: this.config.to,
+          subject: safeSubject(
+            `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
+          ),
+          html: rendered.html,
+          text: rendered.text,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new DeliveryOutcomeUnknownError(
+        "Resend delivery outcome is unknown because no response was received.",
+      );
+    }
     let payload;
     try {
       payload = await response.json();
@@ -68,9 +75,19 @@ export class ResendDelivery {
       );
     }
     if (typeof payload?.id !== "string" || payload.id === "") {
-      throw new Error("Resend returned no email identifier.");
+      throw new DeliveryOutcomeUnknownError(
+        "Resend accepted the request but returned no usable email identifier.",
+      );
     }
     return { externalId: payload.id };
+  }
+}
+
+export class DeliveryOutcomeUnknownError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DeliveryOutcomeUnknownError";
+    this.outcomeUnknown = true;
   }
 }
 

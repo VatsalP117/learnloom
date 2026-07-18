@@ -30,10 +30,16 @@ To send email:
 
 1. Verify a sending domain in Resend.
 2. Set `RESEND_API_KEY` in `.env`.
-3. Set valid `from` and `to` addresses in `config.json`.
+3. Set a valid `from` address and a placeholder legacy `to` address in
+   `config.json`.
 4. Change the Resend delivery's `enabled` field to `true`.
 
 Neither file is copied into the image or tracked by Git.
+
+The dashboard stores each Newsletter's enabled state and recipients in SQLite;
+it never stores the Resend key. The `to` address in `config.json` continues to
+apply to the finite `learn run` command, while dashboard Newsletter recipients
+apply to worker deliveries.
 
 ## 3. Build and diagnose
 
@@ -50,7 +56,24 @@ docker compose run --rm learnloom run --config /app/config.json
 ```
 
 The named `learnloom-data` volume contains Dossiers, Learning History, Daily
-Run records, locks, and logs. Back up that volume with the VM.
+Run records, Workspace SQLite data, Delivery Receipts, locks, and logs. Back up
+that volume with the VM.
+
+For the long-running multi-newsletter dashboard and worker:
+
+```sh
+docker compose up -d dashboard worker
+docker compose logs -f dashboard worker
+```
+
+Reach the loopback-only dashboard over an SSH tunnel:
+
+```sh
+ssh -L 3000:127.0.0.1:3000 user@your-vm
+```
+
+Then open `http://127.0.0.1:3000`. Do not expose it publicly; authentication is
+not implemented.
 
 Dossier filenames include an immutable generation identifier. The Daily Run
 record points to the active generation, so an interrupted forced regeneration

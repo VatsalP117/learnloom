@@ -1,0 +1,2519 @@
+diff --git a/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md b/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md
+new file mode 100644
+index 0000000..830ca29
+--- /dev/null
++++ b/.agent/tasks/2026-07-18-newsletter-resend/FIX_REPORT.md
+@@ -0,0 +1,46 @@
++# Fix Report
++
++## Issues Fixed
++
++1. Moved schema version detection and migration under one `BEGIN IMMEDIATE`
++   transaction. SQLite's busy timeout is installed before WAL activation, and
++   WAL activation has a bounded busy retry. Concurrent dashboard/worker startup
++   now serializes before reading `user_version`.
++2. Added durable `cancelled` Delivery Receipts. Disabling email atomically
++   cancels pending and failed receipts; claim and retry require an enabled
++   Newsletter; re-enable does not revive old receipts; an in-flight receipt
++   stays visible.
++3. Added durable, non-retryable `unknown` Delivery Receipts for transport loss
++   or an unusable successful Resend response. Both Newsletter workers and the
++   legacy Daily Run refuse ordinary retry after an ambiguous outcome.
++
++## Files Changed
++
++- `src/workspace.mjs`
++- `src/delivery.mjs`
++- `src/newsletter-worker.mjs`
++- `src/daily-run.mjs`
++- `src/dashboard.mjs`
++- `bin/learn.mjs`
++- `test/workspace.test.mjs`
++- `test/newsletter-worker.test.mjs`
++- `test/daily-run.test.mjs`
++- `README.md`
++- `docs/dashboard-test-phase.md`
++- `docs/architecture.md`
++
++## Commands Run
++
++- `node --test test/workspace.test.mjs`
++- `node --test test/workspace.test.mjs test/newsletter-worker.test.mjs
++  test/delivery.test.mjs test/dashboard.test.mjs`
++- `npm test`
++- `npm run check`
++- `git diff --check`
++- Twenty consecutive runs of the two-process schema migration test
++
++## Remaining Issues
++
++Automatic reconciliation of an `unknown` Resend outcome and stale in-flight
++claim recovery remain deliberately out of scope. Neither state is exposed to
++ordinary retry.
+diff --git a/.agent/tasks/2026-07-18-newsletter-resend/IMPLEMENTATION_REPORT.md b/.agent/tasks/2026-07-18-newsletter-resend/IMPLEMENTATION_REPORT.md
+new file mode 100644
+index 0000000..e703049
+--- /dev/null
++++ b/.agent/tasks/2026-07-18-newsletter-resend/IMPLEMENTATION_REPORT.md
+@@ -0,0 +1,77 @@
++# Implementation Report
++
++## Summary
++
++Implemented Learnloom v0.4 Newsletter email delivery through Resend. Newsletter
++recipients and enablement live in SQLite, while the sender and credential
++remain installation-level configuration. Issue generation atomically queues a
++durable email Delivery Receipt. The worker delivers saved artifacts, records
++provider IDs and safe failures, and only retries after an explicit dashboard
++action, without regenerating the Issue.
++
++## Files Changed
++
++- `src/workspace.mjs`: schema v2 migration, Newsletter email settings,
++  Delivery Receipt queue and guarded lifecycle transitions, dashboard
++  projections
++- `src/newsletter-worker.mjs`: persisted-artifact Resend delivery processor
++- `src/dashboard.mjs`: recipient settings, delivery status, sent counts, and
++  retry forms
++- `bin/learn.mjs`: worker delivery events and updated service messaging
++- `test/workspace.test.mjs`: migration, validation, atomic queueing,
++  concurrency, failure, and retry coverage
++- `test/newsletter-worker.test.mjs`: Resend request contract and
++  no-regeneration retry coverage
++- `test/dashboard.test.mjs`: settings, escaped failure, CSRF, and retry coverage
++- `README.md`, `docs/`, `.env.example`: clone/VM/Resend operating guidance
++- `package.json`, `compose.yaml`: v0.4 identifiers
++
++## Commands Run
++
++- `node --test test/workspace.test.mjs`
++- `node --test test/newsletter-worker.test.mjs test/delivery.test.mjs`
++- `node --test test/dashboard.test.mjs`
++- `npm test`
++- `npm run check`
++- `git diff --check`
++- `docker compose config`
++- `docker build -t learnloom:0.4-test .`
++
++## Tests
++
++All 76 automated tests pass. JavaScript syntax checks, whitespace validation,
++Compose rendering, and the production Docker image build pass.
++
++The suite includes a hand-built schema version 1 database upgraded to version
++2 under concurrent process startup, two-connection delivery claiming, durable
++failure/retry/cancellation/unknown transitions,
++recipient override and stable Resend idempotency request assertions, and proof
++that retry leaves one generated Issue and performs no generation call.
++
++## Deviations From Plan
++
++- No live Resend smoke email was sent because the repository has no authorized
++  test API key and verified sender domain. The adapter request and response
++  contract is covered with an injected HTTP implementation.
++- Automatic retry/backoff remains intentionally excluded; failed receipts
++  require the dashboard retry action.
++
++## Known Risks
++
++- A process crash while an Issue is `generating` or a receipt is `delivering`
++  leaves a claim requiring operator inspection. Automatic stale-claim recovery
++  is not part of this phase.
++- The dashboard remains unauthenticated and loopback-only.
++- Resend's provider idempotency window is finite. Learnloom's local delivered
++  receipt is the durable guard against later duplicate attempts, while
++  ambiguous outcomes are recorded as non-retryable `unknown`.
++- Recipient management is for a trusted owner, not a public mailing list; no
++  unsubscribe or subscriber lifecycle exists.
++
++## Next Steps
++
++1. Independent review against `origin/main`.
++2. Fix any blocking findings and rerun the full checks.
++3. Push `agent/newsletter-resend` and open a draft PR for human review.
++4. After merge, configure a verified Resend sender and perform one controlled
++   live smoke delivery on the VM.
+diff --git a/.agent/tasks/2026-07-18-newsletter-resend/PLAN.md b/.agent/tasks/2026-07-18-newsletter-resend/PLAN.md
+new file mode 100644
+index 0000000..bd85154
+--- /dev/null
++++ b/.agent/tasks/2026-07-18-newsletter-resend/PLAN.md
+@@ -0,0 +1,113 @@
++# Implementation Plan
++
++## 1. Task Summary
++
++Turn the dashboard test phase into a useful single-user email product while
++preserving the separation between expensive Issue generation and external
++delivery. Resend remains an installation-level provider credential and sender;
++recipients and enablement belong to each Newsletter.
++
++## 2. Current System Understanding
++
++Learnloom already has SQLite Newsletters and Issues, a worker that invokes the
++Daily Run with delivery suppressed, a server-rendered dashboard, and a tested
++Resend adapter used by the original CLI flow. The Workspace schema is version
++1. Issue generation persists a Dossier JSON path and rendered Markdown path,
++which are sufficient to deliver later without another model call.
++
++## 3. Scope
++
++### In Scope
++
++- Workspace schema version 2 with per-Newsletter email settings
++- Durable Issue Delivery Receipts and atomic queue operations
++- A safe version 1 to version 2 migration preserving existing data
++- Email settings on Newsletter creation and detail pages
++- One installation-wide enabled Resend configuration for credentials/sender
++- Worker delivery from persisted Dossier and Markdown artifacts
++- Stable idempotency keys and provider email IDs
++- Visible pending, delivering, delivered, and failed states
++- Manual retry of failed delivery without Issue regeneration
++- Sent counts and delivery status in dashboard projections
++- Automated migration, concurrency, worker, HTTP, and regression tests
++- VM/container deployment documentation and operational diagnostics
++
++### Out of Scope
++
++- Authentication or public internet exposure
++- Multiple users, subscriber management, or public unsubscribe flows
++- Notion delivery
++- Resend webhook event tracking
++- Automatic repeated retry/backoff
++- Editing Newsletter generation or schedule fields
++- Storing API keys in SQLite or the dashboard
++
++## 4. Technical Approach
++
++Migrate the Workspace in-place to schema version 2. Add `email_enabled` and
++`email_recipients_json` columns to Newsletters and an `issue_deliveries` table
++with one `email` receipt per Issue. Completing generation and enqueueing the
++receipt happen in one SQLite transaction, removing the crash gap between those
++states. Claim, success, failure, and manual retry are explicit guarded state
++transitions and remain safe across multiple workers.
++
++The worker first drains generation work and then delivery work. Delivery loads
++the already-persisted Dossier JSON and Markdown, overlays the Newsletter's
++recipients onto the enabled installation-level Resend config, and calls the
++existing adapter with a stable `newsletter-email` identity. A failed delivery
++stays failed until the user retries it, preventing a bad credential or domain
++from being hammered each poll cycle.
++
++The dashboard never accepts or displays a Resend key. It exposes recipient
++settings, status badges, provider receipt IDs, and a CSRF-protected retry
++action. Existing Newsletters migrate with email disabled.
++
++## 5. Execution Plan
++
++1. Record this plan and establish the migration contract.
++2. Implement schema v2, Newsletter email validation, Delivery Receipt
++   projections, and atomic transitions.
++3. Integrate worker delivery from persisted artifacts using the Resend adapter.
++4. Add dashboard create/settings/status/retry controls.
++5. Update configuration examples and VM/container operating documentation.
++6. Run unit, integration, static, container, and secret checks.
++7. Package an independent review, fix blocking findings, and open a draft PR.
++
++## 6. Test Plan
++
++- Fresh databases initialize directly at schema version 2.
++- Version 1 databases migrate without losing Newsletters or Issues.
++- Enabling email requires valid, normalized recipients.
++- Existing Newsletters remain email-disabled after migration.
++- Completing an Issue atomically creates one pending Delivery Receipt.
++- Two SQLite connections cannot claim the same delivery.
++- Delivered and failed outcomes persist safe metadata.
++- Manual retry only transitions an eligible failed receipt back to pending.
++- Worker sends persisted artifacts to Newsletter recipients.
++- Delivery retry does not invoke Daily Run again.
++- Missing Resend setup produces a visible failed receipt.
++- Dashboard mutations require CSRF and render escaped recipient/status data.
++- Existing CLI and dashboard behavior remain green.
++
++## 7. Acceptance Criteria
++
++- A user can configure multiple Newsletters with different recipient lists.
++- Generated Issues show delivery state independently of generation state.
++- A successful Resend call records the provider email ID and sent timestamp.
++- A failed send can be retried from the dashboard without spending generation
++  tokens again.
++- No API key is persisted in SQLite, HTML, logs, or tracked files.
++- Existing version 1 workspace data is upgraded safely.
++- The full automated suite and deployment checks pass.
++
++## 8. Risks and Guardrails
++
++- Resend requires a verified sender domain; document this and surface failures.
++- Provider idempotency is time-bounded, so the local delivered receipt is the
++  durable duplicate guard.
++- Artifact reads can fail after generation; record a delivery failure rather
++  than changing Issue generation status.
++- Do not auto-retry failed receipts in this phase.
++- Keep the web listener loopback-only until authentication is implemented.
++- Validate recipient lengths and addresses before persistence.
++
+diff --git a/.agent/tasks/2026-07-18-newsletter-resend/REVIEW.md b/.agent/tasks/2026-07-18-newsletter-resend/REVIEW.md
+new file mode 100644
+index 0000000..70f0560
+--- /dev/null
++++ b/.agent/tasks/2026-07-18-newsletter-resend/REVIEW.md
+@@ -0,0 +1,55 @@
++# Codex Review
++
++## Verdict
++
++`REQUEST_CHANGES`
++
++## Summary
++
++The feature separation, CSRF coverage, and output escaping are sound, but three
++delivery/migration edge cases must be resolved before publication.
++
++## Blocking Issues
++
++1. Concurrent version 1 to version 2 startup can race because `user_version` is
++   read before the migration write lock. Read and migrate under one
++   `BEGIN IMMEDIATE` transaction and test concurrent startup.
++2. Disabling Newsletter email does not stop already-pending receipts. Add a
++   durable cancelled state, cancel unclaimed pending/failed receipts
++   atomically on disable, and require enablement for claim and retry. Re-enable
++   must not revive historical cancelled receipts.
++3. Transport timeouts/lost responses and unusable successful Resend responses
++   are ambiguous, but are currently marked failed and exposed to ordinary
++   retry. Record a non-retryable unknown outcome instead and test acceptance
++   followed by response loss.
++
++## Non-Blocking Suggestions
++
++None required for this phase.
++
++## Test Gaps
++
++- Concurrent dashboard/worker schema migration startup
++- Disable before claim, disable before retry, and re-enable behavior
++- Ambiguous provider acceptance followed by response loss
++
++## Risk Areas
++
++- SQLite schema migration locking
++- Owner intent when email is disabled
++- Duplicate mail after a provider response is lost
++
++## Exact Fix Instructions for Executor
++
++1. Acquire the SQLite immediate transaction before reading `user_version`;
++   re-read and conditionally migrate inside that transaction.
++2. Add `cancelled` to Delivery Receipt states. On disabling, atomically cancel
++   pending and failed receipts. Require an enabled Newsletter in claim/retry,
++   leave an in-flight `delivering` receipt visible, and never revive cancelled
++   receipts automatically.
++3. Add an `unknown` Delivery Receipt state. Classify Resend request transport
++   failures and unusable 2xx responses as ambiguous; record them as unknown and
++   do not offer standard retry. Keep definite configuration/rejection failures
++   retryable.
++4. Add the focused tests above and rerun the complete suite.
++
+diff --git a/.agent/tasks/2026-07-18-newsletter-resend/TASK.md b/.agent/tasks/2026-07-18-newsletter-resend/TASK.md
+new file mode 100644
+index 0000000..b27db6e
+--- /dev/null
++++ b/.agent/tasks/2026-07-18-newsletter-resend/TASK.md
+@@ -0,0 +1,7 @@
++# Task
++
++Add production-shaped Resend delivery to Learnloom's multi-newsletter
++workspace. Each Newsletter can opt into email with its own recipients, every
++generated Issue receives a durable Delivery Receipt, and failed email can be
++retried without regenerating the Issue.
++
+diff --git a/.env.example b/.env.example
+index 8210c5d..b797809 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,7 +1,7 @@
+ # Required by the default OpenAI-compatible DeepSeek configuration.
+ DEEPSEEK_API_KEY=replace_with_your_deepseek_key
+ 
+-# Required only after enabling the Resend delivery in config.json.
++# Required for live email after enabling the Resend delivery in config.json.
+ RESEND_API_KEY=replace_with_your_resend_key
+ 
+ # Optional. Docker sets this to /data automatically.
+diff --git a/README.md b/README.md
+index e1f5927..9bd708c 100644
+--- a/README.md
++++ b/README.md
+@@ -14,9 +14,9 @@ Use your own DeepSeek or OpenAI-compatible key, a Command Code subscription,
+ or the deterministic offline demo. Optionally receive each Dossier through
+ Resend email.
+ 
+-The v0.3 test phase also includes a small single-user dashboard for running
+-multiple topic-focused Newsletters. Each Newsletter has its own schedule,
+-timezone, Issue history, Learning History, and Dossier previews.
++The v0.4 dashboard runs multiple topic-focused Newsletters. Each Newsletter has
++its own schedule, timezone, recipients, Issue history, Learning History,
++Dossier previews, and durable email delivery status.
+ 
+ ## Five-minute local start
+ 
+@@ -60,7 +60,7 @@ Each profile and local date has one deterministic Daily Run:
+ The application home defaults to the directory containing `config.json`. Set
+ `LEARNLOOM_HOME` to place all state under one durable directory.
+ 
+-## Test the multi-newsletter dashboard
++## Run the multi-newsletter dashboard
+ 
+ Run the dashboard and worker in two terminals:
+ 
+@@ -73,11 +73,13 @@ Open `http://127.0.0.1:3000`. Create Newsletters, queue **Run now**, rerun the
+ one-shot demo worker, then refresh the Newsletter page to open generated Issue
+ previews.
+ 
+-The dashboard is local-only and has no authentication. Live delivery is
+-forcibly disabled in the Newsletter worker during this phase, even if the base
+-configuration enables Resend.
++Demo mode has no Resend configuration and does not send email. For live
++generation and delivery, run both commands with `--config config.json`, enable
++the installation-level Resend entry, and configure recipients on each
++Newsletter page.
+ 
+-See [the dashboard test guide](docs/dashboard-test-phase.md).
++The dashboard is local-only and has no authentication. See
++[the dashboard guide](docs/dashboard-test-phase.md).
+ 
+ ## Model providers
+ 
+@@ -155,6 +157,18 @@ Email HTML is rendered from the canonical Dossier with all model/source text
+ escaped. Only HTTP(S) source links become clickable. A deterministic Resend
+ idempotency key prevents duplicate sends during normal retries.
+ 
++For dashboard Newsletters, the enabled Resend entry supplies the API-key
++environment variable, sender, and subject prefix. Its `to` value remains the
++recipient for legacy `learn run`; each Newsletter's recipients are managed in
++the dashboard. Generation and email are separate queues: a failure is visible
++on the Issue and **Retry email** reuses the saved Dossier without another model
++call.
++
++Disabling email cancels unsent queued/failed receipts; re-enabling applies only
++to future Issues. If Resend may have accepted a request but its response was
++lost, Learnloom marks the outcome **Unknown** and does not offer ordinary retry,
++because sending again could duplicate the email.
++
+ ## Deploy on a VM
+ 
+ ```sh
+@@ -169,7 +183,7 @@ The image runs as a non-root user, has a read-only root filesystem under
+ Compose, and stores durable state in `learnloom-data`. The legacy finite job
+ opens no port. Use the supplied host systemd timer for its 9:00 a.m. schedule.
+ 
+-For the multi-newsletter test phase, run the dashboard and worker roles:
++For the multi-newsletter service, run the dashboard and worker roles:
+ 
+ ```sh
+ docker compose up -d dashboard worker
+diff --git a/bin/learn.mjs b/bin/learn.mjs
+index 4756ad7..6532054 100755
+--- a/bin/learn.mjs
++++ b/bin/learn.mjs
+@@ -199,7 +199,9 @@ async function serve(commandArgs) {
+     server.listen(port, host, resolve);
+   });
+   process.stdout.write(`Learnloom dashboard: http://${host}:${port}\n`);
+-  process.stdout.write("Test phase: live delivery is disabled in Newsletter workers.\n");
++  process.stdout.write(
++    "Newsletter email uses the enabled Resend configuration and per-Newsletter recipients.\n",
++  );
+   const shutdown = () => {
+     server.close(() => {
+       workspace.close();
+@@ -245,7 +247,7 @@ async function worker(commandArgs) {
+         onEvent: printWorkerEvent,
+       });
+       process.stdout.write(
+-        `Worker cycle: ${result.dispatched.length} scheduled, ${result.processed.length} processed.\n`,
++        `Worker cycle: ${result.dispatched.length} scheduled, ${result.processed.length} generated, ${result.deliveries.length} deliveries processed.\n`,
+       );
+       if (once || stopping) break;
+       await delay(intervalSeconds * 1000);
+@@ -319,6 +321,11 @@ function printRunEvent(event) {
+   if (event.type === "delivery-skip") {
+     process.stdout.write(`Delivery ${event.deliveryId} already completed; skipping.\n`);
+   }
++  if (event.type === "delivery-unknown-skip") {
++    process.stderr.write(
++      `Delivery ${event.deliveryId} has an unknown provider outcome; refusing automatic retry.\n`,
++    );
++  }
+ }
+ 
+ function pad(value) {
+@@ -343,6 +350,24 @@ function printWorkerEvent(event) {
+   if (event.type === "issue-failed") {
+     process.stderr.write(`Issue ${event.issueId} failed: ${event.message}\n`);
+   }
++  if (event.type === "delivery-claimed") {
++    process.stdout.write(
++      `Claimed email delivery for Issue ${event.issueId} (attempt ${event.attemptCount})\n`,
++    );
++  }
++  if (event.type === "delivery-complete") {
++    process.stdout.write(`Delivered Issue ${event.issueId}\n`);
++  }
++  if (event.type === "delivery-failed") {
++    process.stderr.write(
++      `Email delivery for Issue ${event.issueId} failed: ${event.message}\n`,
++    );
++  }
++  if (event.type === "delivery-outcome-unknown") {
++    process.stderr.write(
++      `Email delivery outcome for Issue ${event.issueId} is unknown: ${event.message}\n`,
++    );
++  }
+ }
+ 
+ function printHelp() {
+diff --git a/compose.yaml b/compose.yaml
+index 732374d..de70f42 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -2,7 +2,7 @@ services:
+   learnloom:
+     build:
+       context: .
+-    image: learnloom:0.3
++    image: learnloom:0.4
+     env_file:
+       - path: .env
+         required: false
+@@ -23,7 +23,7 @@ services:
+       - dashboard
+     build:
+       context: .
+-    image: learnloom:0.3
++    image: learnloom:0.4
+     command:
+       - serve
+       - --config
+@@ -53,7 +53,7 @@ services:
+       - dashboard
+     build:
+       context: .
+-    image: learnloom:0.3
++    image: learnloom:0.4
+     command:
+       - worker
+       - --config
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 0dcf39b..9ffeece 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -25,14 +25,17 @@ CLI / launchd / systemd / Docker
+          Delivery Receipt
+ ```
+ 
+-The multi-newsletter test phase adds a scheduling and dashboard path without
++The multi-newsletter path adds scheduling and dashboard control without
+ changing the Daily Run's generation responsibilities:
+ 
+ ```text
+-Dashboard ──► SQLite Workspace ◄── Worker
+-                   │                 │
+-                   │ claim Issue     ▼
+-                   └────────────► Daily Run ──► Dossier
++Dashboard ──► SQLite Workspace ◄──────── Worker
++                   │                      │
++                   │ claim Issue          ▼
++                   └─────────────────► Daily Run ──► Dossier
++                   │                      │
++                   │ pending receipt      │ persisted artifacts
++                   └──────────────────────┴──► Resend
+ ```
+ 
+ ## Deep modules and seams
+@@ -46,9 +49,9 @@ Dashboard ──► SQLite Workspace ◄── Worker
+ - The file run-store implementation owns Daily Run identity, locks, and
+   Delivery Receipts. Its interface can later gain a SQLite adapter.
+ - The concrete **SQLite Workspace** module owns Newsletter validation,
+-  schedules, Issue queueing/claiming, lifecycle transitions, and dashboard
+-  projections behind one interface. It does not replace immutable Dossier
+-  files or the Daily Run file store.
++  schedules, Issue and Delivery Receipt queueing/claiming, lifecycle
++  transitions, and dashboard projections behind one interface. It does not
++  replace immutable Dossier files or the Daily Run file store.
+ - The web and worker modules are thin adapters. HTTP queues an Issue; only the
+   worker invokes Daily Run.
+ - Markdown and email are renderings of the canonical **Dossier**, not the
+@@ -68,7 +71,7 @@ Dashboard ──► SQLite Workspace ◄── Worker
+ - Every container role runs non-root and excludes local secrets and state from
+   its build context. Only the dashboard role listens, and Compose publishes it
+   to host loopback.
+-- The test dashboard adds CSRF protection and browser security headers, binds
++- The dashboard adds CSRF protection and browser security headers, binds
+   to host loopback under Compose, and must not be exposed publicly because
+   authentication is not implemented.
+ 
+@@ -80,20 +83,29 @@ Dashboard ──► SQLite Workspace ◄── Worker
+ - Each canonical Dossier is persisted to immutable, generation-versioned paths
+   before its run-record pointer is atomically swapped and delivery begins.
+ - A failed destination records a Delivery Receipt and can retry independently.
++- Newsletter generation and email have separate queues. Completing generation
++  and enqueueing its email receipt is one SQLite transaction.
++- Failed Newsletter email is manually retried from persisted artifacts and
++  never regenerates the Issue.
++- Ambiguous provider outcomes are recorded as non-retryable `unknown` receipts
++  because the email may already have been accepted.
++- Disabling Newsletter email atomically cancels receipts not yet in flight.
+ - Successful destinations are not repeated on a same-day rerun.
+ - An owner-token lock rejects overlapping execution and is never reclaimed
+   automatically. After a crash, an operator must confirm the process is gone
+   before removing the stale lock.
+ - Atomic writes use unique temporary names and restrictive file modes.
+ 
+-## Deliberate v0.3 test-phase limits
++## Deliberate v0.4 limits
+ 
+ - Daily Run records are atomic JSON rather than SQLite.
+ - One trusted operator configures feeds; private-network URL blocking is absent.
+ - Source material uses feed summaries rather than extracted article bodies.
+ - Resend is the only external delivery adapter.
+ - Learner feedback and Notion delivery are not yet implemented.
+-- Newsletter workers deliberately suppress every delivery adapter until the
+-  Resend phase.
+ - A worker crash can leave an Issue in `generating`; automatic recovery is not
+-  implemented in this test phase.
++  implemented.
++- A worker crash can leave a Delivery Receipt in `delivering`; automatic stale
++  claim recovery and backoff are not implemented.
++- Newsletter recipients are a trusted owner's addresses, not public subscriber
++  lists; unsubscribe management is not implemented.
+diff --git a/docs/dashboard-test-phase.md b/docs/dashboard-test-phase.md
+index 08fa12b..3b396e2 100644
+--- a/docs/dashboard-test-phase.md
++++ b/docs/dashboard-test-phase.md
+@@ -1,8 +1,8 @@
+-# Multi-newsletter dashboard test phase
++# Multi-newsletter dashboard
+ 
+-This phase is deliberately local and single-user. It proves Newsletter
+-configuration, scheduling, Issue generation, history, and previews before live
+-email delivery is connected.
++The dashboard is deliberately local and single-user. It manages Newsletter
++configuration, scheduling, Issue generation, history, previews, recipients,
++and Resend delivery receipts.
+ 
+ ## Run the offline demo
+ 
+@@ -39,9 +39,21 @@ node bin/learn.mjs serve --config config.json
+ node bin/learn.mjs worker --config config.json
+ ```
+ 
+-The worker explicitly disables every delivery adapter during this phase. Even
+-if `config.json` contains an enabled Resend destination, Newsletter Issues are
+-generated only for local preview.
++The worker generates queued Issues, then drains pending email deliveries. An
++enabled Resend entry in `config.json` supplies the sender, subject prefix, and
++API-key environment variable. Newsletter recipient lists are configured in the
++dashboard and override that entry's legacy `to` field.
++
++Generation completion and the pending email receipt are committed together in
++SQLite. A failed email remains failed until **Retry email** is selected; retry
++loads the immutable Dossier files and does not invoke the model again.
++Disabling email durably cancels pending and failed receipts without reviving
++them when email is later re-enabled. A receipt already being delivered remains
++visible as in flight.
++
++If the worker transmits a request but receives no reliable Resend response, the
++receipt becomes **Unknown** rather than retryable. This avoids presenting an
++unsafe retry when the first email may already have been accepted.
+ 
+ The worker checks schedules every 30 seconds. A deterministic scheduled Issue
+ is created once per Newsletter and local date. **Run now** creates a separate
+@@ -84,6 +96,8 @@ do not add an untrusted public hostname before authentication exists.
+ ## Crash recovery
+ 
+ If generation is interrupted, the Issue can remain `generating` and the Daily
+-Run can leave its owner lock. This test phase does not guess that either is
+-stale. Confirm that no worker is active before manually removing a stale lock.
+-Automatic Issue recovery is a later operational hardening step.
++Run can leave its owner lock. Learnloom does not guess that either is stale.
++Confirm that no worker is active before manually removing a stale lock.
++
++A worker interrupted while a receipt is `delivering` also requires operator
++inspection; automatic stale-claim recovery is later operational hardening.
+diff --git a/docs/vm-deployment.md b/docs/vm-deployment.md
+index b6543a2..3cf9a14 100644
+--- a/docs/vm-deployment.md
++++ b/docs/vm-deployment.md
+@@ -30,11 +30,17 @@ To send email:
+ 
+ 1. Verify a sending domain in Resend.
+ 2. Set `RESEND_API_KEY` in `.env`.
+-3. Set valid `from` and `to` addresses in `config.json`.
++3. Set a valid `from` address and a placeholder legacy `to` address in
++   `config.json`.
+ 4. Change the Resend delivery's `enabled` field to `true`.
+ 
+ Neither file is copied into the image or tracked by Git.
+ 
++The dashboard stores each Newsletter's enabled state and recipients in SQLite;
++it never stores the Resend key. The `to` address in `config.json` continues to
++apply to the finite `learn run` command, while dashboard Newsletter recipients
++apply to worker deliveries.
++
+ ## 3. Build and diagnose
+ 
+ ```sh
+@@ -50,7 +56,24 @@ docker compose run --rm learnloom run --config /app/config.json
+ ```
+ 
+ The named `learnloom-data` volume contains Dossiers, Learning History, Daily
+-Run records, locks, and logs. Back up that volume with the VM.
++Run records, Workspace SQLite data, Delivery Receipts, locks, and logs. Back up
++that volume with the VM.
++
++For the long-running multi-newsletter dashboard and worker:
++
++```sh
++docker compose up -d dashboard worker
++docker compose logs -f dashboard worker
++```
++
++Reach the loopback-only dashboard over an SSH tunnel:
++
++```sh
++ssh -L 3000:127.0.0.1:3000 user@your-vm
++```
++
++Then open `http://127.0.0.1:3000`. Do not expose it publicly; authentication is
++not implemented.
+ 
+ Dossier filenames include an immutable generation identifier. The Daily Run
+ record points to the active generation, so an interrupted forced regeneration
+diff --git a/package.json b/package.json
+index 7f96773..40a7909 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "learnloom",
+-  "version": "0.3.0",
++  "version": "0.4.0",
+   "private": true,
+   "type": "module",
+   "description": "A self-hosted, source-grounded daily learning Dossier.",
+diff --git a/src/daily-run.mjs b/src/daily-run.mjs
+index 49191da..88011a5 100644
+--- a/src/daily-run.mjs
++++ b/src/daily-run.mjs
+@@ -120,8 +120,15 @@ export async function runDailyDossier(options) {
+     const deliveryErrors = [];
+     record.deliveries ??= {};
+     for (const adapter of adapters) {
+-      if (record.deliveries[adapter.id]?.status === "delivered") {
+-        onEvent({ type: "delivery-skip", deliveryId: adapter.id });
++      const priorDeliveryStatus = record.deliveries[adapter.id]?.status;
++      if (["delivered", "unknown"].includes(priorDeliveryStatus)) {
++        onEvent({
++          type:
++            priorDeliveryStatus === "unknown"
++              ? "delivery-unknown-skip"
++              : "delivery-skip",
++          deliveryId: adapter.id,
++        });
+         continue;
+       }
+       onEvent({ type: "delivery", deliveryId: adapter.id });
+@@ -139,7 +146,7 @@ export async function runDailyDossier(options) {
+         };
+       } catch (error) {
+         record.deliveries[adapter.id] = {
+-          status: "failed",
++          status: error?.outcomeUnknown ? "unknown" : "failed",
+           error: safeRecordError(error),
+           failedAt: new Date().toISOString(),
+         };
+@@ -148,7 +155,13 @@ export async function runDailyDossier(options) {
+       await store.save(record);
+     }
+ 
+-    record.status = deliveryErrors.length ? "delivery_failed" : "complete";
++    record.status = Object.values(record.deliveries).some(
++      (delivery) => delivery.status === "unknown",
++    )
++      ? "delivery_unknown"
++      : deliveryErrors.length
++        ? "delivery_failed"
++        : "complete";
+     await store.save(record);
+     return {
+       runId,
+diff --git a/src/dashboard.mjs b/src/dashboard.mjs
+index a872248..691665c 100644
+--- a/src/dashboard.mjs
++++ b/src/dashboard.mjs
+@@ -79,7 +79,13 @@ async function handleRequest(request, response, options) {
+     return sendHtml(
+       response,
+       200,
+-      renderNewsletterDetail(newsletter, issues, options.csrfToken, url),
++      renderNewsletterDetail(
++        newsletter,
++        issues,
++        options.csrfToken,
++        url,
++        options.baseConfig,
++      ),
+     );
+   }
+ 
+@@ -110,6 +116,50 @@ async function handleRequest(request, response, options) {
+     );
+   }
+ 
++  const deliverySettingsMatch =
++    /^\/newsletters\/([a-z0-9_-]+)\/delivery$/.exec(url.pathname);
++  if (deliverySettingsMatch) {
++    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
++    const form = await requireForm(request, options.csrfToken);
++    if (!options.workspace.getNewsletter(deliverySettingsMatch[1])) {
++      return notFound(response);
++    }
++    try {
++      options.workspace.setNewsletterEmail(deliverySettingsMatch[1], {
++        enabled: form.get("emailEnabled") === "on",
++        recipients: recipientsFromForm(form.get("emailRecipients")),
++      });
++    } catch (error) {
++      throw httpError(400, error.message);
++    }
++    return redirect(
++      response,
++      `/newsletters/${encodeURIComponent(
++        deliverySettingsMatch[1],
++      )}?delivery=saved`,
++    );
++  }
++
++  const retryMatch =
++    /^\/issues\/([a-z0-9_-]+)\/retry-delivery$/.exec(url.pathname);
++  if (retryMatch) {
++    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
++    await requireForm(request, options.csrfToken);
++    const issue = options.workspace.getIssue(retryMatch[1]);
++    if (!issue) return notFound(response);
++    try {
++      options.workspace.retryDelivery(issue.id);
++    } catch (error) {
++      throw httpError(400, error.message);
++    }
++    return redirect(
++      response,
++      `/newsletters/${encodeURIComponent(
++        issue.newsletterId,
++      )}?delivery=retried`,
++    );
++  }
++
+   const issueMatch = /^\/issues\/([a-z0-9_-]+)$/.exec(url.pathname);
+   if (issueMatch) {
+     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+@@ -172,9 +222,7 @@ function renderNewsletterCard(newsletter) {
+     <p>${escapeHtml(newsletter.topic)}</p>
+     <dl class="card-metrics">
+       <div><dt>Generated</dt><dd>${newsletter.generatedCount}</dd></div>
+-      <div><dt>Latest</dt><dd>${escapeHtml(
+-        humanStatus(newsletter.latestStatus),
+-      )}</dd></div>
++      <div><dt>Sent</dt><dd>${newsletter.sentCount}</dd></div>
+     </dl>
+     <div class="next-run">Next: ${escapeHtml(
+       newsletter.active
+@@ -207,18 +255,31 @@ function renderNewsletterForm(baseConfig, csrfToken) {
+       <label><span>RSS or Atom feeds</span><textarea name="sourceUrls" rows="5" placeholder="One URL per line">${escapeHtml(
+         defaultSources,
+       )}</textarea><small>One URL per line. Leave the installation defaults in place for the first test.</small></label>
++      <fieldset>
++        <legend>Email delivery</legend>
++        <label class="check-label"><input type="checkbox" name="emailEnabled"><span>Send each generated Issue by email</span></label>
++        <label><span>Recipients</span><textarea name="emailRecipients" rows="3" placeholder="you@example.com&#10;team@example.com"></textarea><small>One address per line. The sender and API key stay in the installation config.</small></label>
++      </fieldset>
+       <div class="form-actions"><a class="button secondary" href="/">Cancel</a><button class="button" type="submit">Create Newsletter</button></div>
+     </form>`,
+   );
+ }
+ 
+-function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
++function renderNewsletterDetail(newsletter, issues, csrfToken, url, baseConfig) {
+   const queued = url.searchParams.get("queued");
++  const deliveryNotice = url.searchParams.get("delivery");
+   const notice = queued
+     ? `<div class="notice">Issue queued. The worker will pick it up shortly.</div>`
+-    : "";
++    : deliveryNotice === "saved"
++      ? `<div class="notice">Email delivery settings saved.</div>`
++      : deliveryNotice === "retried"
++        ? `<div class="notice">Email delivery queued for another attempt. The Issue will not be regenerated.</div>`
++        : "";
++  const resendConfigured = baseConfig.deliveries.some(
++    (delivery) => delivery.kind === "resend" && delivery.enabled,
++  );
+   const issueRows = issues.length
+-    ? issues.map(renderIssueRow).join("")
++    ? issues.map((issue) => renderIssueRow(issue, csrfToken)).join("")
+     : `<div class="empty compact"><p>No Issues yet. Queue the first one when you are ready.</p></div>`;
+   return page(
+     newsletter.name,
+@@ -250,12 +311,28 @@ function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
+     <section class="stats">
+       ${stat("Issues", newsletter.issueCount)}
+       ${stat("Generated", newsletter.generatedCount)}
+-      ${stat(
+-        "Next run",
+-        newsletter.active
+-          ? formatTimestamp(newsletter.nextRunAt, newsletter.timeZone)
+-          : "Paused",
+-      )}
++      ${stat("Sent", newsletter.sentCount)}
++    </section>
++    <section class="settings">
++      <div class="section-heading"><div><p class="eyebrow">Delivery</p><h2>Email settings</h2></div>${statusPill(
++        newsletter.emailEnabled ? "active" : "paused",
++      )}</div>
++      <form class="form-card compact-form" method="post" action="/newsletters/${encodeURIComponent(
++        newsletter.id,
++      )}/delivery">
++        ${csrfField(csrfToken)}
++        <label class="check-label"><input type="checkbox" name="emailEnabled" ${
++          newsletter.emailEnabled ? "checked" : ""
++        }><span>Send generated Issues by email</span></label>
++        <label><span>Recipients</span><textarea name="emailRecipients" rows="3" placeholder="you@example.com">${escapeHtml(
++          newsletter.emailRecipients.join("\n"),
++        )}</textarea><small>One address per line. ${
++          resendConfigured
++            ? "An enabled Resend sender is present in the installation config."
++            : "No enabled Resend sender is configured yet; delivery attempts will show as failed until one is added."
++        }</small></label>
++        <div class="form-actions"><button class="button secondary" type="submit">Save email settings</button></div>
++      </form>
+     </section>
+     <section class="history">
+       <div class="section-heading"><div><p class="eyebrow">Archive</p><h2>Issue history</h2></div></div>
+@@ -264,24 +341,46 @@ function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
+   );
+ }
+ 
+-function renderIssueRow(issue) {
++function renderIssueRow(issue, csrfToken) {
+   const title =
+     issue.title ??
+     (issue.trigger === "manual" ? "Manual Issue" : "Scheduled Issue");
+-  const href =
++  const titleMarkup =
+     issue.status === "generated"
+-      ? `href="/issues/${encodeURIComponent(issue.id)}"`
++      ? `<a href="/issues/${encodeURIComponent(issue.id)}"><strong>${escapeHtml(
++          title,
++        )}</strong></a>`
++      : `<strong>${escapeHtml(title)}</strong>`;
++  const deliveryMarkup = issue.delivery
++    ? `<span class="delivery-state">${statusPill(
++        issue.delivery.status,
++      )}${
++        issue.delivery.externalId
++          ? `<small title="Resend email ID">${escapeHtml(
++              issue.delivery.externalId,
++            )}</small>`
++          : ""
++      }${
++        issue.delivery.error
++          ? `<small class="error">${escapeHtml(issue.delivery.error)}</small>`
++          : ""
++      }</span>`
++    : `<span class="delivery-state"><small>Email off</small></span>`;
++  const retry =
++    issue.delivery?.status === "failed"
++      ? `<form method="post" action="/issues/${encodeURIComponent(
++        issue.id,
++      )}/retry-delivery">${csrfField(
++          csrfToken,
++        )}<button class="link-button" type="submit">Retry email</button></form>`
+       : "";
+-  return `<a class="issue-row ${
+-    issue.status === "generated" ? "" : "disabled"
+-    }" ${href}>
+-    <div>${statusPill(issue.status)}<strong>${escapeHtml(
+-      title,
+-    )}</strong></div>
++  return `<div class="issue-row">
++    <div>${statusPill(issue.status)}${titleMarkup}</div>
++    ${deliveryMarkup}
+     <div class="issue-meta"><span>${escapeHtml(
+       issue.trigger,
+-    )}</span><span>${escapeHtml(formatTimestamp(issue.createdAt))}</span><span aria-hidden="true">→</span></div>
+-  </a>`;
++    )}</span><span>${escapeHtml(formatTimestamp(issue.createdAt))}</span>${retry}</div>
++  </div>`;
+ }
+ 
+ async function renderIssuePreview(newsletter, issue) {
+@@ -306,7 +405,9 @@ async function renderIssuePreview(newsletter, issue) {
+         issue.title ?? "Issue preview",
+       )}</h1><div class="title-line">${statusPill(issue.status)}<span>${escapeHtml(
+         formatTimestamp(issue.completedAt ?? issue.createdAt),
+-      )}</span></div></div>
++      )}</span>${
++        issue.delivery ? statusPill(issue.delivery.status) : ""
++      }</div></div>
+     </header>
+     <article class="dossier">${content}</article>`,
+   );
+@@ -337,9 +438,18 @@ function newsletterFromForm(form, baseConfig) {
+       }
+       return { name, url, limit: 10 };
+     }),
++    emailEnabled: form.get("emailEnabled") === "on",
++    emailRecipients: recipientsFromForm(form.get("emailRecipients")),
+   };
+ }
+ 
++function recipientsFromForm(value) {
++  return String(value ?? "")
++    .split(/[\r\n,]+/)
++    .map((recipient) => recipient.trim())
++    .filter(Boolean);
++}
++
+ async function requireForm(request, csrfToken) {
+   const contentType = request.headers["content-type"] ?? "";
+   if (!contentType.startsWith("application/x-www-form-urlencoded")) {
+@@ -394,7 +504,7 @@ function page(title, body) {
+   <style>${STYLES}</style>
+ </head>
+ <body>
+-  <nav><a class="brand" href="/"><span>LL</span> Learnloom</a><span class="test-label">Test phase · local only</span></nav>
++  <nav><a class="brand" href="/"><span>LL</span> Learnloom</a><span class="test-label">Self-hosted · local only</span></nav>
+   <main>${body}</main>
+   <footer>Learnloom shapes source material into durable understanding.</footer>
+ </body>
+@@ -498,5 +608,20 @@ function httpError(statusCode, message) {
+ const STYLES = `
+ :root{--ink:#14211d;--muted:#65736d;--paper:#f4f1e8;--card:#fffdf8;--line:#d9d8ce;--green:#176b50;--green2:#dff1e7;--navy:#132d29;--amber:#b96b27;--red:#a8433b}
+ *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:inherit}nav{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 max(24px,calc((100vw - 1120px)/2));border-bottom:1px solid var(--line);background:rgba(244,241,232,.92)}.brand{text-decoration:none;font-weight:760;letter-spacing:-.02em}.brand span{display:inline-grid;place-items:center;width:34px;height:34px;margin-right:9px;border-radius:10px;background:var(--navy);color:white;font-size:12px}.test-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}main{max-width:1120px;margin:0 auto;padding:70px 24px 100px}footer{max-width:1120px;margin:0 auto;padding:30px 24px 50px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}.hero,.detail-hero,.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:32px;margin-bottom:44px}.hero h1,.detail-hero h1,.page-header h1{font-family:Georgia,serif;font-size:clamp(42px,6vw,74px);line-height:.98;letter-spacing:-.045em;margin:10px 0 18px}.page-header h1{font-size:clamp(40px,5vw,62px)}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:800;color:var(--green);margin:0}.lede{max-width:700px;color:var(--muted);font-size:18px;line-height:1.6;margin:0}.button{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--green);border-radius:999px;padding:12px 20px;background:var(--green);color:white;font:inherit;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}.button:hover{filter:brightness(.94)}.button.secondary{background:transparent;color:var(--green)}.stats{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:16px;background:rgba(255,253,248,.65);margin-bottom:36px;overflow:hidden}.stats>div{padding:22px 24px;border-right:1px solid var(--line)}.stats>div:last-child{border:0}.stats dt{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.1em}.stats dd{font-family:Georgia,serif;font-size:28px;margin:7px 0 0}.card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.newsletter-card{display:flex;flex-direction:column;min-height:310px;padding:28px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 8px 30px rgba(20,33,29,.045)}.card-top,.title-line{display:flex;align-items:center;gap:12px;justify-content:space-between;color:var(--muted);font-size:12px}.newsletter-card h2{font-family:Georgia,serif;font-size:29px;line-height:1.1;margin:28px 0 10px}.newsletter-card>p{color:var(--muted);line-height:1.55;margin:0}.pill{display:inline-flex;border-radius:999px;padding:5px 9px;background:#e9ebe6;color:#57625d;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.1em}.pill.active,.pill.generated{background:var(--green2);color:var(--green)}.pill.queued,.pill.generating{background:#fff0d8;color:var(--amber)}.pill.failed{background:#f9dfdc;color:var(--red)}.card-metrics{display:flex;gap:34px;margin:auto 0 18px}.card-metrics dt{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}.card-metrics dd{font-weight:750;margin:5px 0 0}.next-run{border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px}.card-link{display:flex;justify-content:space-between;margin-top:16px;color:var(--green);font-weight:750;text-decoration:none}.empty{padding:70px 30px;text-align:center;border:1px dashed #b8beb6;border-radius:18px;background:rgba(255,253,248,.5)}.empty.compact{padding:36px}.empty h2{font-family:Georgia,serif;font-size:34px;margin:10px}.empty p{color:var(--muted);margin:12px auto 26px;max-width:500px}.back{display:inline-block;margin-bottom:26px;color:var(--muted);font-size:13px;text-decoration:none}.form-card{max-width:780px;padding:32px;border:1px solid var(--line);border-radius:20px;background:var(--card)}label{display:block;margin-bottom:24px}label>span{display:block;margin-bottom:8px;font-size:13px;font-weight:750}input,textarea{width:100%;border:1px solid #bdc2ba;border-radius:10px;background:#fff;padding:12px 14px;color:var(--ink);font:inherit}input:focus,textarea:focus{outline:3px solid rgba(23,107,80,.16);border-color:var(--green)}textarea{resize:vertical;line-height:1.5}small{display:block;color:var(--muted);margin-top:7px}.form-row{display:grid;grid-template-columns:1fr 2fr;gap:18px}.form-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:32px}.detail-hero{align-items:center}.action-stack{display:flex;gap:10px}.title-line{justify-content:flex-start;margin:16px 0}.notice{margin:-12px 0 28px;padding:14px 18px;border-radius:10px;background:var(--green2);color:var(--green);font-weight:650}.section-heading{display:flex;justify-content:space-between;align-items:end;margin:50px 0 18px}.section-heading h2{font-family:Georgia,serif;font-size:34px;margin:6px 0}.issue-list{border-top:1px solid var(--line)}.issue-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 8px;border-bottom:1px solid var(--line);text-decoration:none}.issue-row>div:first-child{display:flex;align-items:center;gap:14px}.issue-row:not(.disabled):hover{background:rgba(255,253,248,.7)}.issue-row.disabled{cursor:default}.issue-meta{display:flex;gap:20px;color:var(--muted);font-size:12px}.dossier{max-width:820px;margin:0 auto;padding:42px;border:1px solid var(--line);border-radius:18px;background:var(--card);line-height:1.65}.dossier h1,.dossier h2,.dossier h3{font-family:Georgia,serif;line-height:1.2}.dossier a{color:var(--green)}.dossier pre{white-space:pre-wrap}
++.pill.delivered{background:var(--green2);color:var(--green)}
++.pill.pending,.pill.delivering{background:#fff0d8;color:var(--amber)}
++.pill.unknown{background:#fff0d8;color:var(--amber)}
++.compact-form{max-width:none}
++fieldset{margin:8px 0 24px;padding:22px;border:1px solid var(--line);border-radius:14px}
++legend{padding:0 8px;font-weight:750}
++.check-label{display:flex;align-items:center;gap:10px}
++.check-label input{width:auto}
++.check-label span{margin:0}
++.issue-row a{text-decoration:none}
++.issue-row:hover{background:rgba(255,253,248,.7)}
++.issue-meta{align-items:center}
++.delivery-state{min-width:110px}
++.delivery-state .error{max-width:260px;color:var(--red)}
++.link-button{border:0;background:none;padding:0;color:var(--green);font:inherit;font-weight:750;cursor:pointer}
+ @media(max-width:760px){nav{padding:0 18px}.test-label{display:none}main{padding:44px 18px 70px}.hero,.detail-hero,.page-header{display:block}.hero .button{margin-top:24px}.stats{grid-template-columns:1fr}.stats>div{border-right:0;border-bottom:1px solid var(--line)}.card-grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}.action-stack{margin-top:24px}.issue-row{align-items:flex-start;flex-direction:column}.issue-meta{width:100%;justify-content:space-between}.dossier{padding:24px}}
+ `;
+diff --git a/src/delivery.mjs b/src/delivery.mjs
+index f753956..6737981 100644
+--- a/src/delivery.mjs
++++ b/src/delivery.mjs
+@@ -29,24 +29,31 @@ export class ResendDelivery {
+       );
+     }
+     const rendered = renderDossierEmail(dossier, markdown);
+-    const response = await this.fetchImpl(this.endpoint, {
+-      method: "POST",
+-      headers: {
+-        authorization: `Bearer ${apiKey}`,
+-        "content-type": "application/json",
+-        "idempotency-key": `learnloom/${runId}/${generationId}/${this.id}`,
+-      },
+-      body: JSON.stringify({
+-        from: this.config.from,
+-        to: this.config.to,
+-        subject: safeSubject(
+-          `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
+-        ),
+-        html: rendered.html,
+-        text: rendered.text,
+-      }),
+-      signal: AbortSignal.timeout(30_000),
+-    });
++    let response;
++    try {
++      response = await this.fetchImpl(this.endpoint, {
++        method: "POST",
++        headers: {
++          authorization: `Bearer ${apiKey}`,
++          "content-type": "application/json",
++          "idempotency-key": `learnloom/${runId}/${generationId}/${this.id}`,
++        },
++        body: JSON.stringify({
++          from: this.config.from,
++          to: this.config.to,
++          subject: safeSubject(
++            `${this.config.subjectPrefix}: ${dossier.title} — ${dossier.date}`,
++          ),
++          html: rendered.html,
++          text: rendered.text,
++        }),
++        signal: AbortSignal.timeout(30_000),
++      });
++    } catch {
++      throw new DeliveryOutcomeUnknownError(
++        "Resend delivery outcome is unknown because no response was received.",
++      );
++    }
+     let payload;
+     try {
+       payload = await response.json();
+@@ -68,12 +75,22 @@ export class ResendDelivery {
+       );
+     }
+     if (typeof payload?.id !== "string" || payload.id === "") {
+-      throw new Error("Resend returned no email identifier.");
++      throw new DeliveryOutcomeUnknownError(
++        "Resend accepted the request but returned no usable email identifier.",
++      );
+     }
+     return { externalId: payload.id };
+   }
+ }
+ 
++export class DeliveryOutcomeUnknownError extends Error {
++  constructor(message) {
++    super(message);
++    this.name = "DeliveryOutcomeUnknownError";
++    this.outcomeUnknown = true;
++  }
++}
++
+ function safeSubject(value) {
+   return value
+     .replace(/[\u0000-\u001F\u007F]+/g, " ")
+diff --git a/src/newsletter-worker.mjs b/src/newsletter-worker.mjs
+index 18515c5..922fe5f 100644
+--- a/src/newsletter-worker.mjs
++++ b/src/newsletter-worker.mjs
+@@ -1,6 +1,9 @@
++import { readFile } from "node:fs/promises";
+ import { validateConfig } from "./config.mjs";
+ import { runDailyDossier } from "./daily-run.mjs";
++import { ResendDelivery } from "./delivery.mjs";
+ import { resolveAppPaths } from "./paths.mjs";
++import { loadJson } from "./state.mjs";
+ 
+ export async function processNextIssue(options) {
+   const {
+@@ -83,7 +86,105 @@ export async function runWorkerCycle(options) {
+     if (!issue) break;
+     processed.push(issue);
+   }
+-  return { dispatched, processed };
++  const deliveries = [];
++  const maximumDeliveries = options.maximumDeliveries ?? 100;
++  for (let count = 0; count < maximumDeliveries; count += 1) {
++    const delivery = await processNextDelivery(options);
++    if (!delivery) break;
++    deliveries.push(delivery);
++  }
++  return { dispatched, processed, deliveries };
++}
++
++export async function processNextDelivery(options) {
++  const {
++    workspace,
++    baseConfig,
++    onEvent = () => {},
++  } = options;
++  const clock = options.clock ?? (() => new Date());
++  const startedAt = options.now ?? clock();
++  const delivery = workspace.claimNextDelivery(startedAt);
++  if (!delivery) return null;
++  onEvent({
++    type: "delivery-claimed",
++    issueId: delivery.issue.id,
++    newsletterId: delivery.issue.newsletterId,
++    attemptCount: delivery.attemptCount,
++  });
++
++  try {
++    const resendConfig = baseConfig.deliveries.find(
++      (candidate) => candidate.kind === "resend" && candidate.enabled,
++    );
++    if (!resendConfig) {
++      throw new Error(
++        "No enabled Resend delivery is configured for Newsletter email.",
++      );
++    }
++    const dossier = await loadJson(
++      delivery.issue.dossierPath,
++      "Newsletter Dossier",
++    );
++    if (!dossier || typeof dossier !== "object" || Array.isArray(dossier)) {
++      throw new Error(
++        `Newsletter Dossier is missing at ${delivery.issue.dossierPath}.`,
++      );
++    }
++    const markdown = await readFile(delivery.issue.artifactPath, "utf8");
++    const adapter = new ResendDelivery(
++      {
++        ...resendConfig,
++        id: "newsletter-email",
++        to: delivery.newsletter.emailRecipients,
++      },
++      {
++        env: options.env,
++        fetchImpl: options.fetchImpl,
++        resendEndpoint: options.resendEndpoint,
++      },
++    );
++    const receipt = await adapter.deliver({
++      runId: delivery.issue.id,
++      generationId: delivery.issue.generationId,
++      dossier,
++      markdown,
++    });
++    const completed = workspace.completeDelivery(
++      delivery.issue.id,
++      receipt.externalId,
++      options.now ?? clock(),
++    );
++    onEvent({
++      type: "delivery-complete",
++      issueId: delivery.issue.id,
++      newsletterId: delivery.issue.newsletterId,
++      externalId: completed.externalId,
++    });
++    return completed;
++  } catch (error) {
++    const failed = error?.outcomeUnknown
++      ? workspace.markDeliveryUnknown(
++          delivery.issue.id,
++          error,
++          options.now ?? clock(),
++        )
++      : workspace.failDelivery(
++          delivery.issue.id,
++          error,
++          options.now ?? clock(),
++        );
++    onEvent({
++      type:
++        failed.status === "unknown"
++          ? "delivery-outcome-unknown"
++          : "delivery-failed",
++      issueId: delivery.issue.id,
++      newsletterId: delivery.issue.newsletterId,
++      message: failed.error,
++    });
++    return failed;
++  }
+ }
+ 
+ export function newsletterRuntimeConfig(baseConfig, newsletter) {
+diff --git a/src/workspace.mjs b/src/workspace.mjs
+index f984e36..031a614 100644
+--- a/src/workspace.mjs
++++ b/src/workspace.mjs
+@@ -4,6 +4,14 @@ import path from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ 
+ const ISSUE_STATES = new Set(["queued", "generating", "generated", "failed"]);
++const DELIVERY_STATES = new Set([
++  "pending",
++  "delivering",
++  "delivered",
++  "failed",
++  "cancelled",
++  "unknown",
++]);
+ const MAX_SCHEDULE_SCAN_MINUTES = 8 * 24 * 60;
+ 
+ export class SQLiteWorkspace {
+@@ -25,67 +33,99 @@ export class SQLiteWorkspace {
+   }
+ 
+   initialize() {
+-    this.database.exec(`
+-      PRAGMA foreign_keys = ON;
+-      PRAGMA busy_timeout = 5000;
+-      PRAGMA journal_mode = WAL;
+-    `);
+-    const currentVersion = Number(
+-      this.database.prepare("PRAGMA user_version").get().user_version,
++    this.database.exec("PRAGMA busy_timeout = 5000");
++    this.database.exec("PRAGMA foreign_keys = ON");
++    execWithBusyRetry(
++      this.database,
++      "PRAGMA journal_mode = WAL",
++      5_000,
+     );
+-    if (currentVersion > 1) {
+-      throw new Error(
+-        `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
++    this.transaction(() => {
++      const currentVersion = Number(
++        this.database.prepare("PRAGMA user_version").get().user_version,
+       );
+-    }
+-    this.database.exec(`
+-
+-      CREATE TABLE IF NOT EXISTS newsletters (
+-        id TEXT PRIMARY KEY,
+-        name TEXT NOT NULL,
+-        topic TEXT NOT NULL,
+-        learner_level TEXT NOT NULL,
+-        learner_goal TEXT NOT NULL,
+-        lesson_minutes INTEGER NOT NULL CHECK (lesson_minutes BETWEEN 5 AND 90),
+-        sources_json TEXT NOT NULL,
+-        schedule_hour INTEGER NOT NULL CHECK (schedule_hour BETWEEN 0 AND 23),
+-        schedule_minute INTEGER NOT NULL CHECK (schedule_minute BETWEEN 0 AND 59),
+-        time_zone TEXT NOT NULL,
+-        active INTEGER NOT NULL CHECK (active IN (0, 1)),
+-        next_run_at TEXT NOT NULL,
+-        created_at TEXT NOT NULL,
+-        updated_at TEXT NOT NULL
+-      ) STRICT;
+-
+-      CREATE TABLE IF NOT EXISTS issues (
+-        id TEXT PRIMARY KEY,
+-        newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+-        trigger TEXT NOT NULL CHECK (trigger IN ('scheduled', 'manual')),
+-        scheduled_local_date TEXT,
+-        status TEXT NOT NULL CHECK (
+-          status IN ('queued', 'generating', 'generated', 'failed')
+-        ),
+-        dossier_title TEXT,
+-        generation_id TEXT,
+-        artifact_path TEXT,
+-        dossier_path TEXT,
+-        error TEXT,
+-        created_at TEXT NOT NULL,
+-        started_at TEXT,
+-        completed_at TEXT
+-      ) STRICT;
+-
+-      CREATE UNIQUE INDEX IF NOT EXISTS issues_one_scheduled_per_day
+-        ON issues(newsletter_id, scheduled_local_date)
+-        WHERE trigger = 'scheduled';
+-      CREATE INDEX IF NOT EXISTS issues_queue
+-        ON issues(status, created_at);
+-      CREATE INDEX IF NOT EXISTS issues_newsletter_history
+-        ON issues(newsletter_id, created_at DESC);
+-    `);
+-    if (currentVersion === 0) {
+-      this.database.exec("PRAGMA user_version = 1");
+-    }
++      if (currentVersion > 2) {
++        throw new Error(
++          `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
++        );
++      }
++      this.database.exec(`
++        CREATE TABLE IF NOT EXISTS newsletters (
++          id TEXT PRIMARY KEY,
++          name TEXT NOT NULL,
++          topic TEXT NOT NULL,
++          learner_level TEXT NOT NULL,
++          learner_goal TEXT NOT NULL,
++          lesson_minutes INTEGER NOT NULL CHECK (lesson_minutes BETWEEN 5 AND 90),
++          sources_json TEXT NOT NULL,
++          schedule_hour INTEGER NOT NULL CHECK (schedule_hour BETWEEN 0 AND 23),
++          schedule_minute INTEGER NOT NULL CHECK (schedule_minute BETWEEN 0 AND 59),
++          time_zone TEXT NOT NULL,
++          active INTEGER NOT NULL CHECK (active IN (0, 1)),
++          next_run_at TEXT NOT NULL,
++          created_at TEXT NOT NULL,
++          updated_at TEXT NOT NULL
++        ) STRICT;
++
++        CREATE TABLE IF NOT EXISTS issues (
++          id TEXT PRIMARY KEY,
++          newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
++          trigger TEXT NOT NULL CHECK (trigger IN ('scheduled', 'manual')),
++          scheduled_local_date TEXT,
++          status TEXT NOT NULL CHECK (
++            status IN ('queued', 'generating', 'generated', 'failed')
++          ),
++          dossier_title TEXT,
++          generation_id TEXT,
++          artifact_path TEXT,
++          dossier_path TEXT,
++          error TEXT,
++          created_at TEXT NOT NULL,
++          started_at TEXT,
++          completed_at TEXT
++        ) STRICT;
++
++        CREATE UNIQUE INDEX IF NOT EXISTS issues_one_scheduled_per_day
++          ON issues(newsletter_id, scheduled_local_date)
++          WHERE trigger = 'scheduled';
++        CREATE INDEX IF NOT EXISTS issues_queue
++          ON issues(status, created_at);
++        CREATE INDEX IF NOT EXISTS issues_newsletter_history
++          ON issues(newsletter_id, created_at DESC);
++      `);
++      if (currentVersion < 2) {
++        this.database.exec(`
++          ALTER TABLE newsletters
++            ADD COLUMN email_enabled INTEGER NOT NULL DEFAULT 0
++            CHECK (email_enabled IN (0, 1));
++          ALTER TABLE newsletters
++            ADD COLUMN email_recipients_json TEXT NOT NULL DEFAULT '[]';
++
++          CREATE TABLE issue_deliveries (
++            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
++            channel TEXT NOT NULL CHECK (channel = 'email'),
++            status TEXT NOT NULL CHECK (
++              status IN (
++                'pending', 'delivering', 'delivered', 'failed', 'cancelled',
++                'unknown'
++              )
++            ),
++            attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
++            external_id TEXT,
++            error TEXT,
++            created_at TEXT NOT NULL,
++            started_at TEXT,
++            completed_at TEXT,
++            updated_at TEXT NOT NULL,
++            PRIMARY KEY (issue_id, channel)
++          ) STRICT;
++
++          CREATE INDEX issue_deliveries_queue
++            ON issue_deliveries(status, created_at);
++          PRAGMA user_version = 2;
++        `);
++      }
++    });
+   }
+ 
+   diagnostics() {
+@@ -110,8 +150,9 @@ export class SQLiteWorkspace {
+         INSERT INTO newsletters (
+           id, name, topic, learner_level, learner_goal, lesson_minutes,
+           sources_json, schedule_hour, schedule_minute, time_zone, active,
+-          next_run_at, created_at, updated_at
+-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++          next_run_at, created_at, updated_at, email_enabled,
++          email_recipients_json
++        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       `)
+       .run(
+         newsletter.id,
+@@ -128,6 +169,8 @@ export class SQLiteWorkspace {
+         newsletter.nextRunAt,
+         newsletter.createdAt,
+         newsletter.updatedAt,
++        newsletter.emailEnabled ? 1 : 0,
++        JSON.stringify(newsletter.emailRecipients),
+       );
+     return this.getNewsletter(newsletter.id);
+   }
+@@ -139,6 +182,14 @@ export class SQLiteWorkspace {
+           n.*,
+           COUNT(i.id) AS issue_count,
+           SUM(CASE WHEN i.status = 'generated' THEN 1 ELSE 0 END) AS generated_count,
++          (
++            SELECT COUNT(*)
++            FROM issue_deliveries AS sent
++            JOIN issues AS sent_issue ON sent_issue.id = sent.issue_id
++            WHERE sent_issue.newsletter_id = n.id
++              AND sent.channel = 'email'
++              AND sent.status = 'delivered'
++          ) AS sent_count,
+           (
+             SELECT latest.status
+             FROM issues AS latest
+@@ -168,7 +219,15 @@ export class SQLiteWorkspace {
+         SELECT
+           n.*,
+           COUNT(i.id) AS issue_count,
+-          SUM(CASE WHEN i.status = 'generated' THEN 1 ELSE 0 END) AS generated_count
++          SUM(CASE WHEN i.status = 'generated' THEN 1 ELSE 0 END) AS generated_count,
++          (
++            SELECT COUNT(*)
++            FROM issue_deliveries AS sent
++            JOIN issues AS sent_issue ON sent_issue.id = sent.issue_id
++            WHERE sent_issue.newsletter_id = n.id
++              AND sent.channel = 'email'
++              AND sent.status = 'delivered'
++          ) AS sent_count
+         FROM newsletters AS n
+         LEFT JOIN issues AS i ON i.newsletter_id = n.id
+         WHERE n.id = ?
+@@ -202,6 +261,38 @@ export class SQLiteWorkspace {
+     return this.getNewsletter(id);
+   }
+ 
++  setNewsletterEmail(id, input) {
++    this.requireNewsletter(id);
++    const settings = normalizeEmailSettings(input);
++    const now = this.now().toISOString();
++    this.transaction(() => {
++      this.database
++        .prepare(`
++          UPDATE newsletters
++          SET email_enabled = ?, email_recipients_json = ?, updated_at = ?
++          WHERE id = ?
++        `)
++        .run(
++          settings.enabled ? 1 : 0,
++          JSON.stringify(settings.recipients),
++          now,
++          id,
++        );
++      if (!settings.enabled) {
++        this.database
++          .prepare(`
++            UPDATE issue_deliveries
++            SET status = 'cancelled', updated_at = ?
++            WHERE issue_id IN (
++              SELECT id FROM issues WHERE newsletter_id = ?
++            ) AND channel = 'email' AND status IN ('pending', 'failed')
++          `)
++          .run(now, id);
++      }
++    });
++    return this.getNewsletter(id);
++  }
++
+   enqueueManualIssue(newsletterId) {
+     this.requireNewsletter(newsletterId);
+     const now = this.now().toISOString();
+@@ -315,24 +406,38 @@ export class SQLiteWorkspace {
+       "Issue Dossier path",
+       4_000,
+     );
+-    const update = this.database
+-      .prepare(`
+-        UPDATE issues
+-        SET status = 'generated', dossier_title = ?, generation_id = ?,
+-            artifact_path = ?, dossier_path = ?, completed_at = ?, error = NULL
+-        WHERE id = ? AND status = 'generating'
+-      `)
+-      .run(
+-        title,
+-        generationId,
+-        artifactPath,
+-        dossierPath,
+-        now.toISOString(),
+-        id,
+-      );
+-    if (Number(update.changes) !== 1) {
+-      throw new Error(`Issue ${id} is not generating.`);
+-    }
++    const completedAt = now.toISOString();
++    this.transaction(() => {
++      const update = this.database
++        .prepare(`
++          UPDATE issues
++          SET status = 'generated', dossier_title = ?, generation_id = ?,
++              artifact_path = ?, dossier_path = ?, completed_at = ?, error = NULL
++          WHERE id = ? AND status = 'generating'
++        `)
++        .run(
++          title,
++          generationId,
++          artifactPath,
++          dossierPath,
++          completedAt,
++          id,
++        );
++      if (Number(update.changes) !== 1) {
++        throw new Error(`Issue ${id} is not generating.`);
++      }
++      this.database
++        .prepare(`
++          INSERT OR IGNORE INTO issue_deliveries (
++            issue_id, channel, status, created_at, updated_at
++          )
++          SELECT i.id, 'email', 'pending', ?, ?
++          FROM issues AS i
++          JOIN newsletters AS n ON n.id = i.newsletter_id
++          WHERE i.id = ? AND n.email_enabled = 1
++        `)
++        .run(completedAt, completedAt, id);
++    });
+     return this.getIssue(id);
+   }
+ 
+@@ -360,9 +465,17 @@ export class SQLiteWorkspace {
+     const offset = boundedInteger(options.offset ?? 0, 0, 1_000_000, "Issue offset");
+     return this.database
+       .prepare(`
+-        SELECT * FROM issues
+-        WHERE newsletter_id = ?
+-        ORDER BY created_at DESC, id DESC
++        SELECT i.*, d.status AS delivery_status,
++          d.attempt_count AS delivery_attempt_count,
++          d.external_id AS delivery_external_id,
++          d.error AS delivery_error,
++          d.started_at AS delivery_started_at,
++          d.completed_at AS delivery_completed_at
++        FROM issues AS i
++        LEFT JOIN issue_deliveries AS d
++          ON d.issue_id = i.id AND d.channel = 'email'
++        WHERE i.newsletter_id = ?
++        ORDER BY i.created_at DESC, i.id DESC
+         LIMIT ? OFFSET ?
+       `)
+       .all(newsletterId, limit, offset)
+@@ -370,10 +483,132 @@ export class SQLiteWorkspace {
+   }
+ 
+   getIssue(id) {
+-    const row = this.database.prepare("SELECT * FROM issues WHERE id = ?").get(id);
++    const row = this.database
++      .prepare(`
++        SELECT i.*, d.status AS delivery_status,
++          d.attempt_count AS delivery_attempt_count,
++          d.external_id AS delivery_external_id,
++          d.error AS delivery_error,
++          d.started_at AS delivery_started_at,
++          d.completed_at AS delivery_completed_at
++        FROM issues AS i
++        LEFT JOIN issue_deliveries AS d
++          ON d.issue_id = i.id AND d.channel = 'email'
++        WHERE i.id = ?
++      `)
++      .get(id);
+     return row ? mapIssue(row) : null;
+   }
+ 
++  claimNextDelivery(now = this.now()) {
++    let claimed = null;
++    this.transaction(() => {
++      const row = this.database
++        .prepare(`
++          SELECT d.* FROM issue_deliveries AS d
++          JOIN issues AS i ON i.id = d.issue_id
++          JOIN newsletters AS n ON n.id = i.newsletter_id
++          WHERE d.status = 'pending' AND n.email_enabled = 1
++          ORDER BY d.created_at ASC, d.issue_id ASC
++          LIMIT 1
++        `)
++        .get();
++      if (!row) return;
++      const result = this.database
++        .prepare(`
++          UPDATE issue_deliveries
++          SET status = 'delivering', attempt_count = attempt_count + 1,
++              started_at = ?, completed_at = NULL, error = NULL, updated_at = ?
++          WHERE issue_id = ? AND channel = 'email' AND status = 'pending'
++            AND EXISTS (
++              SELECT 1
++              FROM issues AS i
++              JOIN newsletters AS n ON n.id = i.newsletter_id
++              WHERE i.id = issue_deliveries.issue_id
++                AND n.email_enabled = 1
++            )
++        `)
++        .run(now.toISOString(), now.toISOString(), row.issue_id);
++      if (Number(result.changes) === 1) {
++        const issue = this.getIssue(row.issue_id);
++        claimed = {
++          ...issue.delivery,
++          issue,
++          newsletter: this.requireNewsletter(issue.newsletterId),
++        };
++      }
++    });
++    return claimed;
++  }
++
++  completeDelivery(issueId, externalId, now = this.now()) {
++    const providerId = requireText(externalId, "Delivery external ID", 500);
++    const result = this.database
++      .prepare(`
++        UPDATE issue_deliveries
++        SET status = 'delivered', external_id = ?, error = NULL,
++            completed_at = ?, updated_at = ?
++        WHERE issue_id = ? AND channel = 'email' AND status = 'delivering'
++      `)
++      .run(providerId, now.toISOString(), now.toISOString(), issueId);
++    if (Number(result.changes) !== 1) {
++      throw new Error(`Email delivery for Issue ${issueId} is not delivering.`);
++    }
++    return this.getIssue(issueId).delivery;
++  }
++
++  failDelivery(issueId, error, now = this.now()) {
++    const message = safeError(error, "Unknown delivery error");
++    const result = this.database
++      .prepare(`
++        UPDATE issue_deliveries
++        SET status = 'failed', error = ?, completed_at = ?, updated_at = ?
++        WHERE issue_id = ? AND channel = 'email' AND status = 'delivering'
++      `)
++      .run(message, now.toISOString(), now.toISOString(), issueId);
++    if (Number(result.changes) !== 1) {
++      throw new Error(`Email delivery for Issue ${issueId} is not delivering.`);
++    }
++    return this.getIssue(issueId).delivery;
++  }
++
++  markDeliveryUnknown(issueId, error, now = this.now()) {
++    const message = safeError(error, "Unknown provider delivery outcome");
++    const result = this.database
++      .prepare(`
++        UPDATE issue_deliveries
++        SET status = 'unknown', error = ?, completed_at = ?, updated_at = ?
++        WHERE issue_id = ? AND channel = 'email' AND status = 'delivering'
++      `)
++      .run(message, now.toISOString(), now.toISOString(), issueId);
++    if (Number(result.changes) !== 1) {
++      throw new Error(`Email delivery for Issue ${issueId} is not delivering.`);
++    }
++    return this.getIssue(issueId).delivery;
++  }
++
++  retryDelivery(issueId, now = this.now()) {
++    const result = this.database
++      .prepare(`
++        UPDATE issue_deliveries
++        SET status = 'pending', external_id = NULL, error = NULL,
++            started_at = NULL, completed_at = NULL, updated_at = ?
++        WHERE issue_id = ? AND channel = 'email' AND status = 'failed'
++          AND EXISTS (
++            SELECT 1
++            FROM issues AS i
++            JOIN newsletters AS n ON n.id = i.newsletter_id
++            WHERE i.id = issue_deliveries.issue_id
++              AND n.email_enabled = 1
++          )
++      `)
++      .run(now.toISOString(), issueId);
++    if (Number(result.changes) !== 1) {
++      throw new Error(`Email delivery for Issue ${issueId} is not retryable.`);
++    }
++    return this.getIssue(issueId).delivery;
++  }
++
+   close() {
+     this.database.close();
+   }
+@@ -438,6 +673,10 @@ function normalizeNewsletter(input, now) {
+     throw new Error("Newsletter active state must be a boolean.");
+   }
+   const createdAt = now.toISOString();
++  const email = normalizeEmailSettings({
++    enabled: input.emailEnabled ?? false,
++    recipients: input.emailRecipients ?? [],
++  });
+   return {
+     id,
+     name,
+@@ -463,6 +702,8 @@ function normalizeNewsletter(input, now) {
+     scheduleMinute: minute,
+     timeZone,
+     active,
++    emailEnabled: email.enabled,
++    emailRecipients: email.recipients,
+     nextRunAt: nextDailyOccurrence(now, timeZone, hour, minute).toISOString(),
+     createdAt,
+     updatedAt: createdAt,
+@@ -520,6 +761,9 @@ function mapNewsletter(row) {
+     generatedCount: Number(row.generated_count ?? 0),
+     latestStatus: row.latest_status ?? null,
+     latestCompletedAt: row.latest_completed_at ?? null,
++    emailEnabled: Boolean(row.email_enabled),
++    emailRecipients: JSON.parse(row.email_recipients_json ?? "[]"),
++    sentCount: Number(row.sent_count ?? 0),
+   };
+ }
+ 
+@@ -541,9 +785,69 @@ function mapIssue(row) {
+     createdAt: row.created_at,
+     startedAt: row.started_at,
+     completedAt: row.completed_at,
++    delivery: row.delivery_status
++      ? {
++          issueId: row.id,
++          channel: "email",
++          status: validateDeliveryStatus(row.delivery_status, row.id),
++          attemptCount: Number(row.delivery_attempt_count),
++          externalId: row.delivery_external_id,
++          error: row.delivery_error,
++          startedAt: row.delivery_started_at,
++          completedAt: row.delivery_completed_at,
++        }
++      : null,
+   };
+ }
+ 
++function normalizeEmailSettings(input) {
++  if (!input || typeof input !== "object" || Array.isArray(input)) {
++    throw new Error("Newsletter email settings must be an object.");
++  }
++  const enabled = input.enabled ?? false;
++  if (typeof enabled !== "boolean") {
++    throw new Error("Newsletter email enabled state must be a boolean.");
++  }
++  if (!Array.isArray(input.recipients)) {
++    throw new Error("Newsletter email recipients must be an array.");
++  }
++  if (input.recipients.length > 20) {
++    throw new Error("Newsletter email supports at most 20 recipients.");
++  }
++  const recipients = [
++    ...new Set(
++      input.recipients.map((value) => {
++        const recipient = requireText(value, "Newsletter email recipient", 320)
++          .toLowerCase();
++        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
++          throw new Error(`Invalid Newsletter email recipient: ${recipient}`);
++        }
++        return recipient;
++      }),
++    ),
++  ];
++  if (enabled && recipients.length === 0) {
++    throw new Error(
++      "Newsletter email requires at least one recipient when enabled.",
++    );
++  }
++  return { enabled, recipients };
++}
++
++function validateDeliveryStatus(status, issueId) {
++  if (!DELIVERY_STATES.has(status)) {
++    throw new Error(`Issue ${issueId} has invalid delivery status ${status}.`);
++  }
++  return status;
++}
++
++function safeError(error, fallback) {
++  return String(error?.message ?? error ?? fallback)
++    .replace(/\s+/g, " ")
++    .trim()
++    .slice(0, 500);
++}
++
+ function parseSchedule(value) {
+   const normalized = requireText(value, "Newsletter schedule", 5);
+   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+@@ -611,3 +915,21 @@ function boundedInteger(value, minimum, maximum, field) {
+ function pad(value) {
+   return String(value).padStart(2, "0");
+ }
++
++function execWithBusyRetry(database, statement, timeoutMilliseconds) {
++  const deadline = Date.now() + timeoutMilliseconds;
++  while (true) {
++    try {
++      database.exec(statement);
++      return;
++    } catch (error) {
++      if (error?.errcode !== 5 || Date.now() >= deadline) throw error;
++      Atomics.wait(
++        new Int32Array(new SharedArrayBuffer(4)),
++        0,
++        0,
++        Math.min(25, Math.max(1, deadline - Date.now())),
++      );
++    }
++  }
++}
+diff --git a/test/daily-run.test.mjs b/test/daily-run.test.mjs
+index e11962c..80820cc 100644
+--- a/test/daily-run.test.mjs
++++ b/test/daily-run.test.mjs
+@@ -113,6 +113,43 @@ test("Daily Run skips an already delivered destination", async () => {
+   assert.match(await readFile(recordPath, "utf8"), /"status": "delivered"/);
+ });
+ 
++test("Daily Run does not retry an ambiguous delivery outcome", async () => {
++  const fixture = await fixtureConfig();
++  let deliveryCalls = 0;
++  const delivery = {
++    id: "test-email",
++    async deliver() {
++      deliveryCalls += 1;
++      const error = new Error("response lost after transmission");
++      error.outcomeUnknown = true;
++      throw error;
++    },
++  };
++  const first = await runDailyDossier({
++    config: fixture.config,
++    paths: fixture.paths,
++    demo: true,
++    now: fixture.now,
++    provider: new DemoProvider(),
++    deliveries: [delivery],
++  });
++  const second = await runDailyDossier({
++    config: fixture.config,
++    paths: fixture.paths,
++    demo: true,
++    now: fixture.now,
++    provider: new DemoProvider(),
++    deliveries: [delivery],
++  });
++  assert.equal(first.record.status, "delivery_unknown");
++  assert.equal(second.record.status, "delivery_unknown");
++  assert.equal(
++    second.record.deliveries["test-email"].status,
++    "unknown",
++  );
++  assert.equal(deliveryCalls, 1);
++});
++
+ test("Daily Run regenerates when its recorded artifact is missing", async () => {
+   const fixture = await fixtureConfig();
+   let providerCalls = 0;
+diff --git a/test/dashboard.test.mjs b/test/dashboard.test.mjs
+index f5c0c84..b98a244 100644
+--- a/test/dashboard.test.mjs
++++ b/test/dashboard.test.mjs
+@@ -152,6 +152,94 @@ test("dashboard shows a safe generated Dossier preview by Issue ID", async (cont
+   assert.doesNotMatch(html, /<!doctype html>[\s\S]*<!doctype html>/i);
+ });
+ 
++test("dashboard saves per-Newsletter email settings", async (context) => {
++  const fixture = await dashboardFixture(context);
++  const newsletter = fixture.workspace.createNewsletter(newsletterInput());
++  const response = await fetch(
++    `${fixture.origin}/newsletters/${newsletter.id}/delivery`,
++    {
++      method: "POST",
++      redirect: "manual",
++      headers: { "content-type": "application/x-www-form-urlencoded" },
++      body: new URLSearchParams({
++        _csrf: fixture.csrfToken,
++        emailEnabled: "on",
++        emailRecipients: "READER@example.com\nteam@example.com",
++      }),
++    },
++  );
++  assert.equal(response.status, 303);
++  assert.match(response.headers.get("location"), /\?delivery=saved$/);
++  const saved = fixture.workspace.getNewsletter(newsletter.id);
++  assert.equal(saved.emailEnabled, true);
++  assert.deepEqual(saved.emailRecipients, [
++    "reader@example.com",
++    "team@example.com",
++  ]);
++
++  const detail = await fetch(
++    `${fixture.origin}${response.headers.get("location")}`,
++  );
++  const html = await detail.text();
++  assert.match(html, /Email delivery settings saved/);
++  assert.match(html, /reader@example\.com/);
++  assert.match(html, /No enabled Resend sender is configured/);
++});
++
++test("dashboard shows failed delivery and queues CSRF-protected retry", async (context) => {
++  const fixture = await dashboardFixture(context);
++  const newsletter = fixture.workspace.createNewsletter({
++    ...newsletterInput(),
++    emailEnabled: true,
++    emailRecipients: ["reader@example.com"],
++  });
++  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
++  fixture.workspace.claimNextIssue();
++  fixture.workspace.completeIssue(issue.id, {
++    title: "Delivery test",
++    generationId: "generation-1",
++    artifactPath: "/tmp/delivery.md",
++    dossierPath: "/tmp/delivery.json",
++  });
++  fixture.workspace.claimNextDelivery();
++  fixture.workspace.failDelivery(
++    issue.id,
++    new Error("provider rejected <sender>"),
++  );
++
++  const detail = await fetch(
++    `${fixture.origin}/newsletters/${newsletter.id}`,
++  );
++  const html = await detail.text();
++  assert.match(html, /Retry email/);
++  assert.match(html, /provider rejected &lt;sender&gt;/);
++  assert.doesNotMatch(html, /provider rejected <sender>/);
++
++  const rejected = await fetch(
++    `${fixture.origin}/issues/${issue.id}/retry-delivery`,
++    {
++      method: "POST",
++      headers: { "content-type": "application/x-www-form-urlencoded" },
++      body: new URLSearchParams(),
++    },
++  );
++  assert.equal(rejected.status, 403);
++
++  const retried = await fetch(
++    `${fixture.origin}/issues/${issue.id}/retry-delivery`,
++    {
++      method: "POST",
++      redirect: "manual",
++      headers: { "content-type": "application/x-www-form-urlencoded" },
++      body: new URLSearchParams({ _csrf: fixture.csrfToken }),
++    },
++  );
++  assert.equal(retried.status, 303);
++  assert.match(retried.headers.get("location"), /\?delivery=retried$/);
++  assert.equal(fixture.workspace.getIssue(issue.id).delivery.status, "pending");
++  assert.equal(fixture.workspace.getIssue(issue.id).status, "generated");
++});
++
+ test("dashboard returns 404 for unknown identifiers", async (context) => {
+   const fixture = await dashboardFixture(context);
+   const response = await fetch(`${fixture.origin}/issues/not-here`);
+diff --git a/test/newsletter-worker.test.mjs b/test/newsletter-worker.test.mjs
+index b70551f..608bb48 100644
+--- a/test/newsletter-worker.test.mjs
++++ b/test/newsletter-worker.test.mjs
+@@ -1,11 +1,12 @@
+ import assert from "node:assert/strict";
+-import { mkdtemp } from "node:fs/promises";
++import { mkdtemp, writeFile } from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+ import test from "node:test";
+ import { validateConfig } from "../src/config.mjs";
+ import {
+   newsletterRuntimeConfig,
++  processNextDelivery,
+   processNextIssue,
+   runWorkerCycle,
+ } from "../src/newsletter-worker.mjs";
+@@ -130,6 +131,205 @@ test("newsletterRuntimeConfig maps Newsletter identity without deliveries", asyn
+   fixture.workspace.close();
+ });
+ 
++test("processNextDelivery sends persisted artifacts to Newsletter recipients", async () => {
++  const fixture = await createFixture();
++  const newsletter = fixture.workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com", "team@example.com"],
++    }),
++  );
++  const dossierPath = path.join(fixture.home, "dossier.json");
++  const artifactPath = path.join(fixture.home, "dossier.md");
++  await writeFile(
++    dossierPath,
++    JSON.stringify({
++      title: "RabbitMQ flow control",
++      date: "2026-07-18",
++      generatedAt: fixture.now.toISOString(),
++      lesson: "# Lesson\nBackpressure.",
++      critique: "# Critique\nCheck assumptions.",
++      practice: "# Practice\nModel the flow.",
++      sources: [
++        {
++          title: "Flow Control",
++          source: "RabbitMQ",
++          url: "https://www.rabbitmq.com/docs/flow-control",
++        },
++      ],
++    }),
++  );
++  await writeFile(artifactPath, "# RabbitMQ flow control\n");
++  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
++  fixture.workspace.claimNextIssue();
++  fixture.workspace.completeIssue(issue.id, {
++    title: "RabbitMQ flow control",
++    generationId: "generation-1",
++    artifactPath,
++    dossierPath,
++  });
++  let request;
++
++  const result = await processNextDelivery({
++    workspace: fixture.workspace,
++    baseConfig: fixture.baseConfig,
++    now: fixture.now,
++    env: { RESEND_API_KEY: "secret-resend-key" },
++    async fetchImpl(url, options) {
++      request = { url, options };
++      return new Response(JSON.stringify({ id: "resend-email-1" }), {
++        status: 200,
++        headers: { "content-type": "application/json" },
++      });
++    },
++  });
++
++  assert.equal(result.status, "delivered");
++  assert.equal(result.externalId, "resend-email-1");
++  assert.equal(request.url, "https://api.resend.com/emails");
++  assert.equal(
++    request.options.headers["idempotency-key"],
++    `learnloom/${issue.id}/generation-1/newsletter-email`,
++  );
++  const body = JSON.parse(request.options.body);
++  assert.deepEqual(body.to, ["reader@example.com", "team@example.com"]);
++  assert.equal(body.from, "daily@example.com");
++  assert.match(body.text, /RabbitMQ flow control/);
++  fixture.workspace.close();
++});
++
++test("delivery failure stays failed until retry and never regenerates the Issue", async () => {
++  const fixture = await createFixture();
++  const newsletter = fixture.workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const dossierPath = path.join(fixture.home, "dossier.json");
++  const artifactPath = path.join(fixture.home, "dossier.md");
++  await writeFile(
++    dossierPath,
++    JSON.stringify({
++      title: "RabbitMQ",
++      date: "2026-07-18",
++      generatedAt: fixture.now.toISOString(),
++      lesson: "Lesson",
++      critique: "Critique",
++      practice: "Practice",
++      sources: [],
++    }),
++  );
++  await writeFile(artifactPath, "# RabbitMQ\n");
++  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
++  fixture.workspace.claimNextIssue();
++  fixture.workspace.completeIssue(issue.id, {
++    title: "RabbitMQ",
++    generationId: "generation-1",
++    artifactPath,
++    dossierPath,
++  });
++  const noResend = {
++    ...fixture.baseConfig,
++    deliveries: [],
++  };
++
++  const failed = await processNextDelivery({
++    workspace: fixture.workspace,
++    baseConfig: noResend,
++    now: fixture.now,
++  });
++  assert.equal(failed.status, "failed");
++  assert.match(failed.error, /No enabled Resend/);
++  assert.equal(await processNextDelivery({
++    workspace: fixture.workspace,
++    baseConfig: noResend,
++    now: fixture.now,
++  }), null);
++  assert.equal(fixture.workspace.getIssue(issue.id).status, "generated");
++
++  fixture.workspace.retryDelivery(issue.id);
++  let sends = 0;
++  const delivered = await processNextDelivery({
++    workspace: fixture.workspace,
++    baseConfig: fixture.baseConfig,
++    now: fixture.now,
++    env: { RESEND_API_KEY: "secret-resend-key" },
++    async fetchImpl() {
++      sends += 1;
++      return new Response(JSON.stringify({ id: "resend-email-2" }), {
++        status: 200,
++        headers: { "content-type": "application/json" },
++      });
++    },
++  });
++  assert.equal(delivered.status, "delivered");
++  assert.equal(delivered.attemptCount, 2);
++  assert.equal(sends, 1);
++  assert.equal(fixture.workspace.listIssues(newsletter.id).length, 1);
++  fixture.workspace.close();
++});
++
++test("lost Resend response records a non-retryable unknown outcome", async () => {
++  const fixture = await createFixture();
++  const newsletter = fixture.workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const dossierPath = path.join(fixture.home, "unknown-dossier.json");
++  const artifactPath = path.join(fixture.home, "unknown-dossier.md");
++  await writeFile(
++    dossierPath,
++    JSON.stringify({
++      title: "RabbitMQ",
++      date: "2026-07-18",
++      generatedAt: fixture.now.toISOString(),
++      lesson: "Lesson",
++      critique: "Critique",
++      practice: "Practice",
++      sources: [],
++    }),
++  );
++  await writeFile(artifactPath, "# RabbitMQ\n");
++  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
++  fixture.workspace.claimNextIssue();
++  fixture.workspace.completeIssue(issue.id, {
++    title: "RabbitMQ",
++    generationId: "generation-unknown",
++    artifactPath,
++    dossierPath,
++  });
++  let requests = 0;
++  const result = await processNextDelivery({
++    workspace: fixture.workspace,
++    baseConfig: fixture.baseConfig,
++    now: fixture.now,
++    env: { RESEND_API_KEY: "secret-resend-key" },
++    async fetchImpl() {
++      requests += 1;
++      throw new Error("connection closed after request transmission");
++    },
++  });
++  assert.equal(result.status, "unknown");
++  assert.match(result.error, /outcome is unknown/);
++  assert.equal(requests, 1);
++  assert.throws(
++    () => fixture.workspace.retryDelivery(issue.id),
++    /not retryable/,
++  );
++  assert.equal(
++    await processNextDelivery({
++      workspace: fixture.workspace,
++      baseConfig: fixture.baseConfig,
++      now: fixture.now,
++    }),
++    null,
++  );
++  fixture.workspace.close();
++});
++
+ async function createFixture() {
+   const home = await mkdtemp(path.join(os.tmpdir(), "learnloom-worker-"));
+   const now = new Date("2026-07-18T03:00:00.000Z");
+diff --git a/test/workspace.test.mjs b/test/workspace.test.mjs
+index 8fa0ed5..828359d 100644
+--- a/test/workspace.test.mjs
++++ b/test/workspace.test.mjs
+@@ -1,15 +1,24 @@
+ import assert from "node:assert/strict";
++import { execFile } from "node:child_process";
+ import { mkdtemp } from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
++import { DatabaseSync } from "node:sqlite";
+ import test from "node:test";
++import { promisify } from "node:util";
++import { pathToFileURL } from "node:url";
+ import { SQLiteWorkspace, nextDailyOccurrence } from "../src/workspace.mjs";
+ 
++const execFileAsync = promisify(execFile);
++const workspaceModuleUrl = pathToFileURL(
++  path.resolve("src/workspace.mjs"),
++).href;
++
+ test("SQLiteWorkspace initializes idempotently with safety pragmas", () => {
+   const workspace = new SQLiteWorkspace(":memory:");
+   workspace.initialize();
+   const diagnostics = workspace.diagnostics();
+-  assert.equal(diagnostics.userVersion, 1);
++  assert.equal(diagnostics.userVersion, 2);
+   assert.equal(diagnostics.foreignKeys, true);
+   assert.equal(diagnostics.busyTimeout, 5_000);
+   assert.match(diagnostics.journalMode, /^(memory|wal)$/);
+@@ -20,7 +29,7 @@ test("SQLiteWorkspace rejects a newer schema version", async () => {
+   const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-schema-"));
+   const databasePath = path.join(directory, "workspace.sqlite");
+   const workspace = new SQLiteWorkspace(databasePath);
+-  workspace.database.exec("PRAGMA user_version = 2");
++  workspace.database.exec("PRAGMA user_version = 3");
+   workspace.close();
+   assert.throws(
+     () => new SQLiteWorkspace(databasePath),
+@@ -28,6 +37,69 @@ test("SQLiteWorkspace rejects a newer schema version", async () => {
+   );
+ });
+ 
++test("SQLiteWorkspace migrates schema v1 without losing data", async () => {
++  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-migrate-"));
++  const databasePath = path.join(directory, "workspace.sqlite");
++  const legacy = new DatabaseSync(databasePath);
++  legacy.exec(`
++    PRAGMA foreign_keys = ON;
++    CREATE TABLE newsletters (
++      id TEXT PRIMARY KEY,
++      name TEXT NOT NULL,
++      topic TEXT NOT NULL,
++      learner_level TEXT NOT NULL,
++      learner_goal TEXT NOT NULL,
++      lesson_minutes INTEGER NOT NULL,
++      sources_json TEXT NOT NULL,
++      schedule_hour INTEGER NOT NULL,
++      schedule_minute INTEGER NOT NULL,
++      time_zone TEXT NOT NULL,
++      active INTEGER NOT NULL,
++      next_run_at TEXT NOT NULL,
++      created_at TEXT NOT NULL,
++      updated_at TEXT NOT NULL
++    ) STRICT;
++    CREATE TABLE issues (
++      id TEXT PRIMARY KEY,
++      newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
++      trigger TEXT NOT NULL,
++      scheduled_local_date TEXT,
++      status TEXT NOT NULL,
++      dossier_title TEXT,
++      generation_id TEXT,
++      artifact_path TEXT,
++      dossier_path TEXT,
++      error TEXT,
++      created_at TEXT NOT NULL,
++      started_at TEXT,
++      completed_at TEXT
++    ) STRICT;
++    INSERT INTO newsletters VALUES (
++      'legacy', 'Legacy', 'Queues', 'experienced', 'learn', 15,
++      '[{"name":"Feed","url":"https://example.com/feed","limit":10}]',
++      10, 0, 'Asia/Kolkata', 1, '2026-07-19T04:30:00.000Z',
++      '2026-07-18T00:00:00.000Z', '2026-07-18T00:00:00.000Z'
++    );
++    INSERT INTO issues (
++      id, newsletter_id, trigger, status, created_at
++    ) VALUES ('legacy-issue', 'legacy', 'manual', 'queued',
++      '2026-07-18T00:00:00.000Z');
++    PRAGMA user_version = 1;
++  `);
++  legacy.close();
++
++  await Promise.all([
++    startWorkspaceProcess(databasePath),
++    startWorkspaceProcess(databasePath),
++  ]);
++  const workspace = new SQLiteWorkspace(databasePath);
++  assert.equal(workspace.diagnostics().userVersion, 2);
++  assert.equal(workspace.getNewsletter("legacy").emailEnabled, false);
++  assert.deepEqual(workspace.getNewsletter("legacy").emailRecipients, []);
++  assert.equal(workspace.getIssue("legacy-issue").status, "queued");
++  workspace.close();
++});
++
+ test("SQLiteWorkspace creates isolated Newsletters and dashboard counts", () => {
+   const workspace = fixtureWorkspace();
+   const first = workspace.createNewsletter(newsletterInput("RabbitMQ at depth"));
+@@ -193,6 +265,195 @@ test("SQLiteWorkspace completes and fails Issue lifecycle transitions", () => {
+   workspace.close();
+ });
+ 
++test("Newsletter email settings are normalized and validated", () => {
++  const workspace = fixtureWorkspace();
++  const newsletter = workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["READER@example.com", "reader@example.com"],
++    }),
++  );
++  assert.equal(newsletter.emailEnabled, true);
++  assert.deepEqual(newsletter.emailRecipients, ["reader@example.com"]);
++
++  const disabled = workspace.setNewsletterEmail(newsletter.id, {
++    enabled: false,
++    recipients: ["next@example.com"],
++  });
++  assert.equal(disabled.emailEnabled, false);
++  assert.deepEqual(disabled.emailRecipients, ["next@example.com"]);
++  assert.throws(
++    () =>
++      workspace.setNewsletterEmail(newsletter.id, {
++        enabled: true,
++        recipients: [],
++      }),
++    /at least one recipient/,
++  );
++  assert.throws(
++    () =>
++      workspace.setNewsletterEmail(newsletter.id, {
++        enabled: true,
++        recipients: ["not-an-email"],
++      }),
++    /Invalid Newsletter email recipient/,
++  );
++  workspace.close();
++});
++
++test("Issue completion atomically queues and completes an email Delivery Receipt", () => {
++  const workspace = fixtureWorkspace();
++  const newsletter = workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const claimed = claimManual(workspace, newsletter.id);
++  const generated = workspace.completeIssue(claimed.id, {
++    title: "Queues and backpressure",
++    generationId: "generation-1",
++    artifactPath: "/tmp/issue.md",
++    dossierPath: "/tmp/issue.json",
++  });
++  assert.equal(generated.status, "generated");
++  assert.equal(generated.delivery.status, "pending");
++
++  const delivery = workspace.claimNextDelivery();
++  assert.equal(delivery.issue.id, claimed.id);
++  assert.equal(delivery.newsletter.emailRecipients[0], "reader@example.com");
++  assert.equal(delivery.status, "delivering");
++  assert.equal(delivery.attemptCount, 1);
++
++  const completed = workspace.completeDelivery(claimed.id, "email-provider-1");
++  assert.equal(completed.status, "delivered");
++  assert.equal(completed.externalId, "email-provider-1");
++  assert.equal(workspace.getNewsletter(newsletter.id).sentCount, 1);
++  workspace.close();
++});
++
++test("two connections claim a Delivery Receipt once and failed delivery retries", async () => {
++  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-delivery-"));
++  const databasePath = path.join(directory, "workspace.sqlite");
++  const first = new SQLiteWorkspace(databasePath);
++  const second = new SQLiteWorkspace(databasePath);
++  const newsletter = first.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const claimedIssue = claimManual(first, newsletter.id);
++  first.completeIssue(claimedIssue.id, {
++    title: "Queues",
++    generationId: "generation-1",
++    artifactPath: "/tmp/issue.md",
++    dossierPath: "/tmp/issue.json",
++  });
++
++  assert.equal(first.claimNextDelivery().issueId, claimedIssue.id);
++  assert.equal(second.claimNextDelivery(), null);
++  const failed = first.failDelivery(
++    claimedIssue.id,
++    new Error("provider\nunavailable"),
++  );
++  assert.equal(failed.status, "failed");
++  assert.equal(failed.error, "provider unavailable");
++  assert.equal(first.claimNextDelivery(), null);
++
++  assert.equal(first.retryDelivery(claimedIssue.id).status, "pending");
++  assert.equal(second.claimNextDelivery().attemptCount, 2);
++  first.close();
++  second.close();
++});
++
++test("disabling email cancels unclaimed receipts and re-enable does not revive them", () => {
++  const workspace = fixtureWorkspace();
++  const newsletter = workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const firstIssue = claimManual(workspace, newsletter.id);
++  workspace.completeIssue(firstIssue.id, {
++    title: "First",
++    generationId: "generation-1",
++    artifactPath: "/tmp/first.md",
++    dossierPath: "/tmp/first.json",
++  });
++  workspace.setNewsletterEmail(newsletter.id, {
++    enabled: false,
++    recipients: ["reader@example.com"],
++  });
++  assert.equal(workspace.getIssue(firstIssue.id).delivery.status, "cancelled");
++  assert.equal(workspace.claimNextDelivery(), null);
++  assert.throws(
++    () => workspace.retryDelivery(firstIssue.id),
++    /not retryable/,
++  );
++
++  workspace.setNewsletterEmail(newsletter.id, {
++    enabled: true,
++    recipients: ["reader@example.com"],
++  });
++  assert.equal(workspace.claimNextDelivery(), null);
++  assert.equal(workspace.getIssue(firstIssue.id).delivery.status, "cancelled");
++
++  const secondIssue = claimManual(workspace, newsletter.id);
++  workspace.completeIssue(secondIssue.id, {
++    title: "Second",
++    generationId: "generation-2",
++    artifactPath: "/tmp/second.md",
++    dossierPath: "/tmp/second.json",
++  });
++  assert.equal(workspace.claimNextDelivery().issueId, secondIssue.id);
++  workspace.close();
++});
++
++test("disabling email cancels failed receipts but preserves in-flight visibility", () => {
++  const workspace = fixtureWorkspace();
++  const newsletter = workspace.createNewsletter(
++    newsletterInput("RabbitMQ", {
++      emailEnabled: true,
++      emailRecipients: ["reader@example.com"],
++    }),
++  );
++  const failedIssue = claimManual(workspace, newsletter.id);
++  workspace.completeIssue(failedIssue.id, {
++    title: "Failed",
++    generationId: "generation-1",
++    artifactPath: "/tmp/failed.md",
++    dossierPath: "/tmp/failed.json",
++  });
++  workspace.claimNextDelivery();
++  workspace.failDelivery(failedIssue.id, "rejected");
++
++  const inFlightIssue = claimManual(workspace, newsletter.id);
++  workspace.completeIssue(inFlightIssue.id, {
++    title: "In flight",
++    generationId: "generation-2",
++    artifactPath: "/tmp/in-flight.md",
++    dossierPath: "/tmp/in-flight.json",
++  });
++  workspace.claimNextDelivery();
++  workspace.setNewsletterEmail(newsletter.id, {
++    enabled: false,
++    recipients: ["reader@example.com"],
++  });
++
++  assert.equal(workspace.getIssue(failedIssue.id).delivery.status, "cancelled");
++  assert.equal(
++    workspace.getIssue(inFlightIssue.id).delivery.status,
++    "delivering",
++  );
++  assert.throws(
++    () => workspace.retryDelivery(failedIssue.id),
++    /not retryable/,
++  );
++  workspace.close();
++});
++
+ test("nextDailyOccurrence handles DST gaps and repeated times", () => {
+   const skippedGap = nextDailyOccurrence(
+     new Date("2026-03-08T06:55:00.000Z"),
+@@ -237,6 +498,21 @@ function fixtureWorkspace() {
+   return new SQLiteWorkspace(":memory:", { now: () => now });
+ }
+ 
++function startWorkspaceProcess(databasePath) {
++  const startupScript = `
++    const { SQLiteWorkspace } = await import(process.argv[1]);
++    const workspace = new SQLiteWorkspace(process.argv[2]);
++    workspace.close();
++  `;
++  return execFileAsync(process.execPath, [
++    "--input-type=module",
++    "--eval",
++    startupScript,
++    workspaceModuleUrl,
++    databasePath,
++  ]);
++}
++
+ function newsletterInput(name, overrides = {}) {
+   return {
+     name,

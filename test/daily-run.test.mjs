@@ -113,6 +113,43 @@ test("Daily Run skips an already delivered destination", async () => {
   assert.match(await readFile(recordPath, "utf8"), /"status": "delivered"/);
 });
 
+test("Daily Run does not retry an ambiguous delivery outcome", async () => {
+  const fixture = await fixtureConfig();
+  let deliveryCalls = 0;
+  const delivery = {
+    id: "test-email",
+    async deliver() {
+      deliveryCalls += 1;
+      const error = new Error("response lost after transmission");
+      error.outcomeUnknown = true;
+      throw error;
+    },
+  };
+  const first = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  const second = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider: new DemoProvider(),
+    deliveries: [delivery],
+  });
+  assert.equal(first.record.status, "delivery_unknown");
+  assert.equal(second.record.status, "delivery_unknown");
+  assert.equal(
+    second.record.deliveries["test-email"].status,
+    "unknown",
+  );
+  assert.equal(deliveryCalls, 1);
+});
+
 test("Daily Run regenerates when its recorded artifact is missing", async () => {
   const fixture = await fixtureConfig();
   let providerCalls = 0;

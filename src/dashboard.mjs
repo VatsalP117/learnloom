@@ -79,7 +79,13 @@ async function handleRequest(request, response, options) {
     return sendHtml(
       response,
       200,
-      renderNewsletterDetail(newsletter, issues, options.csrfToken, url),
+      renderNewsletterDetail(
+        newsletter,
+        issues,
+        options.csrfToken,
+        url,
+        options.baseConfig,
+      ),
     );
   }
 
@@ -107,6 +113,50 @@ async function handleRequest(request, response, options) {
     return redirect(
       response,
       `/newsletters/${encodeURIComponent(newsletter.id)}`,
+    );
+  }
+
+  const deliverySettingsMatch =
+    /^\/newsletters\/([a-z0-9_-]+)\/delivery$/.exec(url.pathname);
+  if (deliverySettingsMatch) {
+    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+    const form = await requireForm(request, options.csrfToken);
+    if (!options.workspace.getNewsletter(deliverySettingsMatch[1])) {
+      return notFound(response);
+    }
+    try {
+      options.workspace.setNewsletterEmail(deliverySettingsMatch[1], {
+        enabled: form.get("emailEnabled") === "on",
+        recipients: recipientsFromForm(form.get("emailRecipients")),
+      });
+    } catch (error) {
+      throw httpError(400, error.message);
+    }
+    return redirect(
+      response,
+      `/newsletters/${encodeURIComponent(
+        deliverySettingsMatch[1],
+      )}?delivery=saved`,
+    );
+  }
+
+  const retryMatch =
+    /^\/issues\/([a-z0-9_-]+)\/retry-delivery$/.exec(url.pathname);
+  if (retryMatch) {
+    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+    await requireForm(request, options.csrfToken);
+    const issue = options.workspace.getIssue(retryMatch[1]);
+    if (!issue) return notFound(response);
+    try {
+      options.workspace.retryDelivery(issue.id);
+    } catch (error) {
+      throw httpError(400, error.message);
+    }
+    return redirect(
+      response,
+      `/newsletters/${encodeURIComponent(
+        issue.newsletterId,
+      )}?delivery=retried`,
     );
   }
 
@@ -172,9 +222,7 @@ function renderNewsletterCard(newsletter) {
     <p>${escapeHtml(newsletter.topic)}</p>
     <dl class="card-metrics">
       <div><dt>Generated</dt><dd>${newsletter.generatedCount}</dd></div>
-      <div><dt>Latest</dt><dd>${escapeHtml(
-        humanStatus(newsletter.latestStatus),
-      )}</dd></div>
+      <div><dt>Sent</dt><dd>${newsletter.sentCount}</dd></div>
     </dl>
     <div class="next-run">Next: ${escapeHtml(
       newsletter.active
@@ -207,18 +255,31 @@ function renderNewsletterForm(baseConfig, csrfToken) {
       <label><span>RSS or Atom feeds</span><textarea name="sourceUrls" rows="5" placeholder="One URL per line">${escapeHtml(
         defaultSources,
       )}</textarea><small>One URL per line. Leave the installation defaults in place for the first test.</small></label>
+      <fieldset>
+        <legend>Email delivery</legend>
+        <label class="check-label"><input type="checkbox" name="emailEnabled"><span>Send each generated Issue by email</span></label>
+        <label><span>Recipients</span><textarea name="emailRecipients" rows="3" placeholder="you@example.com&#10;team@example.com"></textarea><small>One address per line. The sender and API key stay in the installation config.</small></label>
+      </fieldset>
       <div class="form-actions"><a class="button secondary" href="/">Cancel</a><button class="button" type="submit">Create Newsletter</button></div>
     </form>`,
   );
 }
 
-function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
+function renderNewsletterDetail(newsletter, issues, csrfToken, url, baseConfig) {
   const queued = url.searchParams.get("queued");
+  const deliveryNotice = url.searchParams.get("delivery");
   const notice = queued
     ? `<div class="notice">Issue queued. The worker will pick it up shortly.</div>`
-    : "";
+    : deliveryNotice === "saved"
+      ? `<div class="notice">Email delivery settings saved.</div>`
+      : deliveryNotice === "retried"
+        ? `<div class="notice">Email delivery queued for another attempt. The Issue will not be regenerated.</div>`
+        : "";
+  const resendConfigured = baseConfig.deliveries.some(
+    (delivery) => delivery.kind === "resend" && delivery.enabled,
+  );
   const issueRows = issues.length
-    ? issues.map(renderIssueRow).join("")
+    ? issues.map((issue) => renderIssueRow(issue, csrfToken)).join("")
     : `<div class="empty compact"><p>No Issues yet. Queue the first one when you are ready.</p></div>`;
   return page(
     newsletter.name,
@@ -250,12 +311,28 @@ function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
     <section class="stats">
       ${stat("Issues", newsletter.issueCount)}
       ${stat("Generated", newsletter.generatedCount)}
-      ${stat(
-        "Next run",
-        newsletter.active
-          ? formatTimestamp(newsletter.nextRunAt, newsletter.timeZone)
-          : "Paused",
-      )}
+      ${stat("Sent", newsletter.sentCount)}
+    </section>
+    <section class="settings">
+      <div class="section-heading"><div><p class="eyebrow">Delivery</p><h2>Email settings</h2></div>${statusPill(
+        newsletter.emailEnabled ? "active" : "paused",
+      )}</div>
+      <form class="form-card compact-form" method="post" action="/newsletters/${encodeURIComponent(
+        newsletter.id,
+      )}/delivery">
+        ${csrfField(csrfToken)}
+        <label class="check-label"><input type="checkbox" name="emailEnabled" ${
+          newsletter.emailEnabled ? "checked" : ""
+        }><span>Send generated Issues by email</span></label>
+        <label><span>Recipients</span><textarea name="emailRecipients" rows="3" placeholder="you@example.com">${escapeHtml(
+          newsletter.emailRecipients.join("\n"),
+        )}</textarea><small>One address per line. ${
+          resendConfigured
+            ? "An enabled Resend sender is present in the installation config."
+            : "No enabled Resend sender is configured yet; delivery attempts will show as failed until one is added."
+        }</small></label>
+        <div class="form-actions"><button class="button secondary" type="submit">Save email settings</button></div>
+      </form>
     </section>
     <section class="history">
       <div class="section-heading"><div><p class="eyebrow">Archive</p><h2>Issue history</h2></div></div>
@@ -264,24 +341,46 @@ function renderNewsletterDetail(newsletter, issues, csrfToken, url) {
   );
 }
 
-function renderIssueRow(issue) {
+function renderIssueRow(issue, csrfToken) {
   const title =
     issue.title ??
     (issue.trigger === "manual" ? "Manual Issue" : "Scheduled Issue");
-  const href =
+  const titleMarkup =
     issue.status === "generated"
-      ? `href="/issues/${encodeURIComponent(issue.id)}"`
+      ? `<a href="/issues/${encodeURIComponent(issue.id)}"><strong>${escapeHtml(
+          title,
+        )}</strong></a>`
+      : `<strong>${escapeHtml(title)}</strong>`;
+  const deliveryMarkup = issue.delivery
+    ? `<span class="delivery-state">${statusPill(
+        issue.delivery.status,
+      )}${
+        issue.delivery.externalId
+          ? `<small title="Resend email ID">${escapeHtml(
+              issue.delivery.externalId,
+            )}</small>`
+          : ""
+      }${
+        issue.delivery.error
+          ? `<small class="error">${escapeHtml(issue.delivery.error)}</small>`
+          : ""
+      }</span>`
+    : `<span class="delivery-state"><small>Email off</small></span>`;
+  const retry =
+    issue.delivery?.status === "failed"
+      ? `<form method="post" action="/issues/${encodeURIComponent(
+        issue.id,
+      )}/retry-delivery">${csrfField(
+          csrfToken,
+        )}<button class="link-button" type="submit">Retry email</button></form>`
       : "";
-  return `<a class="issue-row ${
-    issue.status === "generated" ? "" : "disabled"
-    }" ${href}>
-    <div>${statusPill(issue.status)}<strong>${escapeHtml(
-      title,
-    )}</strong></div>
+  return `<div class="issue-row">
+    <div>${statusPill(issue.status)}${titleMarkup}</div>
+    ${deliveryMarkup}
     <div class="issue-meta"><span>${escapeHtml(
       issue.trigger,
-    )}</span><span>${escapeHtml(formatTimestamp(issue.createdAt))}</span><span aria-hidden="true">→</span></div>
-  </a>`;
+    )}</span><span>${escapeHtml(formatTimestamp(issue.createdAt))}</span>${retry}</div>
+  </div>`;
 }
 
 async function renderIssuePreview(newsletter, issue) {
@@ -306,7 +405,9 @@ async function renderIssuePreview(newsletter, issue) {
         issue.title ?? "Issue preview",
       )}</h1><div class="title-line">${statusPill(issue.status)}<span>${escapeHtml(
         formatTimestamp(issue.completedAt ?? issue.createdAt),
-      )}</span></div></div>
+      )}</span>${
+        issue.delivery ? statusPill(issue.delivery.status) : ""
+      }</div></div>
     </header>
     <article class="dossier">${content}</article>`,
   );
@@ -337,7 +438,16 @@ function newsletterFromForm(form, baseConfig) {
       }
       return { name, url, limit: 10 };
     }),
+    emailEnabled: form.get("emailEnabled") === "on",
+    emailRecipients: recipientsFromForm(form.get("emailRecipients")),
   };
+}
+
+function recipientsFromForm(value) {
+  return String(value ?? "")
+    .split(/[\r\n,]+/)
+    .map((recipient) => recipient.trim())
+    .filter(Boolean);
 }
 
 async function requireForm(request, csrfToken) {
@@ -394,7 +504,7 @@ function page(title, body) {
   <style>${STYLES}</style>
 </head>
 <body>
-  <nav><a class="brand" href="/"><span>LL</span> Learnloom</a><span class="test-label">Test phase · local only</span></nav>
+  <nav><a class="brand" href="/"><span>LL</span> Learnloom</a><span class="test-label">Self-hosted · local only</span></nav>
   <main>${body}</main>
   <footer>Learnloom shapes source material into durable understanding.</footer>
 </body>
@@ -498,5 +608,20 @@ function httpError(statusCode, message) {
 const STYLES = `
 :root{--ink:#14211d;--muted:#65736d;--paper:#f4f1e8;--card:#fffdf8;--line:#d9d8ce;--green:#176b50;--green2:#dff1e7;--navy:#132d29;--amber:#b96b27;--red:#a8433b}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:inherit}nav{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 max(24px,calc((100vw - 1120px)/2));border-bottom:1px solid var(--line);background:rgba(244,241,232,.92)}.brand{text-decoration:none;font-weight:760;letter-spacing:-.02em}.brand span{display:inline-grid;place-items:center;width:34px;height:34px;margin-right:9px;border-radius:10px;background:var(--navy);color:white;font-size:12px}.test-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}main{max-width:1120px;margin:0 auto;padding:70px 24px 100px}footer{max-width:1120px;margin:0 auto;padding:30px 24px 50px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}.hero,.detail-hero,.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:32px;margin-bottom:44px}.hero h1,.detail-hero h1,.page-header h1{font-family:Georgia,serif;font-size:clamp(42px,6vw,74px);line-height:.98;letter-spacing:-.045em;margin:10px 0 18px}.page-header h1{font-size:clamp(40px,5vw,62px)}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:800;color:var(--green);margin:0}.lede{max-width:700px;color:var(--muted);font-size:18px;line-height:1.6;margin:0}.button{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--green);border-radius:999px;padding:12px 20px;background:var(--green);color:white;font:inherit;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}.button:hover{filter:brightness(.94)}.button.secondary{background:transparent;color:var(--green)}.stats{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:16px;background:rgba(255,253,248,.65);margin-bottom:36px;overflow:hidden}.stats>div{padding:22px 24px;border-right:1px solid var(--line)}.stats>div:last-child{border:0}.stats dt{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.1em}.stats dd{font-family:Georgia,serif;font-size:28px;margin:7px 0 0}.card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.newsletter-card{display:flex;flex-direction:column;min-height:310px;padding:28px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 8px 30px rgba(20,33,29,.045)}.card-top,.title-line{display:flex;align-items:center;gap:12px;justify-content:space-between;color:var(--muted);font-size:12px}.newsletter-card h2{font-family:Georgia,serif;font-size:29px;line-height:1.1;margin:28px 0 10px}.newsletter-card>p{color:var(--muted);line-height:1.55;margin:0}.pill{display:inline-flex;border-radius:999px;padding:5px 9px;background:#e9ebe6;color:#57625d;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.1em}.pill.active,.pill.generated{background:var(--green2);color:var(--green)}.pill.queued,.pill.generating{background:#fff0d8;color:var(--amber)}.pill.failed{background:#f9dfdc;color:var(--red)}.card-metrics{display:flex;gap:34px;margin:auto 0 18px}.card-metrics dt{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}.card-metrics dd{font-weight:750;margin:5px 0 0}.next-run{border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px}.card-link{display:flex;justify-content:space-between;margin-top:16px;color:var(--green);font-weight:750;text-decoration:none}.empty{padding:70px 30px;text-align:center;border:1px dashed #b8beb6;border-radius:18px;background:rgba(255,253,248,.5)}.empty.compact{padding:36px}.empty h2{font-family:Georgia,serif;font-size:34px;margin:10px}.empty p{color:var(--muted);margin:12px auto 26px;max-width:500px}.back{display:inline-block;margin-bottom:26px;color:var(--muted);font-size:13px;text-decoration:none}.form-card{max-width:780px;padding:32px;border:1px solid var(--line);border-radius:20px;background:var(--card)}label{display:block;margin-bottom:24px}label>span{display:block;margin-bottom:8px;font-size:13px;font-weight:750}input,textarea{width:100%;border:1px solid #bdc2ba;border-radius:10px;background:#fff;padding:12px 14px;color:var(--ink);font:inherit}input:focus,textarea:focus{outline:3px solid rgba(23,107,80,.16);border-color:var(--green)}textarea{resize:vertical;line-height:1.5}small{display:block;color:var(--muted);margin-top:7px}.form-row{display:grid;grid-template-columns:1fr 2fr;gap:18px}.form-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:32px}.detail-hero{align-items:center}.action-stack{display:flex;gap:10px}.title-line{justify-content:flex-start;margin:16px 0}.notice{margin:-12px 0 28px;padding:14px 18px;border-radius:10px;background:var(--green2);color:var(--green);font-weight:650}.section-heading{display:flex;justify-content:space-between;align-items:end;margin:50px 0 18px}.section-heading h2{font-family:Georgia,serif;font-size:34px;margin:6px 0}.issue-list{border-top:1px solid var(--line)}.issue-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 8px;border-bottom:1px solid var(--line);text-decoration:none}.issue-row>div:first-child{display:flex;align-items:center;gap:14px}.issue-row:not(.disabled):hover{background:rgba(255,253,248,.7)}.issue-row.disabled{cursor:default}.issue-meta{display:flex;gap:20px;color:var(--muted);font-size:12px}.dossier{max-width:820px;margin:0 auto;padding:42px;border:1px solid var(--line);border-radius:18px;background:var(--card);line-height:1.65}.dossier h1,.dossier h2,.dossier h3{font-family:Georgia,serif;line-height:1.2}.dossier a{color:var(--green)}.dossier pre{white-space:pre-wrap}
+.pill.delivered{background:var(--green2);color:var(--green)}
+.pill.pending,.pill.delivering{background:#fff0d8;color:var(--amber)}
+.pill.unknown{background:#fff0d8;color:var(--amber)}
+.compact-form{max-width:none}
+fieldset{margin:8px 0 24px;padding:22px;border:1px solid var(--line);border-radius:14px}
+legend{padding:0 8px;font-weight:750}
+.check-label{display:flex;align-items:center;gap:10px}
+.check-label input{width:auto}
+.check-label span{margin:0}
+.issue-row a{text-decoration:none}
+.issue-row:hover{background:rgba(255,253,248,.7)}
+.issue-meta{align-items:center}
+.delivery-state{min-width:110px}
+.delivery-state .error{max-width:260px;color:var(--red)}
+.link-button{border:0;background:none;padding:0;color:var(--green);font:inherit;font-weight:750;cursor:pointer}
 @media(max-width:760px){nav{padding:0 18px}.test-label{display:none}main{padding:44px 18px 70px}.hero,.detail-hero,.page-header{display:block}.hero .button{margin-top:24px}.stats{grid-template-columns:1fr}.stats>div{border-right:0;border-bottom:1px solid var(--line)}.card-grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}.action-stack{margin-top:24px}.issue-row{align-items:flex-start;flex-direction:column}.issue-meta{width:100%;justify-content:space-between}.dossier{padding:24px}}
 `;

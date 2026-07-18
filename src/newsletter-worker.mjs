@@ -1,6 +1,9 @@
+import { readFile } from "node:fs/promises";
 import { validateConfig } from "./config.mjs";
 import { runDailyDossier } from "./daily-run.mjs";
+import { ResendDelivery } from "./delivery.mjs";
 import { resolveAppPaths } from "./paths.mjs";
+import { loadJson } from "./state.mjs";
 
 export async function processNextIssue(options) {
   const {
@@ -83,7 +86,105 @@ export async function runWorkerCycle(options) {
     if (!issue) break;
     processed.push(issue);
   }
-  return { dispatched, processed };
+  const deliveries = [];
+  const maximumDeliveries = options.maximumDeliveries ?? 100;
+  for (let count = 0; count < maximumDeliveries; count += 1) {
+    const delivery = await processNextDelivery(options);
+    if (!delivery) break;
+    deliveries.push(delivery);
+  }
+  return { dispatched, processed, deliveries };
+}
+
+export async function processNextDelivery(options) {
+  const {
+    workspace,
+    baseConfig,
+    onEvent = () => {},
+  } = options;
+  const clock = options.clock ?? (() => new Date());
+  const startedAt = options.now ?? clock();
+  const delivery = workspace.claimNextDelivery(startedAt);
+  if (!delivery) return null;
+  onEvent({
+    type: "delivery-claimed",
+    issueId: delivery.issue.id,
+    newsletterId: delivery.issue.newsletterId,
+    attemptCount: delivery.attemptCount,
+  });
+
+  try {
+    const resendConfig = baseConfig.deliveries.find(
+      (candidate) => candidate.kind === "resend" && candidate.enabled,
+    );
+    if (!resendConfig) {
+      throw new Error(
+        "No enabled Resend delivery is configured for Newsletter email.",
+      );
+    }
+    const dossier = await loadJson(
+      delivery.issue.dossierPath,
+      "Newsletter Dossier",
+    );
+    if (!dossier || typeof dossier !== "object" || Array.isArray(dossier)) {
+      throw new Error(
+        `Newsletter Dossier is missing at ${delivery.issue.dossierPath}.`,
+      );
+    }
+    const markdown = await readFile(delivery.issue.artifactPath, "utf8");
+    const adapter = new ResendDelivery(
+      {
+        ...resendConfig,
+        id: "newsletter-email",
+        to: delivery.newsletter.emailRecipients,
+      },
+      {
+        env: options.env,
+        fetchImpl: options.fetchImpl,
+        resendEndpoint: options.resendEndpoint,
+      },
+    );
+    const receipt = await adapter.deliver({
+      runId: delivery.issue.id,
+      generationId: delivery.issue.generationId,
+      dossier,
+      markdown,
+    });
+    const completed = workspace.completeDelivery(
+      delivery.issue.id,
+      receipt.externalId,
+      options.now ?? clock(),
+    );
+    onEvent({
+      type: "delivery-complete",
+      issueId: delivery.issue.id,
+      newsletterId: delivery.issue.newsletterId,
+      externalId: completed.externalId,
+    });
+    return completed;
+  } catch (error) {
+    const failed = error?.outcomeUnknown
+      ? workspace.markDeliveryUnknown(
+          delivery.issue.id,
+          error,
+          options.now ?? clock(),
+        )
+      : workspace.failDelivery(
+          delivery.issue.id,
+          error,
+          options.now ?? clock(),
+        );
+    onEvent({
+      type:
+        failed.status === "unknown"
+          ? "delivery-outcome-unknown"
+          : "delivery-failed",
+      issueId: delivery.issue.id,
+      newsletterId: delivery.issue.newsletterId,
+      message: failed.error,
+    });
+    return failed;
+  }
 }
 
 export function newsletterRuntimeConfig(baseConfig, newsletter) {

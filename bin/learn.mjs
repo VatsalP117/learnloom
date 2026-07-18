@@ -199,7 +199,9 @@ async function serve(commandArgs) {
     server.listen(port, host, resolve);
   });
   process.stdout.write(`Learnloom dashboard: http://${host}:${port}\n`);
-  process.stdout.write("Test phase: live delivery is disabled in Newsletter workers.\n");
+  process.stdout.write(
+    "Newsletter email uses the enabled Resend configuration and per-Newsletter recipients.\n",
+  );
   const shutdown = () => {
     server.close(() => {
       workspace.close();
@@ -245,7 +247,7 @@ async function worker(commandArgs) {
         onEvent: printWorkerEvent,
       });
       process.stdout.write(
-        `Worker cycle: ${result.dispatched.length} scheduled, ${result.processed.length} processed.\n`,
+        `Worker cycle: ${result.dispatched.length} scheduled, ${result.processed.length} generated, ${result.deliveries.length} deliveries processed.\n`,
       );
       if (once || stopping) break;
       await delay(intervalSeconds * 1000);
@@ -319,6 +321,11 @@ function printRunEvent(event) {
   if (event.type === "delivery-skip") {
     process.stdout.write(`Delivery ${event.deliveryId} already completed; skipping.\n`);
   }
+  if (event.type === "delivery-unknown-skip") {
+    process.stderr.write(
+      `Delivery ${event.deliveryId} has an unknown provider outcome; refusing automatic retry.\n`,
+    );
+  }
 }
 
 function pad(value) {
@@ -342,6 +349,24 @@ function printWorkerEvent(event) {
   }
   if (event.type === "issue-failed") {
     process.stderr.write(`Issue ${event.issueId} failed: ${event.message}\n`);
+  }
+  if (event.type === "delivery-claimed") {
+    process.stdout.write(
+      `Claimed email delivery for Issue ${event.issueId} (attempt ${event.attemptCount})\n`,
+    );
+  }
+  if (event.type === "delivery-complete") {
+    process.stdout.write(`Delivered Issue ${event.issueId}\n`);
+  }
+  if (event.type === "delivery-failed") {
+    process.stderr.write(
+      `Email delivery for Issue ${event.issueId} failed: ${event.message}\n`,
+    );
+  }
+  if (event.type === "delivery-outcome-unknown") {
+    process.stderr.write(
+      `Email delivery outcome for Issue ${event.issueId} is unknown: ${event.message}\n`,
+    );
   }
 }
 
