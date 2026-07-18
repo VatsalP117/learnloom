@@ -1,8 +1,12 @@
 export function renderDossierMarkdown(dossier) {
-  return [
+  const pipelineDescription =
+    dossier.version >= 2
+      ? "curation, source enrichment, blueprint, research, skepticism, teaching, practice, and editorial validation"
+      : "researcher, skeptic, teacher, and examiner passes";
+  const sections = [
     `# Learning Dossier — ${dossier.date}`,
     "",
-    `> Generated from ${dossier.sources.length} source items through researcher, skeptic, teacher, and examiner passes.`,
+    `> Generated from ${dossier.sources.length} source items through ${pipelineDescription}.`,
     "",
     demoteTopLevelHeadings(dossier.lesson),
     "",
@@ -10,20 +14,45 @@ export function renderDossierMarkdown(dossier) {
     "",
     demoteTopLevelHeadings(dossier.practice),
     "",
+  ];
+  if (dossier.exploration) {
+    sections.push(
+      "## AI Exploration",
+      "",
+      "> Opt-in synthetic exploration. These analogies, deductions, and scenarios extend beyond the cited sources and may be speculative.",
+      "",
+      demoteTopLevelHeadings(dossier.exploration),
+      "",
+    );
+  }
+  sections.push(
     "## Source Index",
     "",
     ...dossier.sources.map(
       (item, index) =>
-        `${index + 1}. **[S${index + 1}] ${escapeMarkdown(item.title)}** — ${
+        `${index + 1}. **[${
+          item.sourceId ?? `S${index + 1}`
+        }] ${escapeMarkdown(item.title)}** — ${
           item.source
-        }  \n   ${item.url}`,
+        }  \n   ${item.canonicalUrl ?? item.url}`,
     ),
+    ...(dossier.quality
+      ? [
+          "",
+          `Quality gate: ${dossier.quality.score}/100 · ${
+            dossier.quality.metrics.enrichedSources
+          } enriched source${
+            dossier.quality.metrics.enrichedSources === 1 ? "" : "s"
+          } · ${dossier.quality.metrics.retrievalQuestions} retrieval questions`,
+        ]
+      : []),
     "",
     "---",
     "",
     `Generated at ${dossier.generatedAt} · Model output can be wrong; verify important claims at the linked sources.`,
     "",
-  ].join("\n");
+  );
+  return sections.join("\n");
 }
 
 export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dossier)) {
@@ -32,12 +61,19 @@ export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dos
     renderMarkdownFragment(dossier.critique),
     renderMarkdownFragment(dossier.practice),
   ];
+  const exploration = dossier.exploration
+    ? `<section style="margin:32px 0 0;padding:24px;border:1px solid #f0c36a;border-radius:12px;background:#fff8e8">
+        <p style="margin:0 0 8px;color:#9a5b13;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase">AI Exploration · Opt-in</p>
+        <p style="margin:0 0 18px;color:#7c5a2d;font-size:13px;line-height:1.5">Synthetic analogies, deductions, and scenarios that extend beyond the cited sources. They may be speculative.</p>
+        ${renderMarkdownFragment(dossier.exploration)}
+      </section>`
+    : "";
   const sources = dossier.sources
     .map((item, index) => {
-      const url = safeHttpUrl(item.url);
+      const url = safeHttpUrl(item.canonicalUrl ?? item.url);
       const title = escapeHtml(item.title);
       const source = escapeHtml(item.source);
-      const label = `[S${index + 1}] ${title}`;
+      const label = `[${item.sourceId ?? `S${index + 1}`}] ${title}`;
       return `<li style="margin:0 0 10px"><strong>${label}</strong> — ${source}${
         url
           ? `<br><a href="${escapeAttribute(url)}" style="color:#047857">${escapeHtml(url)}</a>`
@@ -55,6 +91,7 @@ export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dos
         <p style="margin:0 0 8px;color:#047857;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Learnloom · ${date}</p>
         <h1 style="margin:0 0 28px;font-size:30px;line-height:1.2">${title}</h1>
         ${sections.join('<hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">')}
+        ${exploration}
         <hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">
         <h2 style="font-size:20px">Sources</h2>
         <ol style="padding-left:22px">${sources}</ol>

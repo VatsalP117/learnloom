@@ -18,7 +18,7 @@ test("SQLiteWorkspace initializes idempotently with safety pragmas", () => {
   const workspace = new SQLiteWorkspace(":memory:");
   workspace.initialize();
   const diagnostics = workspace.diagnostics();
-  assert.equal(diagnostics.userVersion, 2);
+  assert.equal(diagnostics.userVersion, 3);
   assert.equal(diagnostics.foreignKeys, true);
   assert.equal(diagnostics.busyTimeout, 5_000);
   assert.match(diagnostics.journalMode, /^(memory|wal)$/);
@@ -29,7 +29,7 @@ test("SQLiteWorkspace rejects a newer schema version", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-schema-"));
   const databasePath = path.join(directory, "workspace.sqlite");
   const workspace = new SQLiteWorkspace(databasePath);
-  workspace.database.exec("PRAGMA user_version = 3");
+  workspace.database.exec("PRAGMA user_version = 4");
   workspace.close();
   assert.throws(
     () => new SQLiteWorkspace(databasePath),
@@ -93,10 +93,82 @@ test("SQLiteWorkspace migrates schema v1 without losing data", async () => {
     startWorkspaceProcess(databasePath),
   ]);
   const workspace = new SQLiteWorkspace(databasePath);
-  assert.equal(workspace.diagnostics().userVersion, 2);
+  assert.equal(workspace.diagnostics().userVersion, 3);
   assert.equal(workspace.getNewsletter("legacy").emailEnabled, false);
   assert.deepEqual(workspace.getNewsletter("legacy").emailRecipients, []);
+  assert.equal(workspace.getNewsletter("legacy").aiExplorationEnabled, false);
   assert.equal(workspace.getIssue("legacy-issue").status, "queued");
+  workspace.close();
+});
+
+test("SQLiteWorkspace migrates schema v2 content settings without data loss", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-v2-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE newsletters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      topic TEXT NOT NULL,
+      learner_level TEXT NOT NULL,
+      learner_goal TEXT NOT NULL,
+      lesson_minutes INTEGER NOT NULL,
+      sources_json TEXT NOT NULL,
+      schedule_hour INTEGER NOT NULL,
+      schedule_minute INTEGER NOT NULL,
+      time_zone TEXT NOT NULL,
+      active INTEGER NOT NULL,
+      next_run_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      email_enabled INTEGER NOT NULL DEFAULT 0,
+      email_recipients_json TEXT NOT NULL DEFAULT '[]'
+    ) STRICT;
+    CREATE TABLE issues (
+      id TEXT PRIMARY KEY,
+      newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+      trigger TEXT NOT NULL,
+      scheduled_local_date TEXT,
+      status TEXT NOT NULL,
+      dossier_title TEXT,
+      generation_id TEXT,
+      artifact_path TEXT,
+      dossier_path TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT
+    ) STRICT;
+    CREATE TABLE issue_deliveries (
+      issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      external_id TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (issue_id, channel)
+    ) STRICT;
+    INSERT INTO newsletters VALUES (
+      'v2-newsletter', 'Version two', 'Queues', 'experienced', 'learn', 15,
+      '[{"name":"Feed","url":"https://example.com/feed","limit":10}]',
+      10, 0, 'UTC', 1, '2026-07-20T10:00:00.000Z',
+      '2026-07-19T00:00:00.000Z', '2026-07-19T00:00:00.000Z',
+      1, '["reader@example.com"]'
+    );
+    PRAGMA user_version = 2;
+  `);
+  legacy.close();
+
+  const workspace = new SQLiteWorkspace(databasePath);
+  const newsletter = workspace.getNewsletter("v2-newsletter");
+  assert.equal(workspace.diagnostics().userVersion, 3);
+  assert.equal(newsletter.emailEnabled, true);
+  assert.deepEqual(newsletter.emailRecipients, ["reader@example.com"]);
+  assert.equal(newsletter.aiExplorationEnabled, false);
   workspace.close();
 });
 
@@ -297,6 +369,32 @@ test("Newsletter email settings are normalized and validated", () => {
         recipients: ["not-an-email"],
       }),
     /Invalid Newsletter email recipient/,
+  );
+  workspace.close();
+});
+
+test("Newsletter AI Exploration is opt-in and updateable", () => {
+  const workspace = fixtureWorkspace();
+  const defaultNewsletter = workspace.createNewsletter(
+    newsletterInput("Default"),
+  );
+  assert.equal(defaultNewsletter.aiExplorationEnabled, false);
+  const optedIn = workspace.createNewsletter(
+    newsletterInput("Exploration", { aiExplorationEnabled: true }),
+  );
+  assert.equal(optedIn.aiExplorationEnabled, true);
+  assert.equal(
+    workspace.setNewsletterContent(defaultNewsletter.id, {
+      aiExplorationEnabled: true,
+    }).aiExplorationEnabled,
+    true,
+  );
+  assert.throws(
+    () =>
+      workspace.setNewsletterContent(defaultNewsletter.id, {
+        aiExplorationEnabled: "yes",
+      }),
+    /must be a boolean/,
   );
   workspace.close();
 });

@@ -74,7 +74,7 @@ test("Daily Run retries failed delivery without regenerating the Dossier", async
   assert.equal(first.record.status, "delivery_failed");
   assert.equal(second.generated, false);
   assert.equal(second.record.status, "complete");
-  assert.equal(providerCalls, 4);
+  assert.equal(providerCalls, 7);
   assert.equal(deliveryCalls, 2);
 });
 
@@ -178,7 +178,7 @@ test("Daily Run regenerates when its recorded artifact is missing", async () => 
     deliveries: [],
   });
   assert.equal(second.generated, true);
-  assert.equal(providerCalls, 8);
+  assert.equal(providerCalls, 14);
 });
 
 test("forced Daily Run creates a new delivery generation", async () => {

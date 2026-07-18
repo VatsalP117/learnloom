@@ -2,7 +2,7 @@
 
 The dashboard is deliberately local and single-user. It manages Newsletter
 configuration, scheduling, Issue generation, history, previews, recipients,
-and Resend delivery receipts.
+Resend delivery receipts, and the per-Newsletter AI Exploration opt-in.
 
 ## Run the offline demo
 
@@ -59,6 +59,11 @@ The worker checks schedules every 30 seconds. A deterministic scheduled Issue
 is created once per Newsletter and local date. **Run now** creates a separate
 manual Issue and returns immediately; model work never runs inside the HTTP
 request.
+
+Each Newsletter's **Generation settings** controls AI Exploration for future
+Issues. It is disabled by default. Enabling it adds a clearly labelled,
+synthetic section after the cited lesson and practice; it never becomes part of
+the core answer key or retrieval questions.
 
 ## Docker Compose
 

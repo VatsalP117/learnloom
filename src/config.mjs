@@ -95,6 +95,14 @@ export function validateConfig(value, configPath = "config.json") {
     );
   }
   const storage = value.storage ?? {};
+  const content = value.content ?? {};
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    throw new Error("content must be an object.");
+  }
+  const aiExplorationEnabled = content.aiExplorationEnabled ?? false;
+  if (typeof aiExplorationEnabled !== "boolean") {
+    throw new Error("content.aiExplorationEnabled must be a boolean.");
+  }
   const deliveries = validateDeliveries(value.deliveries ?? []);
   const providerConfig = {
     kind: providerKind,
@@ -144,6 +152,21 @@ export function validateConfig(value, configPath = "config.json") {
     sources,
     provider: providerConfig,
     deliveries,
+    content: {
+      aiExplorationEnabled,
+      maxArticleBytes: boundedInteger(
+        content.maxArticleBytes ?? 512 * 1024,
+        16 * 1024,
+        2 * 1024 * 1024,
+        "content.maxArticleBytes",
+      ),
+      maxArticleCharacters: boundedInteger(
+        content.maxArticleCharacters ?? 16_000,
+        1_000,
+        50_000,
+        "content.maxArticleCharacters",
+      ),
+    },
     storage: {
       dataDirectory: optionalPath(storage.dataDirectory ?? "data", "storage.dataDirectory"),
       outputDirectory: optionalPath(

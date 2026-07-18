@@ -2,7 +2,7 @@ services:
   learnloom:
     build:
       context: .
-    image: learnloom:0.4
+    image: learnloom:0.5
     env_file:
       - path: .env
         required: false
@@ -23,7 +23,7 @@ services:
       - dashboard
     build:
       context: .
-    image: learnloom:0.4
+    image: learnloom:0.5
     command:
       - serve
       - --config
@@ -53,7 +53,7 @@ services:
       - dashboard
     build:
       context: .
-    image: learnloom:0.4
+    image: learnloom:0.5
     command:
       - worker
       - --config

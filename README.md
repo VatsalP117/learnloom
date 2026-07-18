@@ -2,21 +2,24 @@
 
 Learnloom is a self-hosted personal learning engine. It retrieves fresh
 RSS/Atom material, weaves it together with your Learning History, and produces
-a source-indexed daily Dossier with:
+a source-indexed daily Dossier built through:
 
-1. A researched theme
-2. A skeptical evidence review
-3. A focused lesson
-4. Retrieval questions and an application exercise
+1. Coherent source curation and bounded full-text enrichment
+2. An explicit Learning Blueprint and continuity bridge
+3. Source-grounded research and skeptical evidence review
+4. A mechanism-focused lesson, worked example, and misconception check
+5. Retrieval questions, answer key, and an application challenge
+6. A final editorial rewrite and deterministic quality gate
 
 Run it locally, schedule it on macOS, or deploy the finite Docker job to a VM.
 Use your own DeepSeek or OpenAI-compatible key, a Command Code subscription,
 or the deterministic offline demo. Optionally receive each Dossier through
 Resend email.
 
-The v0.4 dashboard runs multiple topic-focused Newsletters. Each Newsletter has
+The v0.5 dashboard runs multiple topic-focused Newsletters. Each Newsletter has
 its own schedule, timezone, recipients, Issue history, Learning History,
-Dossier previews, and durable email delivery status.
+Dossier previews, durable email delivery status, and an optional AI Exploration
+setting.
 
 ## Five-minute local start
 
@@ -59,6 +62,36 @@ Each profile and local date has one deterministic Daily Run:
 
 The application home defaults to the directory containing `config.json`. Set
 `LEARNLOOM_HOME` to place all state under one durable directory.
+
+## Content-quality pipeline
+
+Learnloom first asks the model to select three to five complementary Source
+Items. It then attempts bounded full-text extraction from those pages; an
+unavailable, thin, blocked, or unsupported page falls back to its feed summary
+without failing the Daily Run.
+
+The selected material becomes a structured Learning Blueprint before research
+or lesson prose is written. A final editor rewrites the lesson and practice,
+then Learnloom rejects the Dossier if it lacks required teaching sections,
+valid Source Item citations, retrieval questions, an application challenge, or
+a collapsed answer key. Dossier JSON includes the deterministic quality score
+and provenance for every selected source.
+
+Direct Daily Runs can enable the optional synthetic section:
+
+```json
+{
+  "content": {
+    "aiExplorationEnabled": true,
+    "maxArticleBytes": 524288,
+    "maxArticleCharacters": 16000
+  }
+}
+```
+
+For Newsletters, use **Generation settings** in the dashboard. AI Exploration
+is off by default. When enabled it is rendered in a separate labelled panel,
+uses no source citation markers, and is excluded from core retrieval practice.
 
 ## Run the multi-newsletter dashboard
 
@@ -223,11 +256,14 @@ learn schedule remove
 
 - One failed feed becomes a warning; all feeds failing aborts before model use.
 - Feed text is untrusted reference material, never model instructions.
+- Article enrichment validates HTTP(S), credentials, DNS addresses, redirects,
+  response type, download size, and timeout. It does not execute page scripts
+  or bypass paywalls.
 - Model adapters expose no downstream tools.
 - Source/model HTML is escaped before email rendering.
-- Feed URLs are operator-controlled. The current fetcher is not suitable for
-  accepting untrusted multi-tenant URLs because it does not block private
-  network destinations.
+- Feed URLs remain operator-controlled. Article links discovered inside trusted
+  feeds are screened against private and reserved network destinations, but
+  Learnloom is not a general multi-tenant crawler.
 - Important claims should be verified through the Dossier's source links.
 
 ## Development

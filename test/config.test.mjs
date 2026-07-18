@@ -12,6 +12,31 @@ test("validateConfig applies safe defaults", () => {
   assert.equal(config.provider.kind, "commandcode");
   assert.equal(config.provider.model, "deepseek-v4-pro");
   assert.equal(config.sources[0].limit, 10);
+  assert.equal(config.content.aiExplorationEnabled, false);
+  assert.equal(config.content.maxArticleBytes, 512 * 1024);
+  assert.equal(config.content.maxArticleCharacters, 16_000);
+});
+
+test("validateConfig accepts bounded content quality settings", () => {
+  const config = validateConfig({
+    ...valid,
+    content: {
+      aiExplorationEnabled: true,
+      maxArticleBytes: 100_000,
+      maxArticleCharacters: 12_000,
+    },
+  });
+  assert.equal(config.content.aiExplorationEnabled, true);
+  assert.equal(config.content.maxArticleBytes, 100_000);
+  assert.equal(config.content.maxArticleCharacters, 12_000);
+  assert.throws(
+    () =>
+      validateConfig({
+        ...valid,
+        content: { aiExplorationEnabled: "yes" },
+      }),
+    /must be a boolean/,
+  );
 });
 
 test("validateConfig rejects non-web feed URLs", () => {

@@ -128,6 +128,21 @@ test("newsletterRuntimeConfig maps Newsletter identity without deliveries", asyn
   assert.equal(config.profileId, newsletter.id);
   assert.deepEqual(config.interests, ["RabbitMQ messaging queues"]);
   assert.deepEqual(config.deliveries, []);
+  assert.equal(config.content.aiExplorationEnabled, false);
+  fixture.workspace.close();
+});
+
+test("newsletterRuntimeConfig applies Newsletter AI Exploration preference", async () => {
+  const fixture = await createFixture();
+  const newsletter = fixture.workspace.createNewsletter(
+    newsletterInput("RabbitMQ", { aiExplorationEnabled: true }),
+  );
+  const config = newsletterRuntimeConfig(fixture.baseConfig, newsletter);
+  assert.equal(config.content.aiExplorationEnabled, true);
+  assert.equal(
+    config.content.maxArticleCharacters,
+    fixture.baseConfig.content.maxArticleCharacters,
+  );
   fixture.workspace.close();
 });
 

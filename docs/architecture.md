@@ -25,6 +25,29 @@ CLI / launchd / systemd / Docker
          Delivery Receipt
 ```
 
+The Dossier v2 content path is:
+
+```text
+Candidate Source Items
+        │
+        ▼
+     Curator ──► selected Source Items ──► bounded article enrichment
+                                                   │
+                                                   ▼
+Learning History ──► Learning Blueprint ──► research ──► skepticism
+                                                   │
+                                                   ▼
+                                    lesson + retrieval practice
+                                                   │
+                              optional AI Exploration (separate)
+                                                   │
+                                                   ▼
+                                    editor + deterministic gate
+                                                   │
+                                                   ▼
+                                             Dossier v2
+```
+
 The multi-newsletter path adds scheduling and dashboard control without
 changing the Daily Run's generation responsibilities:
 
@@ -56,10 +79,18 @@ Dashboard ──► SQLite Workspace ◄──────── Worker
   worker invokes Daily Run.
 - Markdown and email are renderings of the canonical **Dossier**, not the
   source of truth.
+- The source-enrichment module owns URL/address/redirect validation, bounded
+  retrieval, conservative HTML text extraction, and per-item fallback.
+- The content-quality module owns structured model contracts, citation and
+  teaching-structure validation, the sourced/synthetic boundary, and the
+  deterministic Dossier quality report.
 
 ## Trust seams
 
 - Source XML and summaries are untrusted network input.
+- Enriched article URLs and every redirect must resolve only to public
+  addresses. Downloads are bounded by type, bytes, characters, redirects, and
+  timeout; page scripts are never executed.
 - Model endpoints require HTTPS. Loopback HTTP requires explicit insecure-local
   opt-in; remote plaintext HTTP is rejected before a credential can be sent.
 - Source content is labeled as reference material and model adapters expose no
@@ -96,11 +127,14 @@ Dashboard ──► SQLite Workspace ◄──────── Worker
   before removing the stale lock.
 - Atomic writes use unique temporary names and restrictive file modes.
 
-## Deliberate v0.4 limits
+## Deliberate v0.5 limits
 
 - Daily Run records are atomic JSON rather than SQLite.
 - One trusted operator configures feeds; private-network URL blocking is absent.
-- Source material uses feed summaries rather than extracted article bodies.
+- Full-text extraction is conservative and falls back for paywalled,
+  client-rendered, thin, or unsupported pages.
+- Learning History supports continuity and recall context but does not yet
+  track demonstrated mastery or learner ratings.
 - Resend is the only external delivery adapter.
 - Learner feedback and Notion delivery are not yet implemented.
 - A worker crash can leave an Issue in `generating`; automatic recovery is not

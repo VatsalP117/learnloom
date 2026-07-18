@@ -36,6 +36,7 @@ test("dashboard creates a Newsletter and queues Run Now through CSRF forms", asy
       scheduleTime: "10:00",
       timeZone: "Asia/Kolkata",
       sourceUrls: "https://www.rabbitmq.com/blog/feed.xml",
+      aiExplorationEnabled: "on",
     }),
   });
   assert.equal(create.status, 303);
@@ -43,6 +44,10 @@ test("dashboard creates a Newsletter and queues Run Now through CSRF forms", asy
   assert.match(location, /^\/newsletters\/newsletter-/);
 
   const newsletterId = location.split("/").at(-1);
+  assert.equal(
+    fixture.workspace.getNewsletter(newsletterId).aiExplorationEnabled,
+    true,
+  );
   const run = await fetch(`${fixture.origin}/newsletters/${newsletterId}/run`, {
     method: "POST",
     redirect: "manual",
@@ -184,6 +189,47 @@ test("dashboard saves per-Newsletter email settings", async (context) => {
   assert.match(html, /Email delivery settings saved/);
   assert.match(html, /reader@example\.com/);
   assert.match(html, /No enabled Resend sender is configured/);
+});
+
+test("dashboard saves CSRF-protected AI Exploration preference", async (context) => {
+  const fixture = await dashboardFixture(context);
+  const newsletter = fixture.workspace.createNewsletter(newsletterInput());
+  const rejected = await fetch(
+    `${fixture.origin}/newsletters/${newsletter.id}/content`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ aiExplorationEnabled: "on" }),
+    },
+  );
+  assert.equal(rejected.status, 403);
+
+  const saved = await fetch(
+    `${fixture.origin}/newsletters/${newsletter.id}/content`,
+    {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: fixture.csrfToken,
+        aiExplorationEnabled: "on",
+      }),
+    },
+  );
+  assert.equal(saved.status, 303);
+  assert.match(saved.headers.get("location"), /\?content=saved$/);
+  assert.equal(
+    fixture.workspace.getNewsletter(newsletter.id).aiExplorationEnabled,
+    true,
+  );
+
+  const detail = await fetch(
+    `${fixture.origin}${saved.headers.get("location")}`,
+  );
+  const html = await detail.text();
+  assert.match(html, /Content settings saved/);
+  assert.match(html, /Add AI Exploration to future Issues/);
+  assert.match(html, /name="aiExplorationEnabled" checked/);
 });
 
 test("dashboard shows failed delivery and queues CSRF-protected retry", async (context) => {
