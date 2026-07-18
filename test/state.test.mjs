@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { loadHistory, saveRun } from "../src/state.mjs";
 
-test("saveRun writes a dossier and appends bounded history", async () => {
+test("saveRun writes a dossier and replaces same-day bounded history", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "learning-engine-"));
   const historyPath = path.join(directory, "data", "history.json");
   const outputDirectory = path.join(directory, "output");
@@ -22,11 +22,9 @@ test("saveRun writes a dossier and appends bounded history", async () => {
   await saveRun(
     {
       ...base,
-      date: "2026-07-19",
       historyEntry: {
         ...base.historyEntry,
-        date: "2026-07-19",
-        generatedAt: "2026-07-19T00:00:00.000Z",
+        generatedAt: "2026-07-18T01:00:00.000Z",
         lessonSummary: "Second",
       },
     },
@@ -37,5 +35,5 @@ test("saveRun writes a dossier and appends bounded history", async () => {
   const history = await loadHistory(historyPath);
   assert.equal(history.length, 1);
   assert.equal(history[0].lessonSummary, "Second");
+  assert.equal(history[0].date, "2026-07-18");
 });
-

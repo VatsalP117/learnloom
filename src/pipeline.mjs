@@ -42,9 +42,13 @@ export async function buildDossier({ config, items, history, provider, now = new
     provider,
     "skeptic",
     STAGE_INSTRUCTIONS.skeptic,
-    truncate(
-      `${learnerContext}\n\n# Sources\n\n${sourceBundle}\n\n# Research brief\n\n${research}`,
+    fitSections(
       config.limits.maxIntermediateCharacters,
+      [
+        ["Learner context", learnerContext, 1],
+        ["Sources", sourceBundle, 4],
+        ["Research brief", research, 2],
+      ],
     ),
     onStage,
   );
@@ -52,9 +56,13 @@ export async function buildDossier({ config, items, history, provider, now = new
     provider,
     "teacher",
     STAGE_INSTRUCTIONS.teacher,
-    truncate(
-      `${learnerContext}\n\n# Research brief\n\n${research}\n\n# Skeptical review\n\n${critique}`,
+    fitSections(
       config.limits.maxIntermediateCharacters,
+      [
+        ["Learner context", learnerContext, 1],
+        ["Research brief", research, 3],
+        ["Skeptical review", critique, 3],
+      ],
     ),
     onStage,
   );
@@ -62,7 +70,10 @@ export async function buildDossier({ config, items, history, provider, now = new
     provider,
     "examiner",
     STAGE_INSTRUCTIONS.examiner,
-    truncate(`${learnerContext}\n\n# Lesson\n\n${lesson}`, config.limits.maxIntermediateCharacters),
+    fitSections(config.limits.maxIntermediateCharacters, [
+      ["Learner context", learnerContext, 1],
+      ["Lesson", lesson, 5],
+    ]),
     onStage,
   );
 
@@ -72,11 +83,11 @@ export async function buildDossier({ config, items, history, provider, now = new
     "",
     `> Generated from ${items.length} source items through researcher, skeptic, teacher, and examiner passes.`,
     "",
-    lesson,
+    demoteTopLevelHeadings(lesson),
     "",
-    critique,
+    demoteTopLevelHeadings(critique),
     "",
-    practice,
+    demoteTopLevelHeadings(practice),
     "",
     "## Source Index",
     "",
@@ -160,6 +171,39 @@ function extractQuestions(markdown) {
     .slice(0, 5);
 }
 
+function fitSections(maximum, sections) {
+  const renderedHeaders = sections.map(([heading]) => `# ${heading}\n\n`);
+  const separatorCharacters = Math.max(0, sections.length - 1) * 2;
+  const available = Math.max(
+    sections.length,
+    maximum -
+      renderedHeaders.reduce((total, header) => total + header.length, 0) -
+      separatorCharacters,
+  );
+  const totalWeight = sections.reduce((total, [, , weight]) => total + weight, 0);
+
+  return sections
+    .map(([heading, contents, weight], index) => {
+      const allocation =
+        index === sections.length - 1
+          ? available -
+            sections
+              .slice(0, -1)
+              .reduce(
+                (total, [, , priorWeight]) =>
+                  total + Math.floor((available * priorWeight) / totalWeight),
+                0,
+              )
+          : Math.floor((available * weight) / totalWeight);
+      return `${renderedHeaders[index]}${truncate(contents, allocation)}`;
+    })
+    .join("\n\n");
+}
+
+function demoteTopLevelHeadings(markdown) {
+  return markdown.replace(/^# /gm, "## ");
+}
+
 function stripMarkdown(value) {
   return value
     .replace(/<[^>]+>/g, " ")
@@ -188,4 +232,3 @@ function formatDate(date, timeZone) {
     day: "2-digit",
   }).format(date);
 }
-

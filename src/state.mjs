@@ -27,7 +27,9 @@ export async function saveRun(result, options = {}) {
 
   const history = await loadHistory(historyPath);
   const withoutSameRun = history.filter(
-    (entry) => entry.generatedAt !== result.historyEntry.generatedAt,
+    (entry) =>
+      entry.generatedAt !== result.historyEntry.generatedAt &&
+      entry.date !== result.historyEntry.date,
   );
   withoutSameRun.push(result.historyEntry);
   await atomicWrite(
@@ -43,4 +45,3 @@ async function atomicWrite(filePath, contents) {
   await writeFile(temporaryPath, contents, "utf8");
   await rename(temporaryPath, filePath);
 }
-
