@@ -19,6 +19,8 @@ services:
     restart: "no"
 
   dashboard:
+    profiles:
+      - dashboard
     build:
       context: .
     image: learnloom:0.3
@@ -47,6 +49,8 @@ services:
     restart: unless-stopped
 
   worker:
+    profiles:
+      - dashboard
     build:
       context: .
     image: learnloom:0.3

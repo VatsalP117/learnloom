@@ -18,6 +18,7 @@ test("systemd permits the bounded multi-stage model run to finish", async () => 
 test("Compose exposes the unauthenticated dashboard on host loopback only", async () => {
   const compose = await readFile(path.join(root, "compose.yaml"), "utf8");
   assert.match(compose, /dashboard:/);
+  assert.match(compose, /profiles:\n\s+- dashboard/);
   assert.match(compose, /"127\.0\.0\.1:3000:3000"/);
   assert.match(compose, /worker:/);
   assert.match(compose, /no-new-privileges:true/);

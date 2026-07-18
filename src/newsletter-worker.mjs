@@ -73,12 +73,15 @@ export async function processNextIssue(options) {
 }
 
 export async function runWorkerCycle(options) {
-  const now = options.now ?? new Date();
-  const dispatched = options.workspace.dispatchDue(now);
+  const dispatchTime = options.now ?? new Date();
+  const dispatched = options.workspace.dispatchDue(dispatchTime);
   const processed = [];
   const maximum = options.maximumIssues ?? 100;
   for (let count = 0; count < maximum; count += 1) {
-    const issue = await processNextIssue({ ...options, now });
+    const issue = await processNextIssue({
+      ...options,
+      now: options.now ?? new Date(),
+    });
     if (!issue) break;
     processed.push(issue);
   }

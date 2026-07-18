@@ -55,6 +55,10 @@ docker compose up -d dashboard worker
 docker compose logs -f dashboard worker
 ```
 
+The dashboard roles use a Compose profile so an existing plain
+`docker compose up` does not unexpectedly replace the legacy finite-job
+behavior. Naming `dashboard worker` explicitly activates only these two roles.
+
 The dashboard is published only at `127.0.0.1:3000` on the VM. To reach it from
 your computer without exposing it publicly:
 
