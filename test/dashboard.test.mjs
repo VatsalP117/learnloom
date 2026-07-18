@@ -152,6 +152,94 @@ test("dashboard shows a safe generated Dossier preview by Issue ID", async (cont
   assert.doesNotMatch(html, /<!doctype html>[\s\S]*<!doctype html>/i);
 });
 
+test("dashboard saves per-Newsletter email settings", async (context) => {
+  const fixture = await dashboardFixture(context);
+  const newsletter = fixture.workspace.createNewsletter(newsletterInput());
+  const response = await fetch(
+    `${fixture.origin}/newsletters/${newsletter.id}/delivery`,
+    {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        _csrf: fixture.csrfToken,
+        emailEnabled: "on",
+        emailRecipients: "READER@example.com\nteam@example.com",
+      }),
+    },
+  );
+  assert.equal(response.status, 303);
+  assert.match(response.headers.get("location"), /\?delivery=saved$/);
+  const saved = fixture.workspace.getNewsletter(newsletter.id);
+  assert.equal(saved.emailEnabled, true);
+  assert.deepEqual(saved.emailRecipients, [
+    "reader@example.com",
+    "team@example.com",
+  ]);
+
+  const detail = await fetch(
+    `${fixture.origin}${response.headers.get("location")}`,
+  );
+  const html = await detail.text();
+  assert.match(html, /Email delivery settings saved/);
+  assert.match(html, /reader@example\.com/);
+  assert.match(html, /No enabled Resend sender is configured/);
+});
+
+test("dashboard shows failed delivery and queues CSRF-protected retry", async (context) => {
+  const fixture = await dashboardFixture(context);
+  const newsletter = fixture.workspace.createNewsletter({
+    ...newsletterInput(),
+    emailEnabled: true,
+    emailRecipients: ["reader@example.com"],
+  });
+  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
+  fixture.workspace.claimNextIssue();
+  fixture.workspace.completeIssue(issue.id, {
+    title: "Delivery test",
+    generationId: "generation-1",
+    artifactPath: "/tmp/delivery.md",
+    dossierPath: "/tmp/delivery.json",
+  });
+  fixture.workspace.claimNextDelivery();
+  fixture.workspace.failDelivery(
+    issue.id,
+    new Error("provider rejected <sender>"),
+  );
+
+  const detail = await fetch(
+    `${fixture.origin}/newsletters/${newsletter.id}`,
+  );
+  const html = await detail.text();
+  assert.match(html, /Retry email/);
+  assert.match(html, /provider rejected &lt;sender&gt;/);
+  assert.doesNotMatch(html, /provider rejected <sender>/);
+
+  const rejected = await fetch(
+    `${fixture.origin}/issues/${issue.id}/retry-delivery`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(),
+    },
+  );
+  assert.equal(rejected.status, 403);
+
+  const retried = await fetch(
+    `${fixture.origin}/issues/${issue.id}/retry-delivery`,
+    {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ _csrf: fixture.csrfToken }),
+    },
+  );
+  assert.equal(retried.status, 303);
+  assert.match(retried.headers.get("location"), /\?delivery=retried$/);
+  assert.equal(fixture.workspace.getIssue(issue.id).delivery.status, "pending");
+  assert.equal(fixture.workspace.getIssue(issue.id).status, "generated");
+});
+
 test("dashboard returns 404 for unknown identifiers", async (context) => {
   const fixture = await dashboardFixture(context);
   const response = await fetch(`${fixture.origin}/issues/not-here`);
