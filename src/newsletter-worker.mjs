@@ -201,6 +201,10 @@ export function newsletterRuntimeConfig(baseConfig, newsletter) {
       sources: newsletter.sources,
       provider: baseConfig.provider,
       deliveries: [],
+      content: {
+        ...baseConfig.content,
+        aiExplorationEnabled: newsletter.aiExplorationEnabled,
+      },
       storage: baseConfig.storage,
       limits: baseConfig.limits,
     },

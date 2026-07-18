@@ -140,6 +140,30 @@ async function handleRequest(request, response, options) {
     );
   }
 
+  const contentSettingsMatch =
+    /^\/newsletters\/([a-z0-9_-]+)\/content$/.exec(url.pathname);
+  if (contentSettingsMatch) {
+    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+    const form = await requireForm(request, options.csrfToken);
+    if (!options.workspace.getNewsletter(contentSettingsMatch[1])) {
+      return notFound(response);
+    }
+    try {
+      options.workspace.setNewsletterContent(contentSettingsMatch[1], {
+        aiExplorationEnabled:
+          form.get("aiExplorationEnabled") === "on",
+      });
+    } catch (error) {
+      throw httpError(400, error.message);
+    }
+    return redirect(
+      response,
+      `/newsletters/${encodeURIComponent(
+        contentSettingsMatch[1],
+      )}?content=saved`,
+    );
+  }
+
   const retryMatch =
     /^\/issues\/([a-z0-9_-]+)\/retry-delivery$/.exec(url.pathname);
   if (retryMatch) {
@@ -256,6 +280,11 @@ function renderNewsletterForm(baseConfig, csrfToken) {
         defaultSources,
       )}</textarea><small>One URL per line. Leave the installation defaults in place for the first test.</small></label>
       <fieldset>
+        <legend>Content quality</legend>
+        <label class="check-label"><input type="checkbox" name="aiExplorationEnabled"><span>Add an AI Exploration section</span></label>
+        <small>Opt into clearly labelled synthetic analogies, deductions, scenarios, and experiments. They stay separate from the cited lesson.</small>
+      </fieldset>
+      <fieldset>
         <legend>Email delivery</legend>
         <label class="check-label"><input type="checkbox" name="emailEnabled"><span>Send each generated Issue by email</span></label>
         <label><span>Recipients</span><textarea name="emailRecipients" rows="3" placeholder="you@example.com&#10;team@example.com"></textarea><small>One address per line. The sender and API key stay in the installation config.</small></label>
@@ -268,12 +297,15 @@ function renderNewsletterForm(baseConfig, csrfToken) {
 function renderNewsletterDetail(newsletter, issues, csrfToken, url, baseConfig) {
   const queued = url.searchParams.get("queued");
   const deliveryNotice = url.searchParams.get("delivery");
+  const contentNotice = url.searchParams.get("content");
   const notice = queued
     ? `<div class="notice">Issue queued. The worker will pick it up shortly.</div>`
     : deliveryNotice === "saved"
       ? `<div class="notice">Email delivery settings saved.</div>`
       : deliveryNotice === "retried"
         ? `<div class="notice">Email delivery queued for another attempt. The Issue will not be regenerated.</div>`
+        : contentNotice === "saved"
+          ? `<div class="notice">Content settings saved. They apply to future Issues.</div>`
         : "";
   const resendConfigured = baseConfig.deliveries.some(
     (delivery) => delivery.kind === "resend" && delivery.enabled,
@@ -312,6 +344,21 @@ function renderNewsletterDetail(newsletter, issues, csrfToken, url, baseConfig) 
       ${stat("Issues", newsletter.issueCount)}
       ${stat("Generated", newsletter.generatedCount)}
       ${stat("Sent", newsletter.sentCount)}
+    </section>
+    <section class="settings">
+      <div class="section-heading"><div><p class="eyebrow">Content</p><h2>Generation settings</h2></div>${statusPill(
+        newsletter.aiExplorationEnabled ? "active" : "paused",
+      )}</div>
+      <form class="form-card compact-form" method="post" action="/newsletters/${encodeURIComponent(
+        newsletter.id,
+      )}/content">
+        ${csrfField(csrfToken)}
+        <label class="check-label"><input type="checkbox" name="aiExplorationEnabled" ${
+          newsletter.aiExplorationEnabled ? "checked" : ""
+        }><span>Add AI Exploration to future Issues</span></label>
+        <small>The main lesson remains source-grounded. Exploration is a separate, explicitly synthetic section and is excluded from core retrieval questions.</small>
+        <div class="form-actions"><button class="button secondary" type="submit">Save content settings</button></div>
+      </form>
     </section>
     <section class="settings">
       <div class="section-heading"><div><p class="eyebrow">Delivery</p><h2>Email settings</h2></div>${statusPill(
@@ -440,6 +487,7 @@ function newsletterFromForm(form, baseConfig) {
     }),
     emailEnabled: form.get("emailEnabled") === "on",
     emailRecipients: recipientsFromForm(form.get("emailRecipients")),
+    aiExplorationEnabled: form.get("aiExplorationEnabled") === "on",
   };
 }
 

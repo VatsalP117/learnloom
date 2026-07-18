@@ -44,7 +44,7 @@ export class SQLiteWorkspace {
       const currentVersion = Number(
         this.database.prepare("PRAGMA user_version").get().user_version,
       );
-      if (currentVersion > 2) {
+      if (currentVersion > 3) {
         throw new Error(
           `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
         );
@@ -125,6 +125,14 @@ export class SQLiteWorkspace {
           PRAGMA user_version = 2;
         `);
       }
+      if (currentVersion < 3) {
+        this.database.exec(`
+          ALTER TABLE newsletters
+            ADD COLUMN ai_exploration_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (ai_exploration_enabled IN (0, 1));
+          PRAGMA user_version = 3;
+        `);
+      }
     });
   }
 
@@ -151,8 +159,8 @@ export class SQLiteWorkspace {
           id, name, topic, learner_level, learner_goal, lesson_minutes,
           sources_json, schedule_hour, schedule_minute, time_zone, active,
           next_run_at, created_at, updated_at, email_enabled,
-          email_recipients_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          email_recipients_json, ai_exploration_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         newsletter.id,
@@ -171,6 +179,7 @@ export class SQLiteWorkspace {
         newsletter.updatedAt,
         newsletter.emailEnabled ? 1 : 0,
         JSON.stringify(newsletter.emailRecipients),
+        newsletter.aiExplorationEnabled ? 1 : 0,
       );
     return this.getNewsletter(newsletter.id);
   }
@@ -290,6 +299,30 @@ export class SQLiteWorkspace {
           .run(now, id);
       }
     });
+    return this.getNewsletter(id);
+  }
+
+  setNewsletterContent(id, input) {
+    this.requireNewsletter(id);
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new Error("Newsletter content settings must be an object.");
+    }
+    if (typeof input.aiExplorationEnabled !== "boolean") {
+      throw new Error(
+        "Newsletter AI Exploration enabled state must be a boolean.",
+      );
+    }
+    this.database
+      .prepare(`
+        UPDATE newsletters
+        SET ai_exploration_enabled = ?, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        input.aiExplorationEnabled ? 1 : 0,
+        this.now().toISOString(),
+        id,
+      );
     return this.getNewsletter(id);
   }
 
@@ -677,6 +710,12 @@ function normalizeNewsletter(input, now) {
     enabled: input.emailEnabled ?? false,
     recipients: input.emailRecipients ?? [],
   });
+  const aiExplorationEnabled = input.aiExplorationEnabled ?? false;
+  if (typeof aiExplorationEnabled !== "boolean") {
+    throw new Error(
+      "Newsletter AI Exploration enabled state must be a boolean.",
+    );
+  }
   return {
     id,
     name,
@@ -704,6 +743,7 @@ function normalizeNewsletter(input, now) {
     active,
     emailEnabled: email.enabled,
     emailRecipients: email.recipients,
+    aiExplorationEnabled,
     nextRunAt: nextDailyOccurrence(now, timeZone, hour, minute).toISOString(),
     createdAt,
     updatedAt: createdAt,
@@ -764,6 +804,7 @@ function mapNewsletter(row) {
     emailEnabled: Boolean(row.email_enabled),
     emailRecipients: JSON.parse(row.email_recipients_json ?? "[]"),
     sentCount: Number(row.sent_count ?? 0),
+    aiExplorationEnabled: Boolean(row.ai_exploration_enabled),
   };
 }
 
