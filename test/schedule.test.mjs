@@ -15,6 +15,5 @@ test("buildLaunchAgent creates a 9am plist and escapes paths", () => {
   });
   assert.match(plist, /<integer>9<\/integer>/);
   assert.match(plist, /a&amp;b/);
-  assert.match(plist, /ai\.learning-engine\.morning/);
+  assert.match(plist, /app\.learnloom\.morning/);
 });
-

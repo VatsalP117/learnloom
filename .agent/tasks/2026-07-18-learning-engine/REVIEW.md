@@ -6,7 +6,7 @@ APPROVE
 
 ## Summary
 
-The implementation satisfies the task and acceptance criteria. The repository
+The Learnloom implementation satisfies the task and acceptance criteria. The repository
 has no prior `main` commit, so the review package compares the feature branch
 against Git's empty tree. The design keeps credentials outside the repository,
 uses the documented Command Code headless interface, invokes child processes
@@ -47,4 +47,3 @@ None remaining.
 ## Exact Fix Instructions for Executor
 
 None. Approved for user handoff.
-

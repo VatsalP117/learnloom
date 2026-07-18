@@ -1,9 +1,9 @@
 {
-  "name": "ai-learning-engine",
+  "name": "learnloom",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A source-grounded daily learning dossier powered by Command Code.",
+  "description": "Learnloom: a source-grounded daily learning dossier powered by Command Code.",
   "bin": {
     "learn": "./bin/learn.mjs"
   },
@@ -18,4 +18,3 @@
     "node": ">=22"
   }
 }
-

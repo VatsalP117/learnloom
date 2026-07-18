@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { runProcess } from "./provider.mjs";
 
-export const LAUNCH_AGENT_LABEL = "ai.learning-engine.morning";
+export const LAUNCH_AGENT_LABEL = "app.learnloom.morning";
 
 export function buildLaunchAgent({
   nodePath,
@@ -127,4 +127,3 @@ function escapeXml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 }
-

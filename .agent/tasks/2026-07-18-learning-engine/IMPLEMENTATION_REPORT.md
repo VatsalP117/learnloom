@@ -2,7 +2,7 @@
 
 ## Summary
 
-Built a dependency-free Node.js personal learning engine that retrieves
+Built Learnloom, a dependency-free Node.js personal learning engine that retrieves
 RSS/Atom sources, runs researcher, skeptic, teacher, and examiner passes through
 Command Code's documented headless CLI, saves a cited Markdown dossier, and
 maintains bounded local lesson history.
@@ -37,7 +37,7 @@ items, and installed a loaded macOS launch agent for 09:00 local time.
 - `npm start`
 - `node bin/learn.mjs schedule install`
 - `node bin/learn.mjs schedule status`
-- `plutil -lint ~/Library/LaunchAgents/ai.learning-engine.morning.plist`
+- `plutil -lint ~/Library/LaunchAgents/app.learnloom.morning.plist`
 
 ## Tests
 
@@ -71,4 +71,3 @@ items, and installed a loaded macOS launch agent for 09:00 local time.
 - Customize the ignored `config.json` with the learner's preferred topics.
 - Optionally add learner-answer capture and spaced-repetition scheduling.
 - Rotate the Command Code API credential because it was shared through chat.
-

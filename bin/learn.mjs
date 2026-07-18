@@ -188,7 +188,7 @@ async function schedule(commandArgs) {
     environmentPath: process.env.PATH,
   });
   process.stdout.write(
-    `Installed ${plistPath}\nThe learning engine will run daily at ${pad(hour)}:${pad(minute)} local time.\n`,
+    `Installed ${plistPath}\nLearnloom will run daily at ${pad(hour)}:${pad(minute)} local time.\n`,
   );
 }
 
@@ -259,7 +259,7 @@ function pad(value) {
 }
 
 function printHelp() {
-  process.stdout.write(`AI Learning Engine
+  process.stdout.write(`Learnloom
 
 Usage:
   learn init [--config path] [--force]

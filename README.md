@@ -1,7 +1,8 @@
-# AI Learning Engine
+# Learnloom
 
-A local, source-grounded morning learning dossier powered by the DeepSeek
-credits in a [Command Code](https://commandcode.ai/) subscription.
+A local, source-grounded morning learning dossier that weaves fresh sources
+with your learning history, powered by the DeepSeek credits in a
+[Command Code](https://commandcode.ai/) subscription.
 
 The engine retrieves configured RSS/Atom feeds, remembers recent lessons, and
 uses four separate model passes:
@@ -189,4 +190,3 @@ warning for failed feeds. If all feeds fail, no model credits are spent.
 
 The incomplete dossier is not saved. Re-run after fixing authentication,
 connectivity, credit balance, or model availability.
-

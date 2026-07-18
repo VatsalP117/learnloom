@@ -27,7 +27,7 @@ export async function fetchSources(config, fetchImpl = globalThis.fetch) {
       const response = await fetchImpl(source.url, {
         headers: {
           accept: "application/atom+xml, application/rss+xml, application/xml, text/xml",
-          "user-agent": "ai-learning-engine/0.1 (+local personal reader)",
+          "user-agent": "learnloom/0.1 (+local personal reader)",
         },
         signal: AbortSignal.timeout(20_000),
       });
