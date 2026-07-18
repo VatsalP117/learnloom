@@ -143,7 +143,11 @@ export function formatSourceBundle(items, maxItemCharacters) {
 }
 
 function formatLearnerContext(config, history) {
-  const prior = history.length
+  const retainedHistory =
+    config.limits.historyEntries === 0
+      ? []
+      : history.slice(-config.limits.historyEntries);
+  const prior = retainedHistory.length
     ? history
         .slice(-config.limits.historyEntries)
         .map((entry) => `- ${entry.date}: ${entry.lessonSummary}`)

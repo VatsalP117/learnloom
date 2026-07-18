@@ -29,3 +29,40 @@ test("validateConfig rejects empty interests", () => {
   assert.throws(() => validateConfig({ ...valid, interests: [] }), /at least one interest/);
 });
 
+test("validateConfig accepts an OpenAI-compatible provider and disabled Resend delivery", () => {
+  const config = validateConfig({
+    ...valid,
+    profileId: "vatsal-learning",
+    provider: {
+      kind: "openai-compatible",
+      baseUrl: "https://api.deepseek.com/",
+      apiKeyEnv: "DEEPSEEK_API_KEY",
+      model: "deepseek-v4-pro",
+    },
+    deliveries: [
+      {
+        kind: "resend",
+        enabled: false,
+        from: "Learnloom <daily@example.com>",
+        to: "reader@example.com",
+      },
+    ],
+  });
+  assert.equal(config.provider.baseUrl, "https://api.deepseek.com");
+  assert.equal(config.provider.apiKeyEnv, "DEEPSEEK_API_KEY");
+  assert.deepEqual(config.deliveries[0].to, ["reader@example.com"]);
+});
+
+test("validateConfig rejects environment values in place of environment names", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        ...valid,
+        provider: {
+          kind: "openai-compatible",
+          apiKeyEnv: "secret-value",
+        },
+      }),
+    /environment variable name/,
+  );
+});

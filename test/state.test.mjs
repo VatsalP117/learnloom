@@ -37,3 +37,25 @@ test("saveRun writes a dossier and replaces same-day bounded history", async () 
   assert.equal(history[0].lessonSummary, "Second");
   assert.equal(history[0].date, "2026-07-18");
 });
+
+test("saveRun clears Learning History when historyLimit is zero", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learning-engine-zero-"));
+  const historyPath = path.join(directory, "data", "history.json");
+  await saveRun(
+    {
+      date: "2026-07-18",
+      markdown: "# Lesson\n",
+      historyEntry: {
+        date: "2026-07-18",
+        generatedAt: "2026-07-18T00:00:00.000Z",
+        lessonSummary: "Not retained",
+      },
+    },
+    {
+      historyPath,
+      outputDirectory: path.join(directory, "output"),
+      historyLimit: 0,
+    },
+  );
+  assert.deepEqual(await loadHistory(historyPath), []);
+});

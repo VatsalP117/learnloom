@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -32,16 +33,15 @@ export async function saveRun(result, options = {}) {
       entry.date !== result.historyEntry.date,
   );
   withoutSameRun.push(result.historyEntry);
-  await atomicWrite(
-    historyPath,
-    `${JSON.stringify(withoutSameRun.slice(-historyLimit), null, 2)}\n`,
-  );
+  const retainedHistory =
+    historyLimit === 0 ? [] : withoutSameRun.slice(-historyLimit);
+  await atomicWrite(historyPath, `${JSON.stringify(retainedHistory, null, 2)}\n`);
 
   return { outputPath, historyPath };
 }
 
 async function atomicWrite(filePath, contents) {
-  const temporaryPath = `${filePath}.${process.pid}.tmp`;
-  await writeFile(temporaryPath, contents, "utf8");
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temporaryPath, contents, { encoding: "utf8", mode: 0o600 });
   await rename(temporaryPath, filePath);
 }
