@@ -1,0 +1,22 @@
+0afccad Serialize Newsletter generation claims
+eb2aa45 Fix dashboard review findings
+6619c80 Preserve legacy Compose behavior
+c5c77b0 Document dashboard implementation
+a45e96a Add dashboard and worker runtime roles
+03dda30 Stabilize Workspace summary test
+ff907ad Harden Workspace schema and claims
+b5f2048 Add local Newsletter dashboard
+8ef3a4d Run queued Newsletter Issues
+599e35d Add SQLite Newsletter workspace
+ce77f5d Plan multi-newsletter dashboard test phase
+1a509ed Normalize review patch artifact
+49e9890 Record approval for self-hosted release
+efba1a3 Make Daily Run locking race-free
+269eb13 Clean up failed lease creation
+666ad2b Fix release review findings
+421afe5 Document self-hosted implementation
+9d40037 Harden Daily Run recovery and isolation
+40b0401 Package Learnloom for self-hosting
+d3f758b Add idempotent Dossier email delivery
+13935cc Add bring-your-own model provider
+246c1f0 Plan self-hosted Learnloom release
