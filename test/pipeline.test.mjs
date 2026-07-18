@@ -142,16 +142,24 @@ test("buildDossier generates a separate uncited AI Exploration only when enabled
     content: { aiExplorationEnabled: true },
   });
   const stages = [];
+  let editorInput = "";
+  const demo = new DemoProvider();
   const result = await buildDossier({
     config,
     items: DEMO_ITEMS,
     history: [],
-    provider: new DemoProvider(),
+    provider: {
+      async complete(options) {
+        if (options.stage === "editor") editorInput = options.input;
+        return demo.complete(options);
+      },
+    },
     onStage: (stage) => stages.push(stage),
   });
   assert.ok(stages.includes("exploration"));
   assert.match(result.dossier.exploration, /Synthetic mental model/);
   assert.doesNotMatch(result.dossier.exploration, /\[S\d+\]/);
+  assert.doesNotMatch(editorInput, /Synthetic mental model/);
   assert.equal(result.dossier.quality.checks.explorationBoundary, true);
 });
 
@@ -282,23 +290,23 @@ function blueprintFixture() {
 
 function lessonFixture() {
   return `## Learning objective
-Explain the large mechanism [S1].
+Explain how the large mechanism propagates a constraint through a multi-stage system [S1].
 ## Two-minute recall
-Recall a prerequisite.
+Recall how a basic system passes state between components while preserving a shared invariant.
 ## Why this matters
-It matters [S1].
+The mechanism matters because local changes can create failures far away from their original source [S1].
 ## Mental model
-Use a flow.
+Picture a flow of work paired with a signal that travels backward to regulate incoming demand.
 ## How it works
-The mechanism propagates.
+Each stage measures its remaining capacity and propagates a constraint to the stage immediately upstream.
 ## Worked example
-Apply one input.
+A slow final consumer removes capacity, causing each upstream component to reduce its accepted work in turn.
 ## Common misconception
-Size is not quality.
+Adding more buffer space postpones pressure but does not increase the system's sustainable processing rate.
 ## Practical experiment
-Change one variable.
+Change one service-rate variable and record how queue depth, throughput, and upstream latency respond over time.
 ## Takeaway
-Mechanisms matter.`;
+The mechanism protects the whole pipeline by turning downstream capacity into an explicit upstream constraint.`;
 }
 
 function practiceFixture() {
@@ -307,11 +315,11 @@ function practiceFixture() {
 2. Why does it matter?
 3. How would you test it?
 ## Application challenge
-Apply it to a new system.
+Apply the mechanism to a three-stage image-processing pipeline and decide where each feedback signal belongs.
 <details>
 <summary>Answer key</summary>
-1. It propagates a constraint.
-2. It changes behavior.
-3. Vary one input.
+1. The mechanism propagates a capacity constraint from a downstream stage toward the upstream producer.
+2. It matters because unregulated demand can exhaust finite resources and spread failure across components.
+3. Vary one service rate while observing queue depth, throughput, and the producer's waiting time.
 </details>`;
 }

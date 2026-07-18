@@ -1,4 +1,6 @@
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 
 const DEFAULT_MAX_BYTES = 512 * 1024;
@@ -38,7 +40,6 @@ export async function enrichSourceItems(items, options = {}) {
 }
 
 export async function fetchArticleText(inputUrl, options = {}) {
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const lookupFn = options.lookupFn ?? lookup;
   const maximumBytes = options.maximumBytes ?? DEFAULT_MAX_BYTES;
   const maximumCharacters =
@@ -48,16 +49,19 @@ export async function fetchArticleText(inputUrl, options = {}) {
   let currentUrl = new URL(inputUrl);
 
   for (let redirects = 0; redirects <= maximumRedirects; redirects += 1) {
-    await assertPublicWebUrl(currentUrl, lookupFn);
-    const response = await fetchImpl(currentUrl, {
-      method: "GET",
-      redirect: "manual",
-      headers: {
-        accept: "text/html, text/plain;q=0.9",
-        "user-agent": "learnloom/0.5 (+personal learning source enrichment)",
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const resolved = await resolvePublicWebUrl(currentUrl, lookupFn);
+    const response = options.fetchImpl
+      ? await options.fetchImpl(currentUrl, {
+          method: "GET",
+          redirect: "manual",
+          headers: articleRequestHeaders(),
+          signal: AbortSignal.timeout(timeoutMs),
+        })
+      : await requestPinnedArticle(resolved, {
+          maximumBytes,
+          timeoutMs,
+          requestImpl: options.requestImpl,
+        });
 
     if (REDIRECT_STATUSES.has(response.status)) {
       if (redirects === maximumRedirects) {
@@ -80,7 +84,8 @@ export async function fetchArticleText(inputUrl, options = {}) {
     ) {
       throw new Error(`unsupported article content type ${contentType || "unknown"}`);
     }
-    const body = await readBoundedText(response, maximumBytes);
+    const body =
+      response.bodyText ?? (await readBoundedText(response, maximumBytes));
     const metadata =
       contentType.startsWith("text/html")
         ? extractArticleMetadata(body, currentUrl)
@@ -94,6 +99,10 @@ export async function fetchArticleText(inputUrl, options = {}) {
 }
 
 export async function assertPublicWebUrl(input, lookupFn = lookup) {
+  return (await resolvePublicWebUrl(input, lookupFn)).url;
+}
+
+async function resolvePublicWebUrl(input, lookupFn) {
   const url = input instanceof URL ? input : new URL(input);
   if (!["http:", "https:"].includes(url.protocol)) {
     throw new Error("article URL must use HTTP or HTTPS");
@@ -101,21 +110,25 @@ export async function assertPublicWebUrl(input, lookupFn = lookup) {
   if (url.username || url.password) {
     throw new Error("article URL must not contain credentials");
   }
-  const hostname = url.hostname.toLowerCase();
+  const hostname = stripIpv6Brackets(url.hostname.toLowerCase());
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw new Error("article URL resolves to a private address");
   }
   const literalVersion = isIP(hostname);
-  const addresses = literalVersion
+  const rawAddresses = literalVersion
     ? [{ address: hostname, family: literalVersion }]
     : await lookupFn(hostname, { all: true, verbatim: true });
-  if (!Array.isArray(addresses) || addresses.length === 0) {
+  if (!Array.isArray(rawAddresses) || rawAddresses.length === 0) {
     throw new Error("article hostname did not resolve");
   }
+  const addresses = rawAddresses.map(({ address, family }) => ({
+    address: stripIpv6Brackets(String(address).toLowerCase()),
+    family: normalizeAddressFamily(family, address),
+  }));
   if (addresses.some(({ address }) => !isPublicAddress(address))) {
     throw new Error("article URL resolves to a private address");
   }
-  return url;
+  return { url, addresses };
 }
 
 export function extractArticleMetadata(html, pageUrl) {
@@ -209,22 +222,19 @@ function isPublicAddress(address) {
   const version = isIP(address);
   if (version === 4) return isPublicIpv4(address);
   if (version !== 6) return false;
-  const normalized = address.toLowerCase();
-  if (normalized.startsWith("::ffff:")) {
-    return isPublicIpv4(normalized.slice(7));
+  const value = ipv6ToBigInt(address);
+  if (value == null) return false;
+  const mappedPrefix = 0xffffn;
+  if ((value >> 32n) === mappedPrefix) {
+    return isPublicIpv4(bigIntToIpv4(value & 0xffff_ffffn));
   }
-  if (
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    /^fe[89ab]/.test(normalized) ||
-    normalized.startsWith("ff") ||
-    normalized.startsWith("2001:db8:")
-  ) {
-    return false;
-  }
-  return true;
+  return (
+    inIpv6Cidr(value, "2000::", 3) &&
+    !inIpv6Cidr(value, "2001::", 23) &&
+    !inIpv6Cidr(value, "2001:db8::", 32) &&
+    !inIpv6Cidr(value, "2002::", 16) &&
+    !inIpv6Cidr(value, "3fff::", 20)
+  );
 }
 
 function isPublicIpv4(address) {
@@ -253,6 +263,161 @@ function isPublicIpv4(address) {
     return false;
   }
   return true;
+}
+
+function requestPinnedArticle(resolved, options) {
+  const { url, addresses } = resolved;
+  const selected = addresses[0];
+  const requestImpl =
+    options.requestImpl ??
+    (url.protocol === "https:" ? httpsRequest : httpRequest);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const request = requestImpl(
+      url,
+      {
+        method: "GET",
+        headers: articleRequestHeaders(),
+        lookup(_hostname, lookupOptions, callback) {
+          if (lookupOptions?.all) {
+            callback(null, [selected]);
+            return;
+          }
+          callback(null, selected.address, selected.family);
+        },
+      },
+      (response) => {
+        const remoteAddress = stripIpv6Brackets(
+          response.socket.remoteAddress?.toLowerCase() ?? "",
+        );
+        if (
+          !isPublicAddress(remoteAddress) ||
+          !addressesEquivalent(remoteAddress, selected.address)
+        ) {
+          response.destroy();
+          fail(new Error("article connection did not use the validated address"));
+          return;
+        }
+        const chunks = [];
+        let length = 0;
+        response.on("data", (chunk) => {
+          length += chunk.length;
+          if (length > options.maximumBytes) {
+            response.destroy();
+            fail(new Error("article exceeded size limit"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => {
+          if (settled) return;
+          settled = true;
+          const headers = new Map(
+            Object.entries(response.headers).map(([name, value]) => [
+              name.toLowerCase(),
+              Array.isArray(value) ? value.join(", ") : value ?? null,
+            ]),
+          );
+          resolve({
+            status: response.statusCode ?? 0,
+            ok:
+              (response.statusCode ?? 0) >= 200 &&
+              (response.statusCode ?? 0) < 300,
+            headers: { get: (name) => headers.get(name.toLowerCase()) ?? null },
+            bodyText: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+        response.on("error", fail);
+      },
+    );
+    request.setTimeout(options.timeoutMs, () => {
+      request.destroy(new Error("article request timed out"));
+    });
+    request.on("error", fail);
+    request.end();
+  });
+}
+
+function articleRequestHeaders() {
+  return {
+    accept: "text/html, text/plain;q=0.9",
+    "user-agent": "learnloom/0.5 (+personal learning source enrichment)",
+  };
+}
+
+function normalizeAddressFamily(family, address) {
+  if (family === 4 || family === "IPv4") return 4;
+  if (family === 6 || family === "IPv6") return 6;
+  return isIP(stripIpv6Brackets(String(address)));
+}
+
+function addressesEquivalent(left, right) {
+  const leftVersion = isIP(left);
+  const rightVersion = isIP(right);
+  if (leftVersion !== rightVersion) return false;
+  if (leftVersion === 4) return left === right;
+  if (leftVersion !== 6) return false;
+  return ipv6ToBigInt(left) === ipv6ToBigInt(right);
+}
+
+function stripIpv6Brackets(value) {
+  return value.startsWith("[") && value.endsWith("]")
+    ? value.slice(1, -1)
+    : value;
+}
+
+function ipv6ToBigInt(address) {
+  let normalized = stripIpv6Brackets(address.toLowerCase());
+  if (normalized.includes("%")) return null;
+  const ipv4Match = normalized.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (ipv4Match) {
+    if (!isIP(ipv4Match[1])) return null;
+    const parts = ipv4Match[1].split(".").map(Number);
+    const replacement = `${((parts[0] << 8) | parts[1]).toString(16)}:${(
+      (parts[2] << 8) |
+      parts[3]
+    ).toString(16)}`;
+    normalized = `${normalized.slice(0, -ipv4Match[1].length)}${replacement}`;
+  }
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (
+    (halves.length === 1 && missing !== 0) ||
+    (halves.length === 2 && missing < 1)
+  ) {
+    return null;
+  }
+  const groups = [...left, ...Array(Math.max(0, missing)).fill("0"), ...right];
+  if (
+    groups.length !== 8 ||
+    groups.some((group) => !/^[\da-f]{1,4}$/.test(group))
+  ) {
+    return null;
+  }
+  return groups.reduce(
+    (value, group) => (value << 16n) | BigInt(`0x${group}`),
+    0n,
+  );
+}
+
+function inIpv6Cidr(value, baseAddress, prefixLength) {
+  const base = ipv6ToBigInt(baseAddress);
+  const shift = BigInt(128 - prefixLength);
+  return base != null && value >> shift === base >> shift;
+}
+
+function bigIntToIpv4(value) {
+  return [24n, 16n, 8n, 0n]
+    .map((shift) => Number((value >> shift) & 0xffn))
+    .join(".");
 }
 
 function decodeHtml(value) {
@@ -294,4 +459,3 @@ function safeEnrichmentError(error) {
     .replace(/\s+/g, " ")
     .slice(0, 240);
 }
-

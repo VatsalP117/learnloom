@@ -148,11 +148,9 @@ export function evaluateDossierContent(input) {
     blueprint,
     historyCount = 0,
   } = input;
+  const lessonSections = parseMarkdownSections(lesson);
   const missingSections = REQUIRED_LESSON_SECTIONS.filter(
-    (section) =>
-      !new RegExp(`^#{1,4}\\s+${escapeRegExp(section)}\\s*$`, "im").test(
-        lesson,
-      ),
+    (section) => !lessonSections.has(section.toLowerCase()),
   );
   if (missingSections.length > 0) {
     throw new Error(
@@ -161,17 +159,23 @@ export function evaluateDossierContent(input) {
       )}.`,
     );
   }
+  const shallowSections = REQUIRED_LESSON_SECTIONS.filter((section) => {
+    const body = lessonSections.get(section.toLowerCase()) ?? "";
+    return meaningfulWords(body).length < 5 || plainText(body).length < 30;
+  });
+  if (shallowSections.length > 0) {
+    throw new Error(
+      `Editorial lesson sections need substantive content: ${shallowSections.join(
+        ", ",
+      )}.`,
+    );
+  }
   const knownSourceIds = new Set(
     sources.map((source, index) => source.sourceId ?? `S${index + 1}`),
   );
   const groundedText = `${lesson}\n${critique}\n${practice}`;
-  const citedSourceIds = [
-    ...new Set(
-      [...groundedText.matchAll(/\[S(\d+)\]/g)].map(
-        (match) => `S${match[1]}`,
-      ),
-    ),
-  ];
+  const citedSourceIds = extractSourceIds(groundedText);
+  const lessonCitedSourceIds = extractSourceIds(lesson);
   const unknownSourceIds = citedSourceIds.filter(
     (sourceId) => !knownSourceIds.has(sourceId),
   );
@@ -183,9 +187,9 @@ export function evaluateDossierContent(input) {
     );
   }
   const requiredCitationCount = Math.min(2, sources.length);
-  if (citedSourceIds.length < requiredCitationCount) {
+  if (lessonCitedSourceIds.length < requiredCitationCount) {
     throw new Error(
-      `Editorial output must cite at least ${requiredCitationCount} Source Items.`,
+      `Editorial lesson must cite at least ${requiredCitationCount} Source Items.`,
     );
   }
   const questions = practice
@@ -197,45 +201,100 @@ export function evaluateDossierContent(input) {
       "Editorial practice must contain at least three retrieval questions.",
     );
   }
-  if (!/^#{1,4}\s+Application challenge\s*$/im.test(practice)) {
+  const normalizedQuestions = new Set(
+    questions.map((question) => plainText(question).toLowerCase()),
+  );
+  if (
+    normalizedQuestions.size !== questions.length ||
+    questions.some((question) => meaningfulWords(question).length < 4)
+  ) {
+    throw new Error(
+      "Editorial practice must contain distinct, substantive retrieval questions.",
+    );
+  }
+  const applicationChallenge = sectionBody(
+    practice,
+    "Application challenge",
+  );
+  if (applicationChallenge == null) {
     throw new Error(
       "Editorial practice is missing an Application challenge section.",
     );
   }
   if (
-    !/<details>/i.test(practice) ||
-    !/<summary>\s*Answer key\s*<\/summary>/i.test(practice) ||
-    !/<\/details>/i.test(practice)
+    plainText(applicationChallenge).length < 40 ||
+    meaningfulWords(applicationChallenge).length < 7
   ) {
+    throw new Error("Editorial Application challenge must be substantive.");
+  }
+  const answerKey = practice.match(
+    /<details>\s*<summary>\s*Answer key\s*<\/summary>([\s\S]*?)<\/details>/i,
+  )?.[1];
+  if (answerKey == null) {
     throw new Error("Editorial practice is missing a collapsed answer key.");
+  }
+  const answers = answerKey
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\.\s+(.+?)\s*$/))
+    .filter(Boolean)
+    .map((match) => ({
+      number: Number(match[1]),
+      text: match[2],
+    }));
+  const answerNumbers = new Set(answers.map((answer) => answer.number));
+  if (
+    answers.length < questions.length ||
+    questions.some((_, index) => !answerNumbers.has(index + 1)) ||
+    answers.some(
+      (answer) =>
+        plainText(answer.text).length < 15 ||
+        meaningfulWords(answer.text).length < 3,
+    )
+  ) {
+    throw new Error(
+      "Editorial answer key must provide a substantive numbered answer for every retrieval question.",
+    );
   }
   if (exploration && /\[S\d+\]/.test(exploration)) {
     throw new Error("AI Exploration must not use source citation markers.");
   }
 
   const citationCoverage =
-    knownSourceIds.size === 0 ? 0 : citedSourceIds.length / knownSourceIds.size;
+    knownSourceIds.size === 0
+      ? 0
+      : lessonCitedSourceIds.length / knownSourceIds.size;
   const enrichedCount = sources.filter(
     (source) => source.contentSource === "article",
   ).length;
   const checks = {
     requiredLessonSections: missingSections.length === 0,
-    sourceGrounding: citedSourceIds.length >= requiredCitationCount,
+    substantiveLessonSections: shallowSections.length === 0,
+    sourceGrounding:
+      lessonCitedSourceIds.length >= requiredCitationCount,
     validCitationIdentifiers: unknownSourceIds.length === 0,
-    retrievalPractice: questions.length >= 3,
-    applicationChallenge: true,
-    collapsedAnswerKey: true,
+    retrievalPractice:
+      questions.length >= 3 && normalizedQuestions.size === questions.length,
+    applicationChallenge:
+      plainText(applicationChallenge).length >= 40,
+    collapsedAnswerKey:
+      answers.length >= questions.length &&
+      questions.every((_, index) => answerNumbers.has(index + 1)),
     continuity:
       historyCount === 0 || blueprint.continuityBridge.trim().length > 0,
     explorationBoundary: !exploration || !/\[S\d+\]/.test(exploration),
   };
   const score = Math.round(
-    Math.min(25, citationCoverage * 25) +
-      25 +
-      20 +
-      (historyCount === 0 || checks.continuity ? 10 : 0) +
+    (checks.requiredLessonSections && checks.substantiveLessonSections
+      ? 20
+      : 0) +
+      Math.min(25, citationCoverage * 25) +
+      (checks.validCitationIdentifiers ? 5 : 0) +
+      (checks.retrievalPractice ? 15 : 0) +
+      (checks.applicationChallenge ? 10 : 0) +
+      (checks.collapsedAnswerKey ? 10 : 0) +
+      (historyCount === 0 || checks.continuity ? 5 : 0) +
       (checks.explorationBoundary ? 5 : 0) +
-      (enrichedCount > 0 ? 15 : 8),
+      (enrichedCount > 0 ? 5 : 2),
   );
   return {
     version: 1,
@@ -244,8 +303,9 @@ export function evaluateDossierContent(input) {
     metrics: {
       selectedSources: sources.length,
       enrichedSources: enrichedCount,
-      citedSources: citedSourceIds.length,
+      citedSources: lessonCitedSourceIds.length,
       retrievalQuestions: questions.length,
+      answeredQuestions: answers.length,
     },
   };
 }
@@ -276,4 +336,49 @@ function requiredTextArray(value, field, maximumItems) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseMarkdownSections(markdown) {
+  const sections = new Map();
+  const expression =
+    /^#{1,4}\s+(.+?)\s*$([\s\S]*?)(?=^#{1,4}\s+|(?![\s\S]))/gim;
+  for (const match of markdown.matchAll(expression)) {
+    sections.set(match[1].trim().toLowerCase(), match[2].trim());
+  }
+  return sections;
+}
+
+function sectionBody(markdown, heading) {
+  const escaped = escapeRegExp(heading);
+  return (
+    markdown.match(
+      new RegExp(
+        `^#{1,4}\\s+${escaped}\\s*$([\\s\\S]*?)(?=^#{1,4}\\s+|<details>|(?![\\s\\S]))`,
+        "im",
+      ),
+    )?.[1]?.trim() ?? null
+  );
+}
+
+function extractSourceIds(value) {
+  return [
+    ...new Set(
+      [...value.matchAll(/\[S(\d+)\]/g)].map(
+        (match) => `S${match[1]}`,
+      ),
+    ),
+  ];
+}
+
+function plainText(value) {
+  return value
+    .replace(/\[S\d+\]/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[`*_>#-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function meaningfulWords(value) {
+  return plainText(value).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? [];
 }

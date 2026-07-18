@@ -59,12 +59,16 @@ const STAGE_INSTRUCTIONS = Object.freeze({
     "Do not use [S#] citation markers and do not rewrite the source-grounded lesson.",
   ].join(" "),
   editor: [
-    "Act as the final learning editor. Rewrite for precision, explanatory depth, continuity, and signal-to-noise.",
-    "Preserve every required lesson heading, valid citations, the practice contract, and the collapsed answer key.",
-    "Remove generic filler and unsupported core claims. Keep AI Exploration separate, explicitly synthetic, and uncited.",
-    "Never move a claim from AI Exploration into the core lesson.",
+    "Act as the final editor for source-grounded learning content only. Rewrite for precision, explanatory depth, continuity, and signal-to-noise.",
+    `Your lesson is programmatically rejected unless it contains each of these exact headings once: ${requiredLessonSections()
+      .map((heading) => `"## ${heading}"`)
+      .join(", ")}.`,
+    "Never merge, rename, reorder, or omit those headings. Keep the complete response concise enough for a 15-minute lesson.",
+    "Preserve valid citations, the practice contract, and the collapsed answer key.",
+    "Make every lesson section substantive. Require distinct retrieval questions, a realistic application challenge, and a complete numbered answer key.",
+    "Remove generic filler and unsupported core claims. You will not receive or edit AI Exploration.",
     'Return strict JSON only with string fields "lesson", "critique", "practice";',
-    '"exploration" must be a string when enabled and null when disabled;',
+    '"exploration" must be null;',
     '"qualityNotes" must be an array of short strings.',
   ].join(" "),
 });
@@ -219,22 +223,22 @@ export async function buildDossier(options) {
         onStage,
       )
     : null;
-  const editorial = await runStructuredStage(
+  const groundedEditorial = await runStructuredStage(
     provider,
     "editor",
     STAGE_INSTRUCTIONS.editor,
     fitSections(config.limits.maxIntermediateCharacters, [
-      ["AI Exploration enabled", String(explorationEnabled), 1],
       ["Learning blueprint", blueprintText, 2],
       ["Enriched sources", sourceBundle, 3],
       ["Draft lesson", lesson, 5],
       ["Skeptical review", critique, 2],
       ["Draft practice", practice, 3],
-      ["Draft AI Exploration", exploration ?? "Disabled", 2],
     ]),
     onStage,
     (value) => {
-      const candidate = validateEditorial(value, { explorationEnabled });
+      const candidate = validateEditorial(value, {
+        explorationEnabled: false,
+      });
       evaluateDossierContent({
         ...candidate,
         sources: enrichedItems,
@@ -244,6 +248,10 @@ export async function buildDossier(options) {
       return candidate;
     },
   );
+  const editorial = {
+    ...groundedEditorial,
+    exploration,
+  };
   const quality = evaluateDossierContent({
     ...editorial,
     sources: enrichedItems,

@@ -106,8 +106,8 @@ test("evaluateDossierContent validates structure, citations, practice, and bound
         lesson: validLesson(),
         critique: "Limits [S2].",
         practice: validPractice().replace(
-          "Demand exceeds service.",
-          "Demand exceeds service [S9].",
+          "Backpressure begins when",
+          "Backpressure begins [S9] when",
         ),
         exploration: null,
         sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
@@ -127,6 +127,25 @@ test("evaluateDossierContent validates structure, citations, practice, and bound
       }),
     /must not use source citation markers/,
   );
+  assert.throws(
+    () =>
+      evaluateDossierContent({
+        lesson: REQUIRED_TINY_LESSON,
+        critique: "A nominal critique.",
+        practice: `## Retrieval practice
+1. What is repeated?
+2. What is repeated?
+3. What is repeated?
+## Application challenge
+x
+<details><summary>Answer key</summary></details>
+[S1] [S2]`,
+        exploration: null,
+        sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
+        blueprint: validBlueprint(),
+      }),
+    /substantive content/,
+  );
 });
 
 function validBlueprint() {
@@ -143,39 +162,58 @@ function validBlueprint() {
 
 function validLesson() {
   return `## Learning objective
-Explain flow control [S1].
+Explain how flow-control signals prevent a fast producer from overwhelming a slower consumer [S1].
 ## Two-minute recall
-Recall queue acknowledgement.
+Recall how queue acknowledgements reveal which messages a consumer has safely processed.
 ## Why this matters
-Overload can spread [S2].
+Uncontrolled overload can spread across service boundaries and turn one slow consumer into a system-wide failure [S2].
 ## Mental model
-Think in rates.
+Think of production and consumption as two rates joined by a feedback signal that regulates pressure.
 ## How it works
-Credits constrain producers.
+Credits constrain a producer by making further sends conditional on capacity returned by the consumer.
 ## Worked example
-A consumer slows.
+A consumer slows during a database incident, exhausts its credits, and automatically pauses upstream publishing.
 ## Common misconception
-Buffers are not capacity.
+A larger buffer delays visible failure, but it does not create processing capacity or remove sustained overload.
 ## Practical experiment
-Change the service rate.
+Change the simulated consumer service rate and observe when queue depth and producer latency begin to rise.
 ## Takeaway
-Backpressure is feedback.`;
+Backpressure is a feedback mechanism that protects finite downstream capacity by regulating upstream demand.`;
 }
 
 function validPractice() {
   return `## Retrieval practice
-1. What causes backpressure?
-2. How do credits limit a producer?
-3. Why can buffering hide overload?
+1. What operating condition causes backpressure to begin?
+2. How do returned credits limit an upstream producer?
+3. Why can additional buffering temporarily hide sustained overload?
 
 ## Application challenge
-Diagnose a slow consumer.
+Diagnose a slow consumer in a three-service pipeline and identify where the feedback signal should be applied.
 
 <details>
 <summary>Answer key</summary>
 
-1. Demand exceeds service.
-2. A producer waits for credit.
-3. It delays the visible failure.
+1. Backpressure begins when incoming demand persistently exceeds the consumer's available service rate.
+2. A producer waits because it cannot send another unit until the consumer returns usable credit.
+3. Extra buffering delays the visible symptom while sustained demand continues to exceed real processing capacity.
 </details>`;
 }
+
+const REQUIRED_TINY_LESSON = `## Learning objective
+x
+## Two-minute recall
+x
+## Why this matters
+x
+## Mental model
+x
+## How it works
+x
+## Worked example
+x
+## Common misconception
+x
+## Practical experiment
+x
+## Takeaway
+x`;

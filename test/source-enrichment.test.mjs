@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 import {
   assertPublicWebUrl,
@@ -47,6 +49,67 @@ test("assertPublicWebUrl rejects private, credentialed, and non-web targets", as
   await assert.rejects(
     assertPublicWebUrl("file:///etc/passwd", publicLookup),
     /HTTP or HTTPS/,
+  );
+  for (const address of [
+    "fc00::1",
+    "fe80::1",
+    "2001:db8::1",
+    "2001::1",
+    "2002:7f00:1::",
+    "3fff::1",
+    "::ffff:127.0.0.1",
+  ]) {
+    await assert.rejects(
+      assertPublicWebUrl(`https://[${address}]/private`),
+      /private address/,
+    );
+  }
+});
+
+test("default article transport pins the validated address to the socket", async () => {
+  let pinnedAddress = null;
+  const result = await fetchArticleText("https://rebind.example/article", {
+    lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+    requestImpl(_url, options, onResponse) {
+      options.lookup("rebind.example", { all: true }, (_error, addresses) => {
+        const address = addresses[0].address;
+        pinnedAddress = address;
+      });
+      const request = new EventEmitter();
+      request.setTimeout = () => request;
+      request.end = () => {
+        const response = new PassThrough();
+        response.statusCode = 200;
+        response.headers = { "content-type": "text/plain" };
+        response.socket = { remoteAddress: "93.184.216.34" };
+        onResponse(response);
+        response.end("Pinned public article content.");
+      };
+      request.destroy = (error) => request.emit("error", error);
+      return request;
+    },
+  });
+  assert.equal(pinnedAddress, "93.184.216.34");
+  assert.equal(result.text, "Pinned public article content.");
+
+  await assert.rejects(
+    fetchArticleText("https://rebind.example/private", {
+      lookupFn: publicLookup,
+      requestImpl(_url, _options, onResponse) {
+        const request = new EventEmitter();
+        request.setTimeout = () => request;
+        request.end = () => {
+          const response = new PassThrough();
+          response.statusCode = 200;
+          response.headers = { "content-type": "text/plain" };
+          response.socket = { remoteAddress: "127.0.0.1" };
+          onResponse(response);
+        };
+        request.destroy = (error) => request.emit("error", error);
+        return request;
+      },
+    }),
+    /validated address/,
   );
 });
 
@@ -140,4 +203,3 @@ test("enrichSourceItems preserves source identity and falls back independently",
   assert.equal(enriched[1].summary, "Feed fallback two");
   assert.match(enriched[1].enrichmentError, /HTTP 500/);
 });
-

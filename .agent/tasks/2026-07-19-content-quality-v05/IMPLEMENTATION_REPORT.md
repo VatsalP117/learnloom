@@ -28,7 +28,7 @@ AI Exploration is opt-in per Newsletter and disabled by default. It is stored an
 
 ## Validation Evidence
 
-- `npm test`: 95 tests passed.
+- `npm test`: 96 tests passed.
 - `npm run check`: all JavaScript syntax checks passed.
 - `git diff --check`: passed.
 - `docker compose config --quiet`: passed.
@@ -51,6 +51,10 @@ A live forced run was executed with the configured Command Code provider and `de
   - AI Exploration: disabled, as configured
 
 The generated live artifact is intentionally excluded from Git.
+
+After independent review, the gate was strengthened and another live run was
+attempted. The editor omitted two required sections even after its one bounded
+repair, so the run failed closed: no invalid Dossier was persisted or delivered.
 
 ## Security and Trust Boundaries
 
