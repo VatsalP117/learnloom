@@ -1,1 +1,8 @@
-?? .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/IMPLEMENTATION_REPORT.md
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/commits.txt
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/diff-stat.txt
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/diff.patch
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/files-changed.txt
+ D .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/stacked-diff-stat.txt
+ D .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/stacked-diff.patch
+ M .agent/tasks/2026-07-18-multi-newsletter-dashboard/review/status.txt

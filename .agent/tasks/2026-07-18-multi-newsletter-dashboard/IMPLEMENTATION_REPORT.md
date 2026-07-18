@@ -68,8 +68,8 @@ finite CLI job.
   surprising scheduled work or accidental duplication.
 - Editing Newsletter fields is deferred; creation, pause/resume, Run Now,
   history, and preview cover the requested test loop.
-- The review package includes both the required diff against `main` and a
-  smaller stacked diff against the approved v0.2 branch.
+- The work began as a stack on the approved v0.2 branch. After v0.2 merged, the
+  review package and pull request were refreshed directly against `main`.
 
 ## Known Risks
 
