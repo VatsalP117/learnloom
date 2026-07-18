@@ -112,7 +112,10 @@ async function doctor(commandArgs) {
   const executable = config?.provider.executable ?? "cmd";
   let status;
   try {
-    status = await runProcess(executable, ["status", "--json"], { timeoutMs: 30_000 });
+    status = await runProcess(executable, ["status", "--json"], {
+      timeoutMs: 30_000,
+      acceptedExitCodes: [0, 1],
+    });
     const parsed = safeJson(status.stdout);
     const authenticated = inferAuthentication(parsed, status.stdout);
     checks.push({
@@ -273,4 +276,3 @@ Quick start:
   npm start
 `);
 }
-

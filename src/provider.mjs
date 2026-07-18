@@ -149,8 +149,9 @@ export function runProcess(executable, args, options = {}) {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
-      if (code === 0) {
-        resolve({ stdout, stderr });
+      const acceptedExitCodes = options.acceptedExitCodes ?? [0];
+      if (acceptedExitCodes.includes(code)) {
+        resolve({ stdout, stderr, code });
       } else {
         const detail = stripAnsi(stderr || stdout).trim().slice(-1200);
         reject(

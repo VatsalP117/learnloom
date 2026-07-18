@@ -1,6 +1,6 @@
 .env
 .DS_Store
+config.json
 data/
 output/
 coverage/
-
