@@ -181,6 +181,21 @@ Diagnose a slow consumer in a three-service pipeline and identify where the feed
       }),
     /exactly once and in the required order/,
   );
+  assert.throws(
+    () =>
+      evaluateDossierContent({
+        lesson: validLesson(),
+        critique: "A bounded critique [S2].",
+        practice: validPractice()
+          .replace("1. What operating", "7. What operating")
+          .replace("2. How do returned", "8. How do returned")
+          .replace("3. Why can additional", "9. Why can additional"),
+        exploration: null,
+        sources: [{ sourceId: "S1" }, { sourceId: "S2" }],
+        blueprint: validBlueprint(),
+      }),
+    /numbered sequentially from 1/,
+  );
 });
 
 function validBlueprint() {

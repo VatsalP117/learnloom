@@ -55,6 +55,9 @@ The generated live artifact is intentionally excluded from Git.
 After independent review, the gate was strengthened and another live run was
 attempted. The editor omitted two required sections even after its one bounded
 repair, so the run failed closed: no invalid Dossier was persisted or delivered.
+The editor contract was then made explicit about exact, ordered headings. A
+subsequent live run completed successfully with three enriched and cited sources,
+four matched retrieval questions and answers, and a 100/100 deterministic score.
 
 ## Security and Trust Boundaries
 

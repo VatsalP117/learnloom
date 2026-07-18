@@ -221,22 +221,30 @@ export function evaluateDossierContent(input) {
   }
   const questions = retrievalPractice
     .split("\n")
-    .map((line) => line.match(/^\s*\d+\.\s+(.+\?)\s*$/)?.[1])
-    .filter(Boolean);
+    .map((line) => line.match(/^\s*(\d+)\.\s+(.+\?)\s*$/))
+    .filter(Boolean)
+    .map((match) => ({
+      number: Number(match[1]),
+      text: match[2],
+    }));
   if (questions.length < 3) {
     throw new Error(
       "Editorial practice must contain at least three retrieval questions.",
     );
   }
   const normalizedQuestions = new Set(
-    questions.map((question) => plainText(question).toLowerCase()),
+    questions.map((question) => plainText(question.text).toLowerCase()),
   );
   if (
     normalizedQuestions.size !== questions.length ||
-    questions.some((question) => meaningfulWords(question).length < 4)
+    questions.some(
+      (question, index) =>
+        question.number !== index + 1 ||
+        meaningfulWords(question.text).length < 4,
+    )
   ) {
     throw new Error(
-      "Editorial practice must contain distinct, substantive retrieval questions.",
+      "Editorial practice must contain distinct, substantive retrieval questions numbered sequentially from 1.",
     );
   }
   const applicationChallenge = sectionBody(
@@ -271,7 +279,7 @@ export function evaluateDossierContent(input) {
   const answerNumbers = new Set(answers.map((answer) => answer.number));
   if (
     answers.length !== questions.length ||
-    questions.some((_, index) => !answerNumbers.has(index + 1)) ||
+    questions.some((question) => !answerNumbers.has(question.number)) ||
     answers.some(
       (answer) =>
         plainText(answer.text).length < 15 ||
@@ -306,7 +314,7 @@ export function evaluateDossierContent(input) {
       plainText(applicationChallenge).length >= 40,
     collapsedAnswerKey:
       answers.length === questions.length &&
-      questions.every((_, index) => answerNumbers.has(index + 1)),
+      questions.every((question) => answerNumbers.has(question.number)),
     continuity:
       historyCount === 0 || blueprint.continuityBridge.trim().length > 0,
     explorationBoundary: !exploration || !/\[S\d+\]/.test(exploration),
