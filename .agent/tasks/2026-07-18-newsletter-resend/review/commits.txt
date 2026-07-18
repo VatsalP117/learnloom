@@ -1,4 +1,6 @@
-0903f3c (HEAD -> agent/newsletter-resend) docs: report resend phase implementation
+345b4f4 (HEAD -> agent/newsletter-resend) fix: harden migration and email outcomes
+875ace1 chore: package resend phase review
+0903f3c docs: report resend phase implementation
 8b22558 docs: ship resend-enabled self-hosting guide
 ca89cba feat: manage newsletter email from dashboard
 2711650 feat: deliver newsletter issues through resend
