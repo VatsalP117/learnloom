@@ -17,15 +17,28 @@
     "learn": "./bin/learn.mjs"
   },
   "scripts": {
-    "check": "node --check bin/learn.mjs && find src test -name '*.mjs' -print0 | xargs -0 -n1 node --check",
-    "dashboard:demo": "node bin/learn.mjs serve --demo",
+    "build": "vite build --config web/vite.config.js",
+    "check": "node --check bin/learn.mjs && find src test -name '*.mjs' -print0 | xargs -0 -n1 node --check && npm run build",
+    "dashboard:backend": "node bin/learn.mjs serve --demo",
+    "dashboard:demo": "npm run build --silent && node bin/learn.mjs serve --demo",
     "demo": "node bin/learn.mjs run --demo",
+    "dev": "vite --config web/vite.config.js",
     "doctor": "node bin/learn.mjs doctor",
     "start": "node bin/learn.mjs run",
-    "test": "node --test",
+    "test": "npm run build --silent && node --test",
     "worker:demo": "node bin/learn.mjs worker --demo --once"
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "lucide-react": "^1.25.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.1.5"
   }
 }

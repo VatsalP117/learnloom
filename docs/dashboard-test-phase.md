@@ -4,6 +4,10 @@ The dashboard is deliberately local and single-user. It manages Newsletter
 configuration, scheduling, Issue generation, history, previews, recipients,
 Resend delivery receipts, and the per-Newsletter AI Exploration opt-in.
 
+The dashboard home is a Vite + React application backed by the existing Node
+HTTP service and SQLite Workspace. The create, detail, and Issue preview routes
+remain server-rendered while those screens are migrated incrementally.
+
 ## Run the offline demo
 
 Use two terminals from the repository.
@@ -13,6 +17,18 @@ Terminal one starts the dashboard:
 ```sh
 npm run dashboard:demo
 ```
+
+That command creates a production Vite build before starting the Node service.
+For frontend development with hot reload, run the API server and Vite in
+separate terminals:
+
+```sh
+npm run dashboard:backend
+npm run dev
+```
+
+Open `http://127.0.0.1:5173` for the Vite development app. Requests to the
+dashboard API and the existing server-rendered routes are proxied to port 3000.
 
 Open `http://127.0.0.1:3000`, create one or more Newsletters, and select **Run
 now** on each.

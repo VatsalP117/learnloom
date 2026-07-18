@@ -8,7 +8,7 @@ import { validateConfig } from "../src/config.mjs";
 import { createDashboardServer } from "../src/dashboard.mjs";
 import { SQLiteWorkspace } from "../src/workspace.mjs";
 
-test("dashboard renders Newsletter overview with escaped content", async (context) => {
+test("dashboard serves the React app and Newsletter API safely", async (context) => {
   const fixture = await dashboardFixture(context);
   fixture.workspace.createNewsletter({
     ...newsletterInput(),
@@ -17,10 +17,19 @@ test("dashboard renders Newsletter overview with escaped content", async (contex
   const response = await fetch(`${fixture.origin}/`);
   const html = await response.text();
   assert.equal(response.status, 200);
-  assert.match(html, /Your Newsletters/);
-  assert.match(html, /&lt;script&gt;RabbitMQ&lt;\/script&gt;/);
+  assert.match(html, /Learnloom · Knowledge Dossiers/);
+  assert.match(html, /<div id="root"><\/div>/);
   assert.doesNotMatch(html, /<script>RabbitMQ/);
+  assert.match(response.headers.get("content-security-policy"), /script-src 'self'|default-src 'self'/);
   assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+
+  const apiResponse = await fetch(`${fixture.origin}/api/newsletters`);
+  const snapshot = await apiResponse.json();
+  assert.equal(apiResponse.status, 200);
+  assert.equal(apiResponse.headers.get("content-type"), "application/json; charset=utf-8");
+  assert.equal(snapshot.summary.newsletters, 1);
+  assert.equal(snapshot.summary.active, 1);
+  assert.equal(snapshot.newsletters[0].name, "<script>RabbitMQ</script>");
 });
 
 test("dashboard creates a Newsletter and queues Run Now through CSRF forms", async (context) => {

@@ -5,6 +5,7 @@ import { renderDossierEmail } from "./render.mjs";
 import { loadJson } from "./state.mjs";
 
 const MAX_FORM_BYTES = 64 * 1024;
+const FRONTEND_DIST = new URL("../web/dist/", import.meta.url);
 
 export function createDashboardServer(options) {
   const csrfToken = options.csrfToken ?? randomUUID();
@@ -42,9 +43,19 @@ async function handleRequest(request, response, options) {
     return sendText(response, 200, "ok\n");
   }
 
+  if (url.pathname === "/api/newsletters") {
+    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+    return sendJson(response, 200, dashboardSnapshot(options.workspace));
+  }
+
+  if (/^\/assets\/[a-zA-Z0-9._-]+$/.test(url.pathname)) {
+    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+    return sendFrontendAsset(response, url.pathname);
+  }
+
   if (url.pathname === "/") {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
-    return sendHtml(response, 200, renderOverview(options.workspace));
+    return sendReactApp(response, options.workspace);
   }
 
   if (url.pathname === "/newsletters/new") {
@@ -198,6 +209,69 @@ async function handleRequest(request, response, options) {
   }
 
   return notFound(response);
+}
+
+function dashboardSnapshot(workspace) {
+  const newsletters = workspace.listNewsletters();
+  return {
+    summary: {
+      newsletters: newsletters.length,
+      active: newsletters.filter((newsletter) => newsletter.active).length,
+      generated: newsletters.reduce(
+        (total, newsletter) => total + newsletter.generatedCount,
+        0,
+      ),
+    },
+    newsletters: newsletters.map((newsletter) => ({
+      id: newsletter.id,
+      name: newsletter.name,
+      topic: newsletter.topic,
+      active: newsletter.active,
+      scheduleTime: newsletter.scheduleTime,
+      timeZone: newsletter.timeZone,
+      nextRunAt: newsletter.nextRunAt,
+      issueCount: newsletter.issueCount,
+      generatedCount: newsletter.generatedCount,
+      sentCount: newsletter.sentCount,
+      emailEnabled: newsletter.emailEnabled,
+      emailRecipients: newsletter.emailRecipients,
+    })),
+  };
+}
+
+async function sendReactApp(response, workspace) {
+  try {
+    const html = await readFile(new URL("index.html", FRONTEND_DIST), "utf8");
+    return sendAppHtml(response, 200, html);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return sendHtml(response, 200, renderOverview(workspace));
+  }
+}
+
+async function sendFrontendAsset(response, pathname) {
+  try {
+    const asset = await readFile(new URL(`.${pathname}`, FRONTEND_DIST));
+    const extension = pathname.split(".").at(-1);
+    const contentTypes = {
+      css: "text/css; charset=utf-8",
+      js: "text/javascript; charset=utf-8",
+      svg: "image/svg+xml",
+      png: "image/png",
+      webp: "image/webp",
+      woff: "font/woff",
+      woff2: "font/woff2",
+    };
+    response.writeHead(200, {
+      "content-type": contentTypes[extension] ?? "application/octet-stream",
+      "cache-control": "public, max-age=31536000, immutable",
+      "x-content-type-options": "nosniff",
+    });
+    response.end(asset);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return notFound(response);
+  }
 }
 
 function renderOverview(workspace) {
@@ -620,6 +694,27 @@ function sendHtml(response, status, html) {
     "referrer-policy": "no-referrer",
   });
   response.end(html);
+}
+
+function sendAppHtml(response, status, html) {
+  response.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-security-policy":
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "referrer-policy": "no-referrer",
+  });
+  response.end(html);
+}
+
+function sendJson(response, status, value) {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+  });
+  response.end(JSON.stringify(value));
 }
 
 function sendText(response, status, text) {

@@ -1,7 +1,7 @@
-.env*
-!.env.example
-.DS_Store
+node_modules/
+web/dist/
+.env
 config.json
 data/
 output/
-coverage/
+.DS_Store
