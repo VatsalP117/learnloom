@@ -39,11 +39,12 @@ action, without regenerating the Issue.
 
 ## Tests
 
-All 72 automated tests pass. JavaScript syntax checks, whitespace validation,
+All 76 automated tests pass. JavaScript syntax checks, whitespace validation,
 Compose rendering, and the production Docker image build pass.
 
 The suite includes a hand-built schema version 1 database upgraded to version
-2, two-connection delivery claiming, durable failure/retry transitions,
+2 under concurrent process startup, two-connection delivery claiming, durable
+failure/retry/cancellation/unknown transitions,
 recipient override and stable Resend idempotency request assertions, and proof
 that retry leaves one generated Issue and performs no generation call.
 
@@ -62,7 +63,8 @@ that retry leaves one generated Issue and performs no generation call.
   is not part of this phase.
 - The dashboard remains unauthenticated and loopback-only.
 - Resend's provider idempotency window is finite. Learnloom's local delivered
-  receipt is the durable guard against later duplicate attempts.
+  receipt is the durable guard against later duplicate attempts, while
+  ambiguous outcomes are recorded as non-retryable `unknown`.
 - Recipient management is for a trusted owner, not a public mailing list; no
   unsubscribe or subscriber lifecycle exists.
 
@@ -73,4 +75,3 @@ that retry leaves one generated Issue and performs no generation call.
 3. Push `agent/newsletter-resend` and open a draft PR for human review.
 4. After merge, configure a verified Resend sender and perform one controlled
    live smoke delivery on the VM.
-

@@ -9,6 +9,8 @@ const DELIVERY_STATES = new Set([
   "delivering",
   "delivered",
   "failed",
+  "cancelled",
+  "unknown",
 ]);
 const MAX_SCHEDULE_SCAN_MINUTES = 8 * 24 * 60;
 
@@ -36,64 +38,60 @@ export class SQLiteWorkspace {
       PRAGMA busy_timeout = 5000;
       PRAGMA journal_mode = WAL;
     `);
-    const currentVersion = Number(
-      this.database.prepare("PRAGMA user_version").get().user_version,
-    );
-    if (currentVersion > 2) {
-      throw new Error(
-        `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
+    this.transaction(() => {
+      const currentVersion = Number(
+        this.database.prepare("PRAGMA user_version").get().user_version,
       );
-    }
-    this.database.exec(`
+      if (currentVersion > 2) {
+        throw new Error(
+          `Workspace schema version ${currentVersion} is newer than this Learnloom release supports.`,
+        );
+      }
+      this.database.exec(`
+        CREATE TABLE IF NOT EXISTS newsletters (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          topic TEXT NOT NULL,
+          learner_level TEXT NOT NULL,
+          learner_goal TEXT NOT NULL,
+          lesson_minutes INTEGER NOT NULL CHECK (lesson_minutes BETWEEN 5 AND 90),
+          sources_json TEXT NOT NULL,
+          schedule_hour INTEGER NOT NULL CHECK (schedule_hour BETWEEN 0 AND 23),
+          schedule_minute INTEGER NOT NULL CHECK (schedule_minute BETWEEN 0 AND 59),
+          time_zone TEXT NOT NULL,
+          active INTEGER NOT NULL CHECK (active IN (0, 1)),
+          next_run_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
 
-      CREATE TABLE IF NOT EXISTS newsletters (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        topic TEXT NOT NULL,
-        learner_level TEXT NOT NULL,
-        learner_goal TEXT NOT NULL,
-        lesson_minutes INTEGER NOT NULL CHECK (lesson_minutes BETWEEN 5 AND 90),
-        sources_json TEXT NOT NULL,
-        schedule_hour INTEGER NOT NULL CHECK (schedule_hour BETWEEN 0 AND 23),
-        schedule_minute INTEGER NOT NULL CHECK (schedule_minute BETWEEN 0 AND 59),
-        time_zone TEXT NOT NULL,
-        active INTEGER NOT NULL CHECK (active IN (0, 1)),
-        next_run_at TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      ) STRICT;
+        CREATE TABLE IF NOT EXISTS issues (
+          id TEXT PRIMARY KEY,
+          newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+          trigger TEXT NOT NULL CHECK (trigger IN ('scheduled', 'manual')),
+          scheduled_local_date TEXT,
+          status TEXT NOT NULL CHECK (
+            status IN ('queued', 'generating', 'generated', 'failed')
+          ),
+          dossier_title TEXT,
+          generation_id TEXT,
+          artifact_path TEXT,
+          dossier_path TEXT,
+          error TEXT,
+          created_at TEXT NOT NULL,
+          started_at TEXT,
+          completed_at TEXT
+        ) STRICT;
 
-      CREATE TABLE IF NOT EXISTS issues (
-        id TEXT PRIMARY KEY,
-        newsletter_id TEXT NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
-        trigger TEXT NOT NULL CHECK (trigger IN ('scheduled', 'manual')),
-        scheduled_local_date TEXT,
-        status TEXT NOT NULL CHECK (
-          status IN ('queued', 'generating', 'generated', 'failed')
-        ),
-        dossier_title TEXT,
-        generation_id TEXT,
-        artifact_path TEXT,
-        dossier_path TEXT,
-        error TEXT,
-        created_at TEXT NOT NULL,
-        started_at TEXT,
-        completed_at TEXT
-      ) STRICT;
-
-      CREATE UNIQUE INDEX IF NOT EXISTS issues_one_scheduled_per_day
-        ON issues(newsletter_id, scheduled_local_date)
-        WHERE trigger = 'scheduled';
-      CREATE INDEX IF NOT EXISTS issues_queue
-        ON issues(status, created_at);
-      CREATE INDEX IF NOT EXISTS issues_newsletter_history
-        ON issues(newsletter_id, created_at DESC);
-    `);
-    if (currentVersion === 0) {
-      this.database.exec("PRAGMA user_version = 1");
-    }
-    if (currentVersion < 2) {
-      this.transaction(() => {
+        CREATE UNIQUE INDEX IF NOT EXISTS issues_one_scheduled_per_day
+          ON issues(newsletter_id, scheduled_local_date)
+          WHERE trigger = 'scheduled';
+        CREATE INDEX IF NOT EXISTS issues_queue
+          ON issues(status, created_at);
+        CREATE INDEX IF NOT EXISTS issues_newsletter_history
+          ON issues(newsletter_id, created_at DESC);
+      `);
+      if (currentVersion < 2) {
         this.database.exec(`
           ALTER TABLE newsletters
             ADD COLUMN email_enabled INTEGER NOT NULL DEFAULT 0
@@ -105,7 +103,10 @@ export class SQLiteWorkspace {
             issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
             channel TEXT NOT NULL CHECK (channel = 'email'),
             status TEXT NOT NULL CHECK (
-              status IN ('pending', 'delivering', 'delivered', 'failed')
+              status IN (
+                'pending', 'delivering', 'delivered', 'failed', 'cancelled',
+                'unknown'
+              )
             ),
             attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
             external_id TEXT,
@@ -121,8 +122,8 @@ export class SQLiteWorkspace {
             ON issue_deliveries(status, created_at);
           PRAGMA user_version = 2;
         `);
-      });
-    }
+      }
+    });
   }
 
   diagnostics() {
@@ -262,18 +263,31 @@ export class SQLiteWorkspace {
     this.requireNewsletter(id);
     const settings = normalizeEmailSettings(input);
     const now = this.now().toISOString();
-    this.database
-      .prepare(`
-        UPDATE newsletters
-        SET email_enabled = ?, email_recipients_json = ?, updated_at = ?
-        WHERE id = ?
-      `)
-      .run(
-        settings.enabled ? 1 : 0,
-        JSON.stringify(settings.recipients),
-        now,
-        id,
-      );
+    this.transaction(() => {
+      this.database
+        .prepare(`
+          UPDATE newsletters
+          SET email_enabled = ?, email_recipients_json = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          settings.enabled ? 1 : 0,
+          JSON.stringify(settings.recipients),
+          now,
+          id,
+        );
+      if (!settings.enabled) {
+        this.database
+          .prepare(`
+            UPDATE issue_deliveries
+            SET status = 'cancelled', updated_at = ?
+            WHERE issue_id IN (
+              SELECT id FROM issues WHERE newsletter_id = ?
+            ) AND channel = 'email' AND status IN ('pending', 'failed')
+          `)
+          .run(now, id);
+      }
+    });
     return this.getNewsletter(id);
   }
 
@@ -489,9 +503,11 @@ export class SQLiteWorkspace {
     this.transaction(() => {
       const row = this.database
         .prepare(`
-          SELECT * FROM issue_deliveries
-          WHERE status = 'pending'
-          ORDER BY created_at ASC, issue_id ASC
+          SELECT d.* FROM issue_deliveries AS d
+          JOIN issues AS i ON i.id = d.issue_id
+          JOIN newsletters AS n ON n.id = i.newsletter_id
+          WHERE d.status = 'pending' AND n.email_enabled = 1
+          ORDER BY d.created_at ASC, d.issue_id ASC
           LIMIT 1
         `)
         .get();
@@ -502,6 +518,13 @@ export class SQLiteWorkspace {
           SET status = 'delivering', attempt_count = attempt_count + 1,
               started_at = ?, completed_at = NULL, error = NULL, updated_at = ?
           WHERE issue_id = ? AND channel = 'email' AND status = 'pending'
+            AND EXISTS (
+              SELECT 1
+              FROM issues AS i
+              JOIN newsletters AS n ON n.id = i.newsletter_id
+              WHERE i.id = issue_deliveries.issue_id
+                AND n.email_enabled = 1
+            )
         `)
         .run(now.toISOString(), now.toISOString(), row.issue_id);
       if (Number(result.changes) === 1) {
@@ -547,6 +570,21 @@ export class SQLiteWorkspace {
     return this.getIssue(issueId).delivery;
   }
 
+  markDeliveryUnknown(issueId, error, now = this.now()) {
+    const message = safeError(error, "Unknown provider delivery outcome");
+    const result = this.database
+      .prepare(`
+        UPDATE issue_deliveries
+        SET status = 'unknown', error = ?, completed_at = ?, updated_at = ?
+        WHERE issue_id = ? AND channel = 'email' AND status = 'delivering'
+      `)
+      .run(message, now.toISOString(), now.toISOString(), issueId);
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Email delivery for Issue ${issueId} is not delivering.`);
+    }
+    return this.getIssue(issueId).delivery;
+  }
+
   retryDelivery(issueId, now = this.now()) {
     const result = this.database
       .prepare(`
@@ -554,10 +592,17 @@ export class SQLiteWorkspace {
         SET status = 'pending', external_id = NULL, error = NULL,
             started_at = NULL, completed_at = NULL, updated_at = ?
         WHERE issue_id = ? AND channel = 'email' AND status = 'failed'
+          AND EXISTS (
+            SELECT 1
+            FROM issues AS i
+            JOIN newsletters AS n ON n.id = i.newsletter_id
+            WHERE i.id = issue_deliveries.issue_id
+              AND n.email_enabled = 1
+          )
       `)
       .run(now.toISOString(), issueId);
     if (Number(result.changes) !== 1) {
-      throw new Error(`Email delivery for Issue ${issueId} is not failed.`);
+      throw new Error(`Email delivery for Issue ${issueId} is not retryable.`);
     }
     return this.getIssue(issueId).delivery;
   }

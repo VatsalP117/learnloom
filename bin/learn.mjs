@@ -321,6 +321,11 @@ function printRunEvent(event) {
   if (event.type === "delivery-skip") {
     process.stdout.write(`Delivery ${event.deliveryId} already completed; skipping.\n`);
   }
+  if (event.type === "delivery-unknown-skip") {
+    process.stderr.write(
+      `Delivery ${event.deliveryId} has an unknown provider outcome; refusing automatic retry.\n`,
+    );
+  }
 }
 
 function pad(value) {
@@ -356,6 +361,11 @@ function printWorkerEvent(event) {
   if (event.type === "delivery-failed") {
     process.stderr.write(
       `Email delivery for Issue ${event.issueId} failed: ${event.message}\n`,
+    );
+  }
+  if (event.type === "delivery-outcome-unknown") {
+    process.stderr.write(
+      `Email delivery outcome for Issue ${event.issueId} is unknown: ${event.message}\n`,
     );
   }
 }

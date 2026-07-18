@@ -120,8 +120,15 @@ export async function runDailyDossier(options) {
     const deliveryErrors = [];
     record.deliveries ??= {};
     for (const adapter of adapters) {
-      if (record.deliveries[adapter.id]?.status === "delivered") {
-        onEvent({ type: "delivery-skip", deliveryId: adapter.id });
+      const priorDeliveryStatus = record.deliveries[adapter.id]?.status;
+      if (["delivered", "unknown"].includes(priorDeliveryStatus)) {
+        onEvent({
+          type:
+            priorDeliveryStatus === "unknown"
+              ? "delivery-unknown-skip"
+              : "delivery-skip",
+          deliveryId: adapter.id,
+        });
         continue;
       }
       onEvent({ type: "delivery", deliveryId: adapter.id });
@@ -139,7 +146,7 @@ export async function runDailyDossier(options) {
         };
       } catch (error) {
         record.deliveries[adapter.id] = {
-          status: "failed",
+          status: error?.outcomeUnknown ? "unknown" : "failed",
           error: safeRecordError(error),
           failedAt: new Date().toISOString(),
         };
@@ -148,7 +155,13 @@ export async function runDailyDossier(options) {
       await store.save(record);
     }
 
-    record.status = deliveryErrors.length ? "delivery_failed" : "complete";
+    record.status = Object.values(record.deliveries).some(
+      (delivery) => delivery.status === "unknown",
+    )
+      ? "delivery_unknown"
+      : deliveryErrors.length
+        ? "delivery_failed"
+        : "complete";
     await store.save(record);
     return {
       runId,

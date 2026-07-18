@@ -47,6 +47,13 @@ dashboard and override that entry's legacy `to` field.
 Generation completion and the pending email receipt are committed together in
 SQLite. A failed email remains failed until **Retry email** is selected; retry
 loads the immutable Dossier files and does not invoke the model again.
+Disabling email durably cancels pending and failed receipts without reviving
+them when email is later re-enabled. A receipt already being delivered remains
+visible as in flight.
+
+If the worker transmits a request but receives no reliable Resend response, the
+receipt becomes **Unknown** rather than retryable. This avoids presenting an
+unsafe retry when the first email may already have been accepted.
 
 The worker checks schedules every 30 seconds. A deterministic scheduled Issue
 is created once per Newsletter and local date. **Run now** creates a separate

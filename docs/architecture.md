@@ -87,6 +87,9 @@ Dashboard ──► SQLite Workspace ◄──────── Worker
   and enqueueing its email receipt is one SQLite transaction.
 - Failed Newsletter email is manually retried from persisted artifacts and
   never regenerates the Issue.
+- Ambiguous provider outcomes are recorded as non-retryable `unknown` receipts
+  because the email may already have been accepted.
+- Disabling Newsletter email atomically cancels receipts not yet in flight.
 - Successful destinations are not repeated on a same-day rerun.
 - An owner-token lock rejects overlapping execution and is never reclaimed
   automatically. After a crash, an operator must confirm the process is gone

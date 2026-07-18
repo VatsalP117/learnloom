@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 import { SQLiteWorkspace, nextDailyOccurrence } from "../src/workspace.mjs";
+
+const execFileAsync = promisify(execFile);
+const workspaceModuleUrl = pathToFileURL(
+  path.resolve("src/workspace.mjs"),
+).href;
 
 test("SQLiteWorkspace initializes idempotently with safety pragmas", () => {
   const workspace = new SQLiteWorkspace(":memory:");
@@ -80,6 +88,10 @@ test("SQLiteWorkspace migrates schema v1 without losing data", async () => {
   `);
   legacy.close();
 
+  await Promise.all([
+    startWorkspaceProcess(databasePath),
+    startWorkspaceProcess(databasePath),
+  ]);
   const workspace = new SQLiteWorkspace(databasePath);
   assert.equal(workspace.diagnostics().userVersion, 2);
   assert.equal(workspace.getNewsletter("legacy").emailEnabled, false);
@@ -355,6 +367,93 @@ test("two connections claim a Delivery Receipt once and failed delivery retries"
   second.close();
 });
 
+test("disabling email cancels unclaimed receipts and re-enable does not revive them", () => {
+  const workspace = fixtureWorkspace();
+  const newsletter = workspace.createNewsletter(
+    newsletterInput("RabbitMQ", {
+      emailEnabled: true,
+      emailRecipients: ["reader@example.com"],
+    }),
+  );
+  const firstIssue = claimManual(workspace, newsletter.id);
+  workspace.completeIssue(firstIssue.id, {
+    title: "First",
+    generationId: "generation-1",
+    artifactPath: "/tmp/first.md",
+    dossierPath: "/tmp/first.json",
+  });
+  workspace.setNewsletterEmail(newsletter.id, {
+    enabled: false,
+    recipients: ["reader@example.com"],
+  });
+  assert.equal(workspace.getIssue(firstIssue.id).delivery.status, "cancelled");
+  assert.equal(workspace.claimNextDelivery(), null);
+  assert.throws(
+    () => workspace.retryDelivery(firstIssue.id),
+    /not retryable/,
+  );
+
+  workspace.setNewsletterEmail(newsletter.id, {
+    enabled: true,
+    recipients: ["reader@example.com"],
+  });
+  assert.equal(workspace.claimNextDelivery(), null);
+  assert.equal(workspace.getIssue(firstIssue.id).delivery.status, "cancelled");
+
+  const secondIssue = claimManual(workspace, newsletter.id);
+  workspace.completeIssue(secondIssue.id, {
+    title: "Second",
+    generationId: "generation-2",
+    artifactPath: "/tmp/second.md",
+    dossierPath: "/tmp/second.json",
+  });
+  assert.equal(workspace.claimNextDelivery().issueId, secondIssue.id);
+  workspace.close();
+});
+
+test("disabling email cancels failed receipts but preserves in-flight visibility", () => {
+  const workspace = fixtureWorkspace();
+  const newsletter = workspace.createNewsletter(
+    newsletterInput("RabbitMQ", {
+      emailEnabled: true,
+      emailRecipients: ["reader@example.com"],
+    }),
+  );
+  const failedIssue = claimManual(workspace, newsletter.id);
+  workspace.completeIssue(failedIssue.id, {
+    title: "Failed",
+    generationId: "generation-1",
+    artifactPath: "/tmp/failed.md",
+    dossierPath: "/tmp/failed.json",
+  });
+  workspace.claimNextDelivery();
+  workspace.failDelivery(failedIssue.id, "rejected");
+
+  const inFlightIssue = claimManual(workspace, newsletter.id);
+  workspace.completeIssue(inFlightIssue.id, {
+    title: "In flight",
+    generationId: "generation-2",
+    artifactPath: "/tmp/in-flight.md",
+    dossierPath: "/tmp/in-flight.json",
+  });
+  workspace.claimNextDelivery();
+  workspace.setNewsletterEmail(newsletter.id, {
+    enabled: false,
+    recipients: ["reader@example.com"],
+  });
+
+  assert.equal(workspace.getIssue(failedIssue.id).delivery.status, "cancelled");
+  assert.equal(
+    workspace.getIssue(inFlightIssue.id).delivery.status,
+    "delivering",
+  );
+  assert.throws(
+    () => workspace.retryDelivery(failedIssue.id),
+    /not retryable/,
+  );
+  workspace.close();
+});
+
 test("nextDailyOccurrence handles DST gaps and repeated times", () => {
   const skippedGap = nextDailyOccurrence(
     new Date("2026-03-08T06:55:00.000Z"),
@@ -397,6 +496,21 @@ test("SQLiteWorkspace validates Newsletter input", () => {
 function fixtureWorkspace() {
   const now = new Date("2026-07-18T03:00:00.000Z");
   return new SQLiteWorkspace(":memory:", { now: () => now });
+}
+
+function startWorkspaceProcess(databasePath) {
+  const startupScript = `
+    const { SQLiteWorkspace } = await import(process.argv[1]);
+    const workspace = new SQLiteWorkspace(process.argv[2]);
+    workspace.close();
+  `;
+  return execFileAsync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    startupScript,
+    workspaceModuleUrl,
+    databasePath,
+  ]);
 }
 
 function newsletterInput(name, overrides = {}) {

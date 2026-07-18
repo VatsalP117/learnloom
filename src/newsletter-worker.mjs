@@ -163,13 +163,22 @@ export async function processNextDelivery(options) {
     });
     return completed;
   } catch (error) {
-    const failed = workspace.failDelivery(
-      delivery.issue.id,
-      error,
-      options.now ?? clock(),
-    );
+    const failed = error?.outcomeUnknown
+      ? workspace.markDeliveryUnknown(
+          delivery.issue.id,
+          error,
+          options.now ?? clock(),
+        )
+      : workspace.failDelivery(
+          delivery.issue.id,
+          error,
+          options.now ?? clock(),
+        );
     onEvent({
-      type: "delivery-failed",
+      type:
+        failed.status === "unknown"
+          ? "delivery-outcome-unknown"
+          : "delivery-failed",
       issueId: delivery.issue.id,
       newsletterId: delivery.issue.newsletterId,
       message: failed.error,

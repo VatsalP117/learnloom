@@ -270,6 +270,66 @@ test("delivery failure stays failed until retry and never regenerates the Issue"
   fixture.workspace.close();
 });
 
+test("lost Resend response records a non-retryable unknown outcome", async () => {
+  const fixture = await createFixture();
+  const newsletter = fixture.workspace.createNewsletter(
+    newsletterInput("RabbitMQ", {
+      emailEnabled: true,
+      emailRecipients: ["reader@example.com"],
+    }),
+  );
+  const dossierPath = path.join(fixture.home, "unknown-dossier.json");
+  const artifactPath = path.join(fixture.home, "unknown-dossier.md");
+  await writeFile(
+    dossierPath,
+    JSON.stringify({
+      title: "RabbitMQ",
+      date: "2026-07-18",
+      generatedAt: fixture.now.toISOString(),
+      lesson: "Lesson",
+      critique: "Critique",
+      practice: "Practice",
+      sources: [],
+    }),
+  );
+  await writeFile(artifactPath, "# RabbitMQ\n");
+  const issue = fixture.workspace.enqueueManualIssue(newsletter.id);
+  fixture.workspace.claimNextIssue();
+  fixture.workspace.completeIssue(issue.id, {
+    title: "RabbitMQ",
+    generationId: "generation-unknown",
+    artifactPath,
+    dossierPath,
+  });
+  let requests = 0;
+  const result = await processNextDelivery({
+    workspace: fixture.workspace,
+    baseConfig: fixture.baseConfig,
+    now: fixture.now,
+    env: { RESEND_API_KEY: "secret-resend-key" },
+    async fetchImpl() {
+      requests += 1;
+      throw new Error("connection closed after request transmission");
+    },
+  });
+  assert.equal(result.status, "unknown");
+  assert.match(result.error, /outcome is unknown/);
+  assert.equal(requests, 1);
+  assert.throws(
+    () => fixture.workspace.retryDelivery(issue.id),
+    /not retryable/,
+  );
+  assert.equal(
+    await processNextDelivery({
+      workspace: fixture.workspace,
+      baseConfig: fixture.baseConfig,
+      now: fixture.now,
+    }),
+    null,
+  );
+  fixture.workspace.close();
+});
+
 async function createFixture() {
   const home = await mkdtemp(path.join(os.tmpdir(), "learnloom-worker-"));
   const now = new Date("2026-07-18T03:00:00.000Z");

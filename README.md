@@ -164,6 +164,11 @@ the dashboard. Generation and email are separate queues: a failure is visible
 on the Issue and **Retry email** reuses the saved Dossier without another model
 call.
 
+Disabling email cancels unsent queued/failed receipts; re-enabling applies only
+to future Issues. If Resend may have accepted a request but its response was
+lost, Learnloom marks the outcome **Unknown** and does not offer ordinary retry,
+because sending again could duplicate the email.
+
 ## Deploy on a VM
 
 ```sh
