@@ -16,6 +16,18 @@ test("SQLiteWorkspace initializes idempotently with safety pragmas", () => {
   workspace.close();
 });
 
+test("SQLiteWorkspace rejects a newer schema version", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-schema-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const workspace = new SQLiteWorkspace(databasePath);
+  workspace.database.exec("PRAGMA user_version = 2");
+  workspace.close();
+  assert.throws(
+    () => new SQLiteWorkspace(databasePath),
+    /newer than this Learnloom release/,
+  );
+});
+
 test("SQLiteWorkspace creates isolated Newsletters and dashboard counts", () => {
   const workspace = fixtureWorkspace();
   const first = workspace.createNewsletter(newsletterInput("RabbitMQ at depth"));

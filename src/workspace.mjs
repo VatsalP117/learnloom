@@ -16,7 +16,12 @@ export class SQLiteWorkspace {
       });
     }
     this.database = new DatabaseSync(databasePath);
-    this.initialize();
+    try {
+      this.initialize();
+    } catch (error) {
+      this.database.close();
+      throw error;
+    }
   }
 
   initialize() {
