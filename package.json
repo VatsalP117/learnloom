@@ -1,9 +1,18 @@
 {
   "name": "learnloom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Learnloom: a source-grounded daily learning dossier powered by Command Code.",
+  "description": "A self-hosted, source-grounded daily learning Dossier.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VatsalP117/learnloom.git"
+  },
+  "homepage": "https://github.com/VatsalP117/learnloom#readme",
+  "bugs": {
+    "url": "https://github.com/VatsalP117/learnloom/issues"
+  },
   "bin": {
     "learn": "./bin/learn.mjs"
   },

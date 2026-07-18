@@ -1,0 +1,13 @@
+.agent
+.env*
+!.env.example
+.git
+.github
+.DS_Store
+config.json
+data
+output
+coverage
+node_modules
+npm-debug.log*
+
