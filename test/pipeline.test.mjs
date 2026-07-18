@@ -73,3 +73,27 @@ test("buildDossier preserves every required section when source input exceeds th
     assert.ok(input.length <= config.limits.maxIntermediateCharacters);
   }
 });
+
+test("buildDossier excludes prior lessons when historyEntries is zero", async () => {
+  const config = validateConfig({
+    interests: ["systems"],
+    sources: [{ name: "Demo", url: "https://example.com/feed" }],
+    provider: { kind: "demo" },
+    limits: { historyEntries: 0 },
+  });
+  let researcherInput = "";
+  const demo = new DemoProvider();
+  const provider = {
+    async complete(input) {
+      if (input.stage === "researcher") researcherInput = input.input;
+      return demo.complete(input);
+    },
+  };
+  await buildDossier({
+    config,
+    items: DEMO_ITEMS,
+    history: [{ date: "2026-07-17", lessonSummary: "SHOULD-NOT-APPEAR" }],
+    provider,
+  });
+  assert.doesNotMatch(researcherInput, /SHOULD-NOT-APPEAR/);
+});

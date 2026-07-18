@@ -86,7 +86,11 @@ test("ResendDelivery reports safe provider errors", async () => {
     },
     {
       env: { RESEND_API_KEY: "do-not-print" },
-      fetchImpl: async () => jsonResponse({ message: "domain not verified" }, 403),
+      fetchImpl: async () =>
+        jsonResponse(
+          { message: "domain not verified; token do-not-print rejected" },
+          403,
+        ),
     },
   );
   await assert.rejects(
@@ -107,4 +111,3 @@ function jsonResponse(payload, status = 200) {
     },
   };
 }
-

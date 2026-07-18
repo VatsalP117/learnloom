@@ -82,6 +82,16 @@ function renderMarkdownFragment(markdown) {
       closeList();
       continue;
     }
+    if (/^<\/?details>$/i.test(line)) {
+      closeList();
+      continue;
+    }
+    const summary = line.match(/^<summary>([\s\S]+)<\/summary>$/i);
+    if (summary) {
+      closeList();
+      blocks.push(`<h3 style="margin:24px 0 10px">${formatInline(summary[1])}</h3>`);
+      continue;
+    }
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
       closeList();
@@ -143,4 +153,3 @@ function demoteTopLevelHeadings(markdown) {
 function escapeMarkdown(value) {
   return value.replace(/([\\[\]*_])/g, "\\$1");
 }
-

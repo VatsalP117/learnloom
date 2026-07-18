@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -109,6 +109,37 @@ test("Daily Run skips an already delivered destination", async () => {
     "test-profile-2026-07-18.json",
   );
   assert.match(await readFile(recordPath, "utf8"), /"status": "delivered"/);
+});
+
+test("Daily Run regenerates when its recorded artifact is missing", async () => {
+  const fixture = await fixtureConfig();
+  let providerCalls = 0;
+  const demo = new DemoProvider();
+  const provider = {
+    async complete(input) {
+      providerCalls += 1;
+      return demo.complete(input);
+    },
+  };
+  const first = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider,
+    deliveries: [],
+  });
+  await rm(first.outputPath);
+  const second = await runDailyDossier({
+    config: fixture.config,
+    paths: fixture.paths,
+    demo: true,
+    now: fixture.now,
+    provider,
+    deliveries: [],
+  });
+  assert.equal(second.generated, true);
+  assert.equal(providerCalls, 8);
 });
 
 async function fixtureConfig() {

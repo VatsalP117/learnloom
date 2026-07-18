@@ -118,7 +118,10 @@ export class OpenAICompatibleProvider {
           signal: AbortSignal.timeout(this.timeoutMs),
         });
         if (response.ok) return response;
-        const error = await providerHttpError(response);
+        const error = await providerHttpError(
+          response,
+          this.environment[this.apiKeyEnv],
+        );
         if (!isRetryableStatus(response.status) || attempt === this.retries) {
           throw error;
         }
@@ -201,7 +204,7 @@ export async function checkProvider(config, options = {}) {
       const provider = new OpenAICompatibleProvider(config.provider, options);
       const models = await provider.listModels();
       const available =
-        models.length === 0 ||
+        models.length > 0 &&
         models.some(
           (model) =>
             model.toLowerCase() === config.provider.model.toLowerCase() ||
@@ -350,7 +353,7 @@ export function runProcess(executable, args, options = {}) {
   });
 }
 
-async function providerHttpError(response) {
+async function providerHttpError(response, secret) {
   let detail = "";
   try {
     const payload = JSON.parse(await response.text());
@@ -363,8 +366,9 @@ async function providerHttpError(response) {
   } catch {
     detail = "";
   }
+  const safeDetail = redactSecret(detail.slice(0, 300), secret);
   const error = new Error(
-    `Model provider returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+    `Model provider returned HTTP ${response.status}${safeDetail ? `: ${safeDetail}` : ""}`,
   );
   error.name = "ProviderHttpError";
   return error;
@@ -387,6 +391,10 @@ function safeErrorMessage(error) {
     return "request timed out";
   }
   return typeof error?.message === "string" ? error.message.slice(0, 300) : "unknown network error";
+}
+
+function redactSecret(value, secret) {
+  return secret ? value.replaceAll(secret, "[redacted]") : value;
 }
 
 function safeJson(value) {

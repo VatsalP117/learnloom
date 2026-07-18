@@ -200,7 +200,10 @@ function validateDeliveries(value) {
       ),
       from: requireString(delivery.from, `${field}.from`),
       to: normalizeRecipients(delivery.to, `${field}.to`),
-      subjectPrefix: delivery.subjectPrefix ?? "Learnloom",
+      subjectPrefix: requireString(
+        delivery.subjectPrefix ?? "Learnloom",
+        `${field}.subjectPrefix`,
+      ),
     };
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(result.id)) {
       throw new Error(`${field}.id must be a lowercase slug.`);

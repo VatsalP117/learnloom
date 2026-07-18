@@ -29,10 +29,12 @@ export async function runDailyDossier(options) {
     let outputPath;
 
     if (!force && record?.dossierPath && record?.artifactPath) {
-      dossier = await loadJson(record.dossierPath, "Dossier");
-      markdown = await readFile(record.artifactPath, "utf8");
-      outputPath = record.artifactPath;
-      onEvent({ type: "reuse", runId, outputPath });
+      const reusable = await loadReusableArtifacts(record);
+      if (reusable) {
+        ({ dossier, markdown } = reusable);
+        outputPath = record.artifactPath;
+        onEvent({ type: "reuse", runId, outputPath });
+      }
     }
 
     if (!dossier || !markdown) {
@@ -81,20 +83,24 @@ export async function runDailyDossier(options) {
         };
         await store.save(record);
       } catch (error) {
-        if (!record) {
+        if (!record?.artifactPath) {
           record = {
+            ...record,
             version: 1,
             runId,
             profileId: config.profileId,
             date,
-            createdAt: now.toISOString(),
+            createdAt: record?.createdAt ?? now.toISOString(),
             updatedAt: now.toISOString(),
             generationStatus: "failed",
             generationError: safeRecordError(error),
-            deliveries: {},
+            deliveries: record?.deliveries ?? {},
           };
-          await store.save(record);
+        } else {
+          record.lastGenerationError = safeRecordError(error);
+          record.lastGenerationFailedAt = now.toISOString();
         }
+        await store.save(record);
         throw error;
       }
     }
@@ -147,6 +153,18 @@ export async function runDailyDossier(options) {
   }
 }
 
+async function loadReusableArtifacts(record) {
+  try {
+    const dossier = await loadJson(record.dossierPath, "Dossier");
+    if (!dossier) return null;
+    const markdown = await readFile(record.artifactPath, "utf8");
+    return { dossier, markdown };
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 async function loadSourceItems(config, fetchSourcesFn, onEvent) {
   onEvent({ type: "fetch" });
   const result = await fetchSourcesFn(config);
@@ -166,4 +184,3 @@ function formatLocalDate(date, timeZone) {
     day: "2-digit",
   }).format(date);
 }
-

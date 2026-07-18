@@ -58,8 +58,11 @@ export class ResendDelivery {
           : typeof payload?.error?.message === "string"
             ? payload.error.message
             : "";
+      const safeDetail = detail
+        ? detail.slice(0, 300).replaceAll(apiKey, "[redacted]")
+        : "";
       throw new Error(
-        `Resend returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+        `Resend returned HTTP ${response.status}${safeDetail ? `: ${safeDetail}` : ""}`,
       );
     }
     if (typeof payload?.id !== "string" || payload.id === "") {
@@ -84,4 +87,3 @@ export function checkDeliveries(config, options = {}) {
       };
     });
 }
-

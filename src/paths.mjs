@@ -7,14 +7,18 @@ export function resolveAppPaths(config, options = {}) {
     options.home ?? environment.LEARNLOOM_HOME ?? configDirectory,
   );
   const dataDirectory = resolveFrom(appHome, config.storage.dataDirectory);
-  const outputDirectory = resolveFrom(appHome, config.storage.outputDirectory);
+  const outputRoot = resolveFrom(appHome, config.storage.outputDirectory);
+  const profileDataDirectory = path.join(dataDirectory, "profiles", config.profileId);
+  const outputDirectory = path.join(outputRoot, config.profileId);
 
   return {
     appHome,
     dataDirectory,
+    profileDataDirectory,
+    outputRoot,
     outputDirectory,
-    historyPath: path.join(dataDirectory, "history.json"),
-    runsDirectory: path.join(dataDirectory, "runs"),
+    historyPath: path.join(profileDataDirectory, "history.json"),
+    runsDirectory: path.join(profileDataDirectory, "runs"),
     locksDirectory: path.join(dataDirectory, "locks"),
     logsDirectory: path.join(dataDirectory, "logs"),
   };

@@ -69,6 +69,25 @@ test("OpenAICompatibleProvider retries 429 without exposing credentials", async 
   assert.equal(attempts, 3);
 });
 
+test("OpenAICompatibleProvider redacts a credential echoed by an upstream", async () => {
+  const provider = new OpenAICompatibleProvider(
+    { ...providerConfig, retries: 0 },
+    {
+      env: { MODEL_KEY: "private-key" },
+      fetchImpl: async () =>
+        jsonResponse(
+          { error: { message: "credential private-key is invalid" } },
+          401,
+        ),
+    },
+  );
+  await assert.rejects(
+    provider.complete({ stage: "teacher", instruction: "Teach", input: "Input" }),
+    (error) =>
+      /\[redacted\]/.test(error.message) && !/private-key/.test(error.message),
+  );
+});
+
 test("checkProvider discovers a configured HTTP model", async () => {
   const config = validateConfig({
     interests: ["systems"],
@@ -85,6 +104,24 @@ test("checkProvider discovers a configured HTTP model", async () => {
     fetchImpl: async () => jsonResponse({ data: [{ id: "learn-model" }] }),
   });
   assert.equal(checks.every((check) => check.ok), true);
+});
+
+test("checkProvider rejects an empty model catalog", async () => {
+  const config = validateConfig({
+    interests: ["systems"],
+    sources: [{ name: "Feed", url: "https://example.com/feed" }],
+    provider: {
+      kind: "openai-compatible",
+      baseUrl: "https://models.example/v1",
+      apiKeyEnv: "MODEL_KEY",
+      model: "learn-model",
+    },
+  });
+  const checks = await checkProvider(config, {
+    env: { MODEL_KEY: "private-key" },
+    fetchImpl: async () => jsonResponse({ data: [] }),
+  });
+  assert.equal(checks.some((check) => !check.ok), true);
 });
 
 test("createProvider selects the HTTP adapter", () => {

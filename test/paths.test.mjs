@@ -15,7 +15,10 @@ test("resolveAppPaths uses the config directory independently of cwd", () => {
   );
   const paths = resolveAppPaths(config, { env: {} });
   assert.equal(paths.dataDirectory, path.normalize("/opt/learnloom/profiles/private-data"));
-  assert.equal(paths.outputDirectory, path.normalize("/opt/learnloom/profiles/dossiers"));
+  assert.equal(
+    paths.outputDirectory,
+    path.normalize("/opt/learnloom/profiles/dossiers/default"),
+  );
 });
 
 test("resolveAppPaths honors LEARNLOOM_HOME", () => {
@@ -27,5 +30,8 @@ test("resolveAppPaths honors LEARNLOOM_HOME", () => {
     "/opt/learnloom/config.json",
   );
   const paths = resolveAppPaths(config, { env: { LEARNLOOM_HOME: "/var/lib/learnloom" } });
-  assert.equal(paths.historyPath, path.normalize("/var/lib/learnloom/data/history.json"));
+  assert.equal(
+    paths.historyPath,
+    path.normalize("/var/lib/learnloom/data/profiles/default/history.json"),
+  );
 });

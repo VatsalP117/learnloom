@@ -12,8 +12,11 @@ test("buildLaunchAgent creates a 9am plist and escapes paths", () => {
     hour: 9,
     minute: 0,
     environmentPath: "/bin:/usr/bin",
+    learnloomHome: "/var/lib/learnloom&daily",
   });
   assert.match(plist, /<integer>9<\/integer>/);
   assert.match(plist, /a&amp;b/);
   assert.match(plist, /app\.learnloom\.morning/);
+  assert.match(plist, /LEARNLOOM_HOME/);
+  assert.match(plist, /learnloom&amp;daily/);
 });
