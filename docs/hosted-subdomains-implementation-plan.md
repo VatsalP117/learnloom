@@ -842,6 +842,11 @@ Use a browser automation suite against `*.lvh.me` locally and a staging domain:
 
 ## 15. Phased implementation order
 
+The authoritative, bounded release gate is
+[the public launch checklist](public-launch-checklist.md). The phases below
+retain broader implementation context and should not be treated as an
+ever-growing blocker list.
+
 ### Phase 0 — Foundations
 
 - Add deployment mode and hosted configuration validation.

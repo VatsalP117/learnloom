@@ -149,7 +149,10 @@ canonical reading link when the content is public.
 The hosted path is still an implementation preview: production DNS/TLS, Clerk
 production-domain validation, feed-fetch hardening, deletion lifecycle, and
 operational observability must be completed before public launch. See
-[the hosted-subdomains implementation plan](docs/hosted-subdomains-implementation-plan.md).
+[the public launch checklist](docs/public-launch-checklist.md) for the bounded
+release gate and
+[the hosted-subdomains implementation plan](docs/hosted-subdomains-implementation-plan.md)
+for the full design.
 
 ## Model providers
 
