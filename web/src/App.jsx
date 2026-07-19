@@ -13,16 +13,20 @@ import {
   Menu,
   Plus,
   Search,
-  Settings,
   Sparkles,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import NewsletterDetail from "./NewsletterDetail.jsx";
+import NewsletterCreate from "./NewsletterCreate.jsx";
+import { apiJSON } from "./api.js";
 
 const iconCycle = [Atom, BrainCircuit, BookOpen, LibraryBig];
 
 function App() {
+  if (window.location.pathname === "/newsletters/new") {
+    return <NewsletterCreate />;
+  }
   const detailMatch = /^\/newsletters\/([a-z0-9_-]+)$/.exec(
     window.location.pathname,
   );
@@ -40,11 +44,7 @@ function DashboardHome() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/newsletters", { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("The workspace could not be loaded.");
-        return response.json();
-      })
+    apiJSON("/api/newsletters", { signal: controller.signal })
       .then(setSnapshot)
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);

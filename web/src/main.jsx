@@ -5,7 +5,6 @@ import "@fontsource/inter/latin-400.css";
 import "@fontsource/inter/latin-500.css";
 import "@fontsource/inter/latin-600.css";
 import "@fontsource/inter/latin-700.css";
-import App from "./App.jsx";
 import HostedApp from "./HostedApp.jsx";
 import MarketingLanding from "./MarketingLanding.jsx";
 import "./styles.css";
@@ -25,6 +24,13 @@ createRoot(document.getElementById("root")).render(
       <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/sign-in">
         <HostedApp />
       </ClerkProvider>
-    ) : <App />}
+    ) : (
+      <main className="auth-shell">
+        <section className="claim-card">
+          <h1>Learnloom is not configured</h1>
+          <p>The hosted app requires a Clerk publishable key at build time.</p>
+        </section>
+      </main>
+    )}
   </StrictMode>,
 );

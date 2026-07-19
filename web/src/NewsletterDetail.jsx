@@ -1,7 +1,6 @@
 import {
   AlertCircle,
   ArrowRight,
-  Atom,
   BookOpen,
   BrainCircuit,
   Check,
@@ -17,13 +16,13 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
-  Send,
   Settings2,
   Sparkles,
   WandSparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ErrorState, Footer, Sidebar, Topbar } from "./App.jsx";
+import { apiJSON } from "./api.js";
 
 const pipelineSteps = [
   { label: "Curation", icon: BookOpen },
@@ -42,28 +41,17 @@ function NewsletterDetail({ newsletterId }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch(
+    const body = await apiJSON(
       `/api/newsletters/${encodeURIComponent(newsletterId)}`,
     );
-    const body = await response.json();
-    if (!response.ok) {
-      throw new Error(body.error ?? "The newsletter could not be loaded.");
-    }
     setSnapshot(body);
   }, [newsletterId]);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/newsletters/${encodeURIComponent(newsletterId)}`, {
+    apiJSON(`/api/newsletters/${encodeURIComponent(newsletterId)}`, {
       signal: controller.signal,
     })
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) {
-          throw new Error(body.error ?? "The newsletter could not be loaded.");
-        }
-        return body;
-      })
       .then(setSnapshot)
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);
@@ -83,18 +71,10 @@ function NewsletterDetail({ newsletterId }) {
     setBusy(action);
     setError("");
     try {
-      const response = await fetch(action, {
+      await apiJSON(action, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          _csrf: snapshot.csrfToken,
-          ...fields,
-        }),
+        body: fields,
       });
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(readErrorMessage(text));
-      }
       await load();
       setNotice(successMessage);
     } catch (requestError) {
@@ -130,15 +110,15 @@ function NewsletterDetail({ newsletterId }) {
                   busy={busy}
                   onRun={() =>
                     submit(
-                      `/newsletters/${encodeURIComponent(newsletter.id)}/run`,
+                      `/api/newsletters/${encodeURIComponent(newsletter.id)}/run`,
                       {},
                       "Issue queued. The worker will pick it up shortly.",
                     )
                   }
                   onToggle={() =>
                     submit(
-                      `/newsletters/${encodeURIComponent(newsletter.id)}/toggle`,
-                      {},
+                      `/api/newsletters/${encodeURIComponent(newsletter.id)}/active`,
+                      { active: !newsletter.active },
                       newsletter.active
                         ? "Newsletter paused."
                         : "Newsletter resumed.",
@@ -166,14 +146,14 @@ function NewsletterDetail({ newsletterId }) {
                     busy={busy}
                     onSave={(settings) =>
                       submit(
-                        `/newsletters/${encodeURIComponent(newsletter.id)}/delivery`,
+                        `/api/newsletters/${encodeURIComponent(newsletter.id)}/delivery`,
                         settings,
                         "Email delivery settings saved.",
                       )
                     }
                     onSaveContent={(settings) =>
                       submit(
-                        `/newsletters/${encodeURIComponent(newsletter.id)}/content`,
+                        `/api/newsletters/${encodeURIComponent(newsletter.id)}/content`,
                         settings,
                         "Content settings saved for future Issues.",
                       )
@@ -193,7 +173,7 @@ function NewsletterDetail({ newsletterId }) {
                     busy={busy}
                     onRetry={(issue) =>
                       submit(
-                        `/issues/${encodeURIComponent(issue.id)}/retry-delivery`,
+                        `/api/issues/${encodeURIComponent(issue.id)}/retry-delivery`,
                         {},
                         "Email delivery queued for another attempt.",
                       )
@@ -348,14 +328,10 @@ function DeliveryCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(newsletter.emailEnabled);
-  const [recipients, setRecipients] = useState(
-    newsletter.emailRecipients.join("\n"),
-  );
 
   useEffect(() => {
     setEmailEnabled(newsletter.emailEnabled);
-    setRecipients(newsletter.emailRecipients.join("\n"));
-  }, [newsletter.emailEnabled, newsletter.emailRecipients]);
+  }, [newsletter.emailEnabled]);
 
   return (
     <article className="detail-card delivery-card">
@@ -405,23 +381,15 @@ function DeliveryCard({
               onChange={(event) => setEmailEnabled(event.target.checked)}
             />
           </label>
-          <label>
-            <span>Recipients</span>
-            <textarea
-              rows="3"
-              value={recipients}
-              onChange={(event) => setRecipients(event.target.value)}
-              placeholder="you@example.com"
-            />
-          </label>
+          <p className="field-help">
+            Delivery uses your verified Account email
+            {newsletter.emailRecipients[0] ? ` (${newsletter.emailRecipients[0]})` : ""}.
+          </p>
           <button
             type="button"
             disabled={Boolean(busy)}
             onClick={() => {
-              onSave({
-                ...(emailEnabled ? { emailEnabled: "on" } : {}),
-                emailRecipients: recipients,
-              });
+              onSave({ enabled: emailEnabled });
             }}
           >
             Save delivery
@@ -433,11 +401,9 @@ function DeliveryCard({
         type="button"
         disabled={Boolean(busy)}
         onClick={() =>
-          onSaveContent(
-            newsletter.aiExplorationEnabled
-              ? {}
-              : { aiExplorationEnabled: "on" },
-          )
+          onSaveContent({
+            aiExplorationEnabled: !newsletter.aiExplorationEnabled,
+          })
         }
       >
         <span className={`ios-toggle ${newsletter.aiExplorationEnabled ? "on" : ""}`}><i /></span>
@@ -587,16 +553,12 @@ function formatDate(value) {
 
 function noticeFromLocation() {
   const search = new URLSearchParams(window.location.search);
+  if (search.has("created")) return "Knowledge Dossier created.";
   if (search.has("queued")) return "Issue queued. The worker will pick it up shortly.";
   if (search.get("delivery") === "saved") return "Email delivery settings saved.";
   if (search.get("delivery") === "retried") return "Email delivery queued for another attempt.";
   if (search.get("content") === "saved") return "Content settings saved for future Issues.";
   return "";
-}
-
-function readErrorMessage(html) {
-  const match = /<section class="empty"><p>(.*?)<\/p>/s.exec(html);
-  return match ? match[1].replace(/<[^>]+>/g, "") : "The request could not be completed.";
 }
 
 export default NewsletterDetail;

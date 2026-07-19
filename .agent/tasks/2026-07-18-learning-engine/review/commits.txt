@@ -1,4 +1,0 @@
-a0cdc09 chore: initialize learning engine task
-d68f5cf feat: add source-grounded learning pipeline
-8b844ca docs: add Command Code setup and scheduling guide
-d13553a (HEAD -> agent/build-learning-engine) fix: preserve context across model stages

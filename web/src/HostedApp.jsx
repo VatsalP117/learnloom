@@ -5,9 +5,11 @@ import {
   Show,
   SignIn,
   SignUp,
+  useAuth,
 } from "@clerk/react";
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
+import { apiJSON, configureAPI, setCSRFToken } from "./api.js";
 
 export default function HostedApp() {
   const path = window.location.pathname;
@@ -28,34 +30,33 @@ export default function HostedApp() {
 }
 
 function OnboardingGate() {
+  const { getToken } = useAuth();
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    configureAPI(getToken);
     const controller = new AbortController();
-    fetch("/api/me", { signal: controller.signal })
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error ?? "Your account could not be loaded.");
-        return body;
+    apiJSON("/api/me", { signal: controller.signal })
+      .then((body) => {
+        setCSRFToken(body.csrfToken);
+        setProfile(body);
       })
-      .then(setProfile)
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);
       });
     return () => controller.abort();
-  }, []);
+  }, [getToken]);
 
   if (error) return <AuthPage><p>{error}</p></AuthPage>;
   if (!profile) return <AuthPage><p>Preparing your workspace…</p></AuthPage>;
   if (!profile.site) {
-    return <ClaimUsername csrfToken={profile.csrfToken} onClaim={(site) => setProfile({ ...profile, site })} />;
+    return <ClaimUsername onClaim={(site) => setProfile({ ...profile, site })} />;
   }
   return (
     <>
       <App />
       <SiteControl
-        csrfToken={profile.csrfToken}
         site={profile.site}
         onUpdate={(site) => setProfile({ ...profile, site })}
       />
@@ -63,7 +64,7 @@ function OnboardingGate() {
   );
 }
 
-function SiteControl({ csrfToken, site, onUpdate }) {
+function SiteControl({ site, onUpdate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nextVisibility = site.visibility === "public" ? "private" : "public";
@@ -72,18 +73,10 @@ function SiteControl({ csrfToken, site, onUpdate }) {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/me/site/settings", {
+      const body = await apiJSON("/api/me/site/settings", {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          _csrf: csrfToken,
-          visibility: nextVisibility,
-        }),
+        body: { visibility: nextVisibility },
       });
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.error ?? "Site visibility could not be updated.");
-      }
       onUpdate(body.site);
     } catch (requestError) {
       setError(requestError.message);
@@ -115,7 +108,7 @@ function SiteControl({ csrfToken, site, onUpdate }) {
   );
 }
 
-function ClaimUsername({ csrfToken, onClaim }) {
+function ClaimUsername({ onClaim }) {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -130,10 +123,9 @@ function ClaimUsername({ csrfToken, onClaim }) {
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/usernames/${encodeURIComponent(normalized)}`, {
+      apiJSON(`/api/usernames/${encodeURIComponent(normalized)}`, {
         signal: controller.signal,
       })
-        .then((response) => response.json())
         .then((body) => setAvailability(Boolean(body.available)))
         .catch((requestError) => {
           if (requestError.name !== "AbortError") setAvailability(null);
@@ -150,13 +142,10 @@ function ClaimUsername({ csrfToken, onClaim }) {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/me/site/claim", {
+      const body = await apiJSON("/api/me/site/claim", {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ _csrf: csrfToken, username, displayName }),
+        body: { username, displayName },
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "That username could not be claimed.");
       onClaim(body.site);
     } catch (requestError) {
       setError(requestError.message);

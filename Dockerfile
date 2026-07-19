@@ -1,33 +1,29 @@
-FROM node:22-alpine AS web-builder
-
-WORKDIR /app
-
+# syntax=docker/dockerfile:1.7
+FROM node:24-alpine AS web
+WORKDIR /src
 COPY package.json package-lock.json ./
-RUN npm ci
-
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web ./web
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 RUN npm run build
 
-FROM node:22-alpine
+FROM golang:1.25.12-alpine AS service
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /learnloom ./cmd/learnloom
 
+FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
-
-COPY --chown=node:node package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-COPY --chown=node:node bin ./bin
-COPY --chown=node:node src ./src
-COPY --chown=node:node --from=web-builder /app/web/dist ./web/dist
-COPY --chown=node:node config.example.json README.md LICENSE ./
-
-RUN mkdir -p /data && chown node:node /data
-
-USER node
-
-ENV NODE_ENV=production
-ENV LEARNLOOM_HOME=/data
-
-ENTRYPOINT ["node", "bin/learn.mjs"]
-CMD ["run", "--config", "/app/config.json"]
+COPY --from=service --chown=nonroot:nonroot /learnloom /learnloom
+COPY --from=web --chown=nonroot:nonroot /src/web/dist /app/web/dist
+USER nonroot:nonroot
+ENV FRONTEND_DIR=/app/web/dist
+EXPOSE 3000 9090
+ENTRYPOINT ["/learnloom"]
+CMD ["web"]
