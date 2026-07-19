@@ -55,7 +55,11 @@ export function renderDossierMarkdown(dossier) {
   return sections.join("\n");
 }
 
-export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dossier)) {
+export function renderDossierEmail(
+  dossier,
+  markdown = renderDossierMarkdown(dossier),
+  options = {},
+) {
   const sections = [
     renderMarkdownFragment(dossier.lesson),
     renderMarkdownFragment(dossier.critique),
@@ -83,6 +87,12 @@ export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dos
     .join("");
   const title = escapeHtml(dossier.title);
   const date = escapeHtml(dossier.date);
+  const webUrl = safeHttpUrl(options.webUrl);
+  const webLink = webUrl
+    ? `<p style="margin:0 0 28px"><a href="${escapeAttribute(
+        webUrl,
+      )}" style="display:inline-block;padding:11px 17px;border-radius:999px;background:#047857;color:#ffffff;font-weight:700;text-decoration:none">Read on the web</a></p>`
+    : "";
   const html = `<!doctype html>
 <html>
   <body style="margin:0;background:#f5f5f4;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
@@ -90,6 +100,7 @@ export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dos
       <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:16px;padding:32px">
         <p style="margin:0 0 8px;color:#047857;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Learnloom · ${date}</p>
         <h1 style="margin:0 0 28px;font-size:30px;line-height:1.2">${title}</h1>
+        ${webLink}
         ${sections.join('<hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">')}
         ${exploration}
         <hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">
@@ -100,7 +111,10 @@ export function renderDossierEmail(dossier, markdown = renderDossierMarkdown(dos
     </main>
   </body>
 </html>`;
-  return { html, text: markdown };
+  return {
+    html,
+    text: webUrl ? `${markdown}\n\nRead on the web: ${webUrl}\n` : markdown,
+  };
 }
 
 function renderMarkdownFragment(markdown) {

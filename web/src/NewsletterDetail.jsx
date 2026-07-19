@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FlaskConical,
   Lightbulb,
+  Globe2,
   Mail,
   Pause,
   Play,
@@ -177,6 +178,15 @@ function NewsletterDetail({ newsletterId }) {
                         "Content settings saved for future Issues.",
                       )
                     }
+                    onSaveSiteVisibility={(visible) =>
+                      submit(
+                        `/api/newsletters/${encodeURIComponent(newsletter.id)}/site`,
+                        { visible: String(visible) },
+                        visible
+                          ? "This learning stream will appear on your public site."
+                          : "This learning stream is hidden from your public site.",
+                      )
+                    }
                   />
                   <IssueHistory
                     issues={issues}
@@ -186,6 +196,20 @@ function NewsletterDetail({ newsletterId }) {
                         `/issues/${encodeURIComponent(issue.id)}/retry-delivery`,
                         {},
                         "Email delivery queued for another attempt.",
+                      )
+                    }
+                    onPublicationChange={(issue) =>
+                      submit(
+                        `/api/issues/${encodeURIComponent(issue.id)}/publication`,
+                        {
+                          state:
+                            issue.publicationState === "published"
+                              ? "hidden"
+                              : "published",
+                        },
+                        issue.publicationState === "published"
+                          ? "Dossier hidden from your public site."
+                          : "Dossier published to your site.",
                       )
                     }
                   />
@@ -320,6 +344,7 @@ function DeliveryCard({
   busy,
   onSave,
   onSaveContent,
+  onSaveSiteVisibility,
 }) {
   const [editing, setEditing] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(newsletter.emailEnabled);
@@ -418,11 +443,22 @@ function DeliveryCard({
         <span className={`ios-toggle ${newsletter.aiExplorationEnabled ? "on" : ""}`}><i /></span>
         {newsletter.aiExplorationEnabled ? "Disable AI Exploration" : "Enable AI Exploration"}
       </button>
+      <button
+        className="exploration-toggle"
+        type="button"
+        disabled={Boolean(busy)}
+        onClick={() => onSaveSiteVisibility(!newsletter.siteVisible)}
+      >
+        <Globe2 size={17} />
+        {newsletter.siteVisible
+          ? "Hide this stream from your site"
+          : "Show this stream on your site"}
+      </button>
     </article>
   );
 }
 
-function IssueHistory({ issues, busy, onRetry }) {
+function IssueHistory({ issues, busy, onRetry, onPublicationChange }) {
   return (
     <article className="detail-card history-card">
       <div className="detail-card-heading history-heading">
@@ -476,9 +512,20 @@ function IssueHistory({ issues, busy, onRetry }) {
                   <td data-label="Created">{formatDate(issue.createdAt)}</td>
                   <td className="row-action" data-label="Action">
                     {issue.status === "generated" ? (
-                      <a href={`/issues/${encodeURIComponent(issue.id)}`}>
-                        View <ExternalLink size={14} />
-                      </a>
+                      <>
+                        <a href={`/issues/${encodeURIComponent(issue.id)}`}>
+                          View <ExternalLink size={14} />
+                        </a>
+                        <button
+                          type="button"
+                          disabled={Boolean(busy)}
+                          onClick={() => onPublicationChange(issue)}
+                        >
+                          {issue.publicationState === "published"
+                            ? "Hide"
+                            : "Publish"}
+                        </button>
+                      </>
                     ) : null}
                     {issue.delivery?.status === "failed" ? (
                       <button

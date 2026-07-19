@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { validateConfig } from "../src/config.mjs";
 import { createDashboardServer } from "../src/dashboard.mjs";
+import { resolveDeploymentConfig } from "../src/host-routing.mjs";
 import { SQLiteWorkspace } from "../src/workspace.mjs";
 
 test("dashboard serves the React app and Newsletter API safely", async (context) => {
@@ -311,7 +312,314 @@ test("dashboard returns 404 for unknown identifiers", async (context) => {
   assert.equal(response.status, 404);
 });
 
-async function dashboardFixture(context) {
+test("hosted routing fails closed before authentication is enabled", async (context) => {
+  const deployment = resolveDeploymentConfig({
+    env: {
+      LEARNLOOM_DEPLOYMENT_MODE: "hosted",
+      LEARNLOOM_ROOT_DOMAIN: "learnloom.blog",
+      LEARNLOOM_APP_ORIGIN: "https://app.learnloom.blog",
+    },
+  });
+  const fixture = await dashboardFixture(context, { deployment });
+  fixture.workspace.createNewsletter({
+    ...newsletterInput(),
+    name: "Tenant secret",
+  });
+
+  const health = await rawRequest(
+    `${fixture.origin}/healthz`,
+    "app.learnloom.blog",
+  );
+  assert.equal(health.statusCode, 200);
+
+  const apex = await rawRequest(`${fixture.origin}/`, "learnloom.blog");
+  assert.equal(apex.statusCode, 200);
+  assert.match(apex.body, /Personal learning, woven daily/);
+
+  const app = await rawRequest(
+    `${fixture.origin}/api/newsletters`,
+    "app.learnloom.blog",
+  );
+  assert.equal(app.statusCode, 503);
+  assert.doesNotMatch(app.body, /Tenant secret/);
+
+  const site = await rawRequest(
+    `${fixture.origin}/`,
+    "vatsal.learnloom.blog",
+  );
+  assert.equal(site.statusCode, 404);
+  assert.doesNotMatch(site.body, /Tenant secret/);
+
+  const reserved = await rawRequest(
+    `${fixture.origin}/`,
+    "clerk.learnloom.blog",
+  );
+  assert.equal(reserved.statusCode, 421);
+
+  const www = await rawRequest(
+    `${fixture.origin}/welcome?from=www`,
+    "www.learnloom.blog",
+  );
+  assert.equal(www.statusCode, 308);
+  assert.equal(
+    www.headers.location,
+    "https://learnloom.blog/welcome?from=www",
+  );
+});
+
+test("hosted authentication provisions accounts and isolates tenant APIs", async (context) => {
+  const deployment = resolveDeploymentConfig({
+    env: {
+      LEARNLOOM_DEPLOYMENT_MODE: "hosted",
+      LEARNLOOM_ROOT_DOMAIN: "learnloom.blog",
+      LEARNLOOM_APP_ORIGIN: "https://app.learnloom.blog",
+    },
+  });
+  const authenticator = {
+    async authenticate(request) {
+      const userId = request.headers["x-test-clerk-user"];
+      return userId
+        ? {
+            status: "authenticated",
+            clerkUserId: userId,
+            sessionId: `session-${userId}`,
+            headers: new Headers(),
+          }
+        : { status: "unauthenticated", headers: new Headers() };
+    },
+  };
+  const fixture = await dashboardFixture(context, {
+    deployment,
+    authenticator,
+  });
+
+  const shell = await rawRequest(
+    `${fixture.origin}/`,
+    "app.learnloom.blog",
+  );
+  assert.equal(shell.statusCode, 200);
+  assert.match(
+    shell.headers["content-security-policy"],
+    /https:\/\/clerk\.learnloom\.blog/,
+  );
+
+  const unauthenticated = await rawRequest(
+    `${fixture.origin}/api/me`,
+    "app.learnloom.blog",
+  );
+  assert.equal(unauthenticated.statusCode, 401);
+
+  const aliceMe = await rawRequest(
+    `${fixture.origin}/api/me`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_alice" } },
+  );
+  assert.equal(aliceMe.statusCode, 200);
+  const aliceProfile = JSON.parse(aliceMe.body);
+  assert.equal(aliceProfile.site, null);
+  assert.notEqual(aliceProfile.csrfToken, fixture.csrfToken);
+
+  const availability = await rawRequest(
+    `${fixture.origin}/api/usernames/alice`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_alice" } },
+  );
+  assert.equal(JSON.parse(availability.body).available, true);
+
+  const forgedClaim = await rawRequest(
+    `${fixture.origin}/api/me/site/claim`,
+    "app.learnloom.blog",
+    {
+      method: "POST",
+      headers: {
+        "x-test-clerk-user": "user_alice",
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://attacker.example",
+      },
+      body: new URLSearchParams({
+        _csrf: aliceProfile.csrfToken,
+        username: "stolen",
+        displayName: "Stolen",
+      }).toString(),
+    },
+  );
+  assert.equal(forgedClaim.statusCode, 403);
+
+  const claim = await rawRequest(
+    `${fixture.origin}/api/me/site/claim`,
+    "app.learnloom.blog",
+    {
+      method: "POST",
+      headers: {
+        "x-test-clerk-user": "user_alice",
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://app.learnloom.blog",
+      },
+      body: new URLSearchParams({
+        _csrf: aliceProfile.csrfToken,
+        username: "alice",
+        displayName: "Alice",
+      }).toString(),
+    },
+  );
+  assert.equal(claim.statusCode, 201);
+  assert.equal(JSON.parse(claim.body).site.username, "alice");
+  const unavailable = await rawRequest(
+    `${fixture.origin}/api/usernames/alice`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_bob" } },
+  );
+  assert.equal(JSON.parse(unavailable.body).available, false);
+  const bobMe = await rawRequest(
+    `${fixture.origin}/api/me`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_bob" } },
+  );
+  assert.notEqual(
+    JSON.parse(bobMe.body).csrfToken,
+    aliceProfile.csrfToken,
+  );
+
+  const alice = fixture.workspace.getAccountByClerkUserId("user_alice");
+  const bob = fixture.workspace.ensureAccount("user_bob");
+  const aliceNewsletter = fixture.workspace
+    .forAccount(alice.id)
+    .createNewsletter(newsletterInput());
+  const bobNewsletter = fixture.workspace
+    .forAccount(bob.id)
+    .createNewsletter({ ...newsletterInput(), name: "Bob secret" });
+
+  const aliceList = await rawRequest(
+    `${fixture.origin}/api/newsletters`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_alice" } },
+  );
+  const aliceSnapshot = JSON.parse(aliceList.body);
+  assert.equal(aliceList.statusCode, 200);
+  assert.deepEqual(
+    aliceSnapshot.newsletters.map((item) => item.id),
+    [aliceNewsletter.id],
+  );
+  assert.doesNotMatch(aliceList.body, /Bob secret/);
+
+  const crossTenant = await rawRequest(
+    `${fixture.origin}/api/newsletters/${bobNewsletter.id}`,
+    "app.learnloom.blog",
+    { headers: { "x-test-clerk-user": "user_alice" } },
+  );
+  assert.equal(crossTenant.statusCode, 404);
+  const crossTenantMutation = await rawRequest(
+    `${fixture.origin}/api/newsletters/${bobNewsletter.id}/site`,
+    "app.learnloom.blog",
+    {
+      method: "POST",
+      headers: {
+        "x-test-clerk-user": "user_alice",
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://app.learnloom.blog",
+      },
+      body: new URLSearchParams({
+        _csrf: aliceProfile.csrfToken,
+        visible: "false",
+      }).toString(),
+    },
+  );
+  assert.equal(crossTenantMutation.statusCode, 404);
+  assert.equal(
+    fixture.workspace.getNewsletter(bobNewsletter.id).siteVisible,
+    true,
+  );
+
+  fixture.workspace.forAccount(alice.id).enqueueManualIssue(aliceNewsletter.id);
+  const claimedIssue = fixture.workspace.claimNextIssue();
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-public-"));
+  const dossierPath = path.join(directory, "dossier.json");
+  const artifactPath = path.join(directory, "dossier.md");
+  await writeFile(
+    dossierPath,
+    JSON.stringify({
+      version: 1,
+      profileId: aliceNewsletter.id,
+      date: "2026-07-18",
+      title: "Public <Queues>",
+      generatedAt: "2026-07-18T03:00:00.000Z",
+      model: "demo",
+      lesson: "## Lesson\n\n<script>alert('no')</script>",
+      critique: "## Critique\n\nCheck it.",
+      practice: "## Practice\n\nExplain it.",
+      sources: [],
+    }),
+  );
+  await writeFile(artifactPath, "# Public queues");
+  const generated = fixture.workspace.completeIssue(claimedIssue.id, {
+    title: "Public <Queues>",
+    generationId: "public-generation",
+    artifactPath,
+    dossierPath,
+  });
+
+  const privateSite = await rawRequest(
+    `${fixture.origin}/`,
+    "alice.learnloom.blog",
+  );
+  assert.equal(privateSite.statusCode, 404);
+  const publish = await rawRequest(
+    `${fixture.origin}/api/me/site/settings`,
+    "app.learnloom.blog",
+    {
+      method: "POST",
+      headers: {
+        "x-test-clerk-user": "user_alice",
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://app.learnloom.blog",
+      },
+      body: new URLSearchParams({
+        _csrf: aliceProfile.csrfToken,
+        visibility: "public",
+      }).toString(),
+    },
+  );
+  assert.equal(publish.statusCode, 200);
+  assert.equal(JSON.parse(publish.body).site.url, "https://alice.learnloom.blog");
+
+  const publicHome = await rawRequest(
+    `${fixture.origin}/`,
+    "alice.learnloom.blog",
+  );
+  assert.equal(publicHome.statusCode, 200);
+  assert.match(publicHome.body, /Public &lt;Queues&gt;/);
+  assert.doesNotMatch(publicHome.body, /Bob secret/);
+  assert.match(publicHome.headers["cache-control"], /public/);
+  assert.match(publicHome.headers["content-security-policy"], /form-action 'none'/);
+
+  const topic = await rawRequest(
+    `${fixture.origin}/topics/rabbitmq-deep-dive`,
+    "alice.learnloom.blog",
+  );
+  assert.equal(topic.statusCode, 200);
+  assert.match(topic.body, /RabbitMQ messaging queues/);
+
+  const canonicalPath = `/d/${generated.publicId}/${generated.publicSlug}`;
+  const canonicalRedirect = await rawRequest(
+    `${fixture.origin}/d/${generated.publicId}`,
+    "alice.learnloom.blog",
+  );
+  assert.equal(canonicalRedirect.statusCode, 308);
+  assert.equal(
+    canonicalRedirect.headers.location,
+    `https://alice.learnloom.blog${canonicalPath}`,
+  );
+  const publicDossier = await rawRequest(
+    `${fixture.origin}${canonicalPath}`,
+    "alice.learnloom.blog",
+  );
+  assert.equal(publicDossier.statusCode, 200);
+  assert.match(publicDossier.body, /rel="canonical"/);
+  assert.match(publicDossier.body, /&lt;script&gt;/);
+  assert.doesNotMatch(publicDossier.body, /<script>alert/);
+});
+
+async function dashboardFixture(context, options = {}) {
   const now = new Date("2026-07-18T03:00:00.000Z");
   const workspace = new SQLiteWorkspace(":memory:", { now: () => now });
   const baseConfig = validateConfig({
@@ -330,6 +638,8 @@ async function dashboardFixture(context) {
     workspace,
     baseConfig,
     csrfToken: "fixed-test-token",
+    deployment: options.deployment,
+    authenticator: options.authenticator,
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(
@@ -365,15 +675,16 @@ function newsletterInput() {
   };
 }
 
-function rawRequest(url, host) {
+function rawRequest(url, host, options = {}) {
   const target = new URL(url);
   return new Promise((resolve, reject) => {
     const request = httpRequest(
       {
         hostname: target.hostname,
         port: target.port,
-        path: target.pathname,
-        headers: { host },
+        path: `${target.pathname}${target.search}`,
+        method: options.method ?? "GET",
+        headers: { host, ...options.headers },
       },
       (response) => {
         const chunks = [];
@@ -381,12 +692,14 @@ function rawRequest(url, host) {
         response.on("end", () =>
           resolve({
             statusCode: response.statusCode,
+            headers: response.headers,
             body: Buffer.concat(chunks).toString("utf8"),
           }),
         );
       },
     );
     request.on("error", reject);
+    if (options.body) request.write(options.body);
     request.end();
   });
 }

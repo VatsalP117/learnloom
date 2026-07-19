@@ -32,6 +32,8 @@
     "node": ">=22.13"
   },
   "dependencies": {
+    "@clerk/backend": "^3.11.7",
+    "@clerk/react": "^6.12.5",
     "@fontsource/inter": "^5.2.8",
     "lucide-react": "^1.25.0",
     "react": "^19.2.7",

@@ -132,6 +132,20 @@ export async function processNextDelivery(options) {
       );
     }
     const markdown = await readFile(delivery.issue.artifactPath, "utf8");
+    const site = delivery.newsletter.ownerAccountId
+      ? workspace.getSiteForAccount(delivery.newsletter.ownerAccountId)
+      : null;
+    const webUrl =
+      options.deployment?.mode === "hosted" &&
+      site?.visibility === "public" &&
+      delivery.newsletter.siteVisible &&
+      delivery.issue.publicationState === "published" &&
+      delivery.issue.publicId &&
+      delivery.issue.publicSlug
+        ? `https://${site.username}.${options.deployment.rootDomain}/d/${encodeURIComponent(
+            delivery.issue.publicId,
+          )}/${encodeURIComponent(delivery.issue.publicSlug)}`
+        : null;
     const adapter = new ResendDelivery(
       {
         ...resendConfig,
@@ -149,6 +163,7 @@ export async function processNextDelivery(options) {
       generationId: delivery.issue.generationId,
       dossier,
       markdown,
+      webUrl,
     });
     const completed = workspace.completeDelivery(
       delivery.issue.id,

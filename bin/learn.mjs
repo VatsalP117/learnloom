@@ -3,9 +3,14 @@
 import { access, copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createClerkAuthenticator,
+  resolveClerkConfig,
+} from "../src/auth.mjs";
 import { loadConfig, validateConfig } from "../src/config.mjs";
 import { runDailyDossier } from "../src/daily-run.mjs";
 import { checkDeliveries } from "../src/delivery.mjs";
+import { resolveDeploymentConfig } from "../src/host-routing.mjs";
 import { resolveAppPaths } from "../src/paths.mjs";
 import { checkProvider } from "../src/provider.mjs";
 import {
@@ -172,18 +177,27 @@ async function serve(commandArgs) {
     ? demoConfig()
     : await loadConfig(option(commandArgs, "--config") ?? "config.json");
   const paths = resolveAppPaths(config);
+  const deployment = resolveDeploymentConfig();
+  const authenticator =
+    deployment.mode === "hosted"
+      ? createClerkAuthenticator(resolveClerkConfig())
+      : null;
   const workspace = new SQLiteWorkspace(paths.workspacePath);
   const host = option(commandArgs, "--host") ?? "127.0.0.1";
   const port = integerOption(commandArgs, "--port", 3000, 1, 65535);
   if (!isLoopbackHost(host) && !commandArgs.includes("--allow-remote")) {
     workspace.close();
     throw new Error(
-      'The test dashboard has no authentication. Use a loopback host or pass "--allow-remote" only behind a trusted access layer.',
+      deployment.mode === "hosted"
+        ? 'Hosted serving on a remote interface requires "--allow-remote" behind the configured ingress.'
+        : 'The test dashboard has no authentication. Use a loopback host or pass "--allow-remote" only behind a trusted access layer.',
     );
   }
   const { server } = createDashboardServer({
     workspace,
     baseConfig: config,
+    deployment,
+    authenticator,
     allowedHosts: [
       "127.0.0.1",
       "localhost",
@@ -198,7 +212,11 @@ async function serve(commandArgs) {
     server.once("error", reject);
     server.listen(port, host, resolve);
   });
-  process.stdout.write(`Learnloom dashboard: http://${host}:${port}\n`);
+  process.stdout.write(
+    deployment.mode === "hosted"
+      ? `Learnloom hosted ingress: ${deployment.appOrigin}\n`
+      : `Learnloom dashboard: http://${host}:${port}\n`,
+  );
   process.stdout.write(
     "Newsletter email uses the enabled Resend configuration and per-Newsletter recipients.\n",
   );
@@ -223,6 +241,7 @@ async function worker(commandArgs) {
     ? demoConfig()
     : await loadConfig(option(commandArgs, "--config") ?? "config.json");
   const paths = resolveAppPaths(config);
+  const deployment = resolveDeploymentConfig();
   const workspace = new SQLiteWorkspace(paths.workspacePath);
   const intervalSeconds = integerOption(
     commandArgs,
@@ -242,6 +261,7 @@ async function worker(commandArgs) {
       const result = await runWorkerCycle({
         workspace,
         baseConfig: config,
+        deployment,
         demo,
         cwd: projectRoot,
         onEvent: printWorkerEvent,
@@ -372,6 +392,8 @@ function printWorkerEvent(event) {
 
 function printHelp() {
   process.stdout.write(`Learnloom
+
+Deprecated compatibility interface. No new hosted administration commands will be added.
 
 Usage:
   learn init [--config path] [--force]

@@ -1,7 +1,7 @@
 # Architecture
 
 ```text
-CLI / launchd / systemd / Docker
+Deprecated compatibility CLI / launchd / systemd / Docker
                  │
                  ▼
              Daily Run
@@ -77,6 +77,10 @@ Dashboard ──► SQLite Workspace ◄──────── Worker
   replace immutable Dossier files or the Daily Run file store.
 - The web and worker modules are thin adapters. HTTP queues an Issue; only the
   worker invokes Daily Run.
+- The host-routing boundary separates local requests from the hosted apex,
+  app, and one-label personal-site planes. Clerk authenticates the app plane;
+  its account-scoped Workspace view prevents cross-tenant Newsletter and Issue
+  access. Personal-site hosts remain closed until public rendering lands.
 - Markdown and email are renderings of the canonical **Dossier**, not the
   source of truth.
 - The source-enrichment module owns URL/address/redirect validation, bounded
@@ -102,9 +106,22 @@ Dashboard ──► SQLite Workspace ◄──────── Worker
 - Every container role runs non-root and excludes local secrets and state from
   its build context. Only the dashboard role listens, and Compose publishes it
   to host loopback.
-- The dashboard adds CSRF protection and browser security headers, binds
-  to host loopback under Compose, and must not be exposed publicly because
-  authentication is not implemented.
+- Self-hosted/local dashboard mode adds CSRF protection and browser security
+  headers, binds to host loopback under Compose, and has no authentication.
+  It must not be exposed publicly.
+- Hosted configuration requires an exact HTTPS app origin and a valid root
+  domain. Request routing uses the normalized `Host` header and does not trust
+  forwarded-host headers.
+- Hosted app requests verify Clerk session tokens against the exact app origin.
+  The first authenticated request provisions an internal account; Clerk IDs
+  are not used as public or general foreign keys.
+- Claimed sites start private and private, suspended, hidden, or unowned content
+  resolves to the same generic `404`. Public queries require an active owner,
+  public site, visible Newsletter, generated Issue, published state, and both
+  persisted artifacts.
+- Public Dossier URLs use random stable identifiers plus canonical display slugs.
+  Public pages are server-rendered with a script-free CSP and short cache
+  lifetime; dashboard mutations remain session-authenticated and CSRF-protected.
 
 ## Failure behavior
 

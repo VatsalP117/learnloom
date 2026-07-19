@@ -40,6 +40,24 @@ test("renderDossierEmail escapes model content and rejects unsafe source links",
   assert.match(rendered.html, /https:\/\/example\.com\/read\?q=one&amp;safe=yes/);
 });
 
+test("renderDossierEmail includes an optional canonical reading link", () => {
+  const rendered = renderDossierEmail(dossier, "# Text", {
+    webUrl:
+      "https://alice.learnloom.blog/d/dossier-123/delivery-guarantees",
+  });
+  assert.match(rendered.html, />Read on the web<\/a>/);
+  assert.match(
+    rendered.text,
+    /Read on the web: https:\/\/alice\.learnloom\.blog\/d\/dossier-123\/delivery-guarantees/,
+  );
+  assert.doesNotMatch(
+    renderDossierEmail(dossier, "# Text", {
+      webUrl: "javascript:alert(1)",
+    }).html,
+    /Read on the web/,
+  );
+});
+
 test("Dossier v2 renders AI Exploration as a separate labelled section", () => {
   const expanded = {
     ...dossier,

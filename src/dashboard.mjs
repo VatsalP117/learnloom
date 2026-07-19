@@ -1,6 +1,7 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { resolveRequestHost } from "./host-routing.mjs";
 import { renderDossierEmail } from "./render.mjs";
 import { loadJson } from "./state.mjs";
 
@@ -36,16 +37,71 @@ export function createDashboardServer(options) {
 async function handleRequest(request, response, options) {
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://localhost");
-  requireAllowedHost(request.headers.host, options.allowedHosts);
+  const host = resolveRequestHost(
+    request.headers.host,
+    options.deployment ?? { mode: "local" },
+    { allowedHosts: options.allowedHosts },
+  );
+  if (host.kind === "rejected") {
+    throw httpError(421, "The request Host is not allowed.");
+  }
 
   if (url.pathname === "/healthz") {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
     return sendText(response, 200, "ok\n");
   }
 
+  if (options.deployment?.mode === "hosted") {
+    return handleHostedRequest(request, response, options, host, url);
+  }
+
   if (url.pathname === "/api/newsletters") {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
     return sendJson(response, 200, dashboardSnapshot(options.workspace));
+  }
+
+  const apiNewsletterSiteMatch =
+    /^\/api\/newsletters\/([a-z0-9_-]+)\/site$/.exec(url.pathname);
+  if (apiNewsletterSiteMatch) {
+    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+    if (!options.workspace.getNewsletter(apiNewsletterSiteMatch[1])) {
+      return sendJson(response, 404, { error: "Newsletter not found." });
+    }
+    const form = await requireForm(request, options.csrfToken);
+    try {
+      const newsletter = options.workspace.setNewsletterSiteVisible(
+        apiNewsletterSiteMatch[1],
+        form.get("visible") === "true",
+      );
+      return sendJson(response, 200, {
+        id: newsletter.id,
+        siteVisible: newsletter.siteVisible,
+      });
+    } catch (error) {
+      return sendJson(response, 400, { error: error.message });
+    }
+  }
+
+  const apiIssuePublicationMatch =
+    /^\/api\/issues\/([a-z0-9_-]+)\/publication$/.exec(url.pathname);
+  if (apiIssuePublicationMatch) {
+    if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+    if (!options.workspace.getIssue(apiIssuePublicationMatch[1])) {
+      return sendJson(response, 404, { error: "Issue not found." });
+    }
+    const form = await requireForm(request, options.csrfToken);
+    try {
+      const issue = options.workspace.setIssuePublication(
+        apiIssuePublicationMatch[1],
+        form.get("state"),
+      );
+      return sendJson(response, 200, {
+        id: issue.id,
+        publicationState: issue.publicationState,
+      });
+    } catch (error) {
+      return sendJson(response, 400, { error: error.message });
+    }
   }
 
   const apiNewsletterMatch =
@@ -75,7 +131,7 @@ async function handleRequest(request, response, options) {
 
   if (url.pathname === "/") {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
-    return sendReactApp(response, options.workspace);
+    return sendReactApp(response, options.workspace, options.deployment);
   }
 
   if (url.pathname === "/newsletters/new") {
@@ -106,7 +162,7 @@ async function handleRequest(request, response, options) {
     if (method !== "GET") return methodNotAllowed(response, ["GET"]);
     const newsletter = options.workspace.getNewsletter(newsletterMatch[1]);
     if (!newsletter) return notFound(response);
-    return sendReactApp(response, options.workspace);
+    return sendReactApp(response, options.workspace, options.deployment);
   }
 
   const runMatch = /^\/newsletters\/([a-z0-9_-]+)\/run$/.exec(url.pathname);
@@ -220,6 +276,369 @@ async function handleRequest(request, response, options) {
   return notFound(response);
 }
 
+async function handleHostedRequest(request, response, options, host, url) {
+  const method = request.method ?? "GET";
+  if (host.kind === "www") {
+    if (!["GET", "HEAD"].includes(method)) {
+      return methodNotAllowed(response, ["GET", "HEAD"]);
+    }
+    return permanentRedirect(
+      response,
+      new URL(`${url.pathname}${url.search}`, options.deployment.apexOrigin)
+        .toString(),
+    );
+  }
+  if (host.kind === "apex") {
+    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+    if (url.pathname !== "/") return hostedNotFound(response);
+    return sendHtml(
+      response,
+      200,
+      hostedPage(
+        "Learnloom",
+        `<section class="empty"><p class="eyebrow">Personal learning, woven daily</p><h1>Learnloom</h1><p>Your hosted learning workspace is taking shape.</p></section>`,
+      ),
+    );
+  }
+  if (host.kind === "app") {
+    if (
+      method === "GET" &&
+      (/^\/assets\/[a-zA-Z0-9._-]+$/.test(url.pathname) ||
+        /^\/sign-(?:in|up)(?:\/.*)?$/.test(url.pathname) ||
+        url.pathname === "/")
+    ) {
+      return /^\/assets\//.test(url.pathname)
+        ? sendFrontendAsset(response, url.pathname)
+        : sendReactApp(response, options.workspace, options.deployment);
+    }
+    if (!options.authenticator) {
+      return sendHtml(
+        response,
+        503,
+        hostedPage(
+          "Dashboard unavailable",
+          `<section class="empty"><h1>Dashboard authentication is not configured.</h1><p>The hosted dashboard remains closed until valid Clerk configuration is supplied.</p></section>`,
+        ),
+      );
+    }
+    const authentication = await options.authenticator.authenticate(
+      request,
+      options.deployment.appOrigin,
+    );
+    applyAuthenticationHeaders(response, authentication.headers);
+    if (authentication.status === "handshake") {
+      return finishAuthenticationHandshake(response);
+    }
+    if (authentication.status !== "authenticated") {
+      if (url.pathname.startsWith("/api/")) {
+        return sendJson(response, 401, { error: "Authentication required." });
+      }
+      return temporaryRedirect(
+        response,
+        `/sign-in?redirect_url=${encodeURIComponent(
+          `${options.deployment.appOrigin}${url.pathname}${url.search}`,
+        )}`,
+      );
+    }
+    if (
+      !["GET", "HEAD"].includes(method) &&
+      request.headers.origin !== options.deployment.appOrigin
+    ) {
+      return url.pathname.startsWith("/api/")
+        ? sendJson(response, 403, { error: "Request origin is not allowed." })
+        : sendText(response, 403, "Request origin is not allowed.\n");
+    }
+    const account = options.workspace.ensureAccount(
+      authentication.clerkUserId,
+    );
+    const csrfToken = sessionCsrfToken(
+      options.csrfToken,
+      authentication.sessionId,
+    );
+    const scopedWorkspace = options.workspace.forAccount(account.id);
+    if (url.pathname === "/api/me") {
+      if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+      return sendJson(response, 200, {
+        csrfToken,
+        site: publicSiteSettings(
+          options.workspace.getSiteForAccount(account.id),
+          options.deployment,
+        ),
+      });
+    }
+    const usernameAvailability =
+      /^\/api\/usernames\/([a-zA-Z0-9-]+)$/.exec(url.pathname);
+    if (usernameAvailability) {
+      if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+      const username = usernameAvailability[1].toLowerCase();
+      return sendJson(response, 200, {
+        username,
+        available: options.workspace.isSiteUsernameAvailable(username),
+      });
+    }
+    if (url.pathname === "/api/me/site/claim") {
+      if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+      try {
+        const form = await requireForm(request, csrfToken);
+        const site = options.workspace.claimSite(account.id, {
+          username: form.get("username"),
+          displayName: form.get("displayName"),
+        });
+        return sendJson(response, 201, {
+          site: publicSiteSettings(site, options.deployment),
+        });
+      } catch (error) {
+        return sendJson(
+          response,
+          /already claimed/.test(error.message) ? 409 : 400,
+          { error: error.message },
+        );
+      }
+    }
+    if (url.pathname === "/api/me/site/settings") {
+      if (method !== "POST") return methodNotAllowed(response, ["POST"]);
+      try {
+        const form = await requireForm(request, csrfToken);
+        const site = options.workspace.updateSiteSettings(account.id, {
+          visibility: form.get("visibility"),
+          displayName: form.has("displayName")
+            ? form.get("displayName")
+            : undefined,
+          description: form.has("description")
+            ? form.get("description")
+            : undefined,
+        });
+        return sendJson(response, 200, {
+          site: publicSiteSettings(site, options.deployment),
+        });
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message });
+      }
+    }
+    return handleRequest(request, response, {
+      ...options,
+      deployment: {
+        mode: "local",
+        clerkFrontendApiOrigin:
+          options.deployment.clerkFrontendApiOrigin,
+      },
+      allowedHosts: [host.hostname],
+      workspace: scopedWorkspace,
+      csrfToken,
+    });
+  }
+  if (host.kind === "site") {
+    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
+    return handlePublicSiteRequest(response, options, host, url);
+  }
+  throw httpError(421, "The request Host is not allowed.");
+}
+
+function publicSiteSettings(site, deployment) {
+  if (!site) return null;
+  return {
+    username: site.username,
+    displayName: site.displayName,
+    description: site.description,
+    visibility: site.visibility,
+    claimedAt: site.claimedAt,
+    url: deployment?.rootDomain
+      ? `https://${site.username}.${deployment.rootDomain}`
+      : null,
+  };
+}
+
+async function handlePublicSiteRequest(response, options, host, url) {
+  const site = options.workspace.getPublicSite(host.username);
+  if (!site) return hostedNotFound(response);
+  const origin = `https://${host.hostname}`;
+
+  if (url.pathname === "/robots.txt") {
+    return sendPublicText(
+      response,
+      200,
+      `User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`,
+    );
+  }
+  if (url.pathname === "/sitemap.xml") {
+    const issues = options.workspace.listPublicIssues(host.username, {
+      limit: 100,
+    });
+    const locations = [
+      origin,
+      ...options.workspace
+        .listPublicNewsletters(host.username)
+        .map(
+          (newsletter) =>
+            `${origin}/topics/${encodeURIComponent(newsletter.publicSlug)}`,
+        ),
+      ...issues.map(
+        (issue) =>
+          `${origin}/d/${encodeURIComponent(issue.publicId)}/${encodeURIComponent(
+            issue.publicSlug,
+          )}`,
+      ),
+    ];
+    return sendPublicXml(
+      response,
+      200,
+      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${locations
+        .map((location) => `<url><loc>${escapeHtml(location)}</loc></url>`)
+        .join("")}</urlset>`,
+    );
+  }
+  if (url.pathname === "/") {
+    const newsletters = options.workspace.listPublicNewsletters(host.username);
+    const issues = options.workspace.listPublicIssues(host.username, {
+      limit: 24,
+    });
+    return sendPublicHtml(
+      response,
+      200,
+      publicSitePage({
+        site,
+        title: site.displayName,
+        description:
+          site.description ||
+          `A personal learning archive by ${site.displayName}.`,
+        canonical: origin,
+        body: renderPublicHome(site, newsletters, issues),
+      }),
+    );
+  }
+
+  const topicMatch = /^\/topics\/([a-z0-9-]+)$/.exec(url.pathname);
+  if (topicMatch) {
+    const newsletter = options.workspace
+      .listPublicNewsletters(host.username)
+      .find((item) => item.publicSlug === topicMatch[1]);
+    if (!newsletter) return hostedNotFound(response);
+    const issues = options.workspace.listPublicIssues(host.username, {
+      newsletterSlug: newsletter.publicSlug,
+      limit: 100,
+    });
+    return sendPublicHtml(
+      response,
+      200,
+      publicSitePage({
+        site,
+        title: newsletter.name,
+        description: newsletter.topic,
+        canonical: `${origin}/topics/${encodeURIComponent(
+          newsletter.publicSlug,
+        )}`,
+        body: renderPublicTopic(site, newsletter, issues),
+      }),
+    );
+  }
+
+  const dossierMatch =
+    /^\/d\/(dossier-[a-z0-9-]+)(?:\/([a-z0-9-]+))?$/.exec(url.pathname);
+  if (dossierMatch) {
+    const issue = options.workspace.getPublicIssue(
+      host.username,
+      dossierMatch[1],
+    );
+    if (!issue) return hostedNotFound(response);
+    const canonicalPath = `/d/${encodeURIComponent(
+      issue.publicId,
+    )}/${encodeURIComponent(issue.publicSlug)}`;
+    if (url.pathname !== canonicalPath) {
+      return permanentRedirect(response, `${origin}${canonicalPath}`);
+    }
+    const dossier = await loadJson(issue.dossierPath, "Issue Dossier");
+    if (!dossier) return hostedNotFound(response);
+    const markdown = await readFile(issue.artifactPath, "utf8");
+    return sendPublicHtml(
+      response,
+      200,
+      publicSitePage({
+        site,
+        title: issue.title,
+        description: `${issue.newsletterName} Dossier from ${site.displayName}.`,
+        canonical: `${origin}${canonicalPath}`,
+        body: renderPublicDossier(site, issue, dossier, markdown),
+        type: "article",
+      }),
+    );
+  }
+
+  return hostedNotFound(response);
+}
+
+function renderPublicHome(site, newsletters, issues) {
+  const topics = newsletters.length
+    ? newsletters
+        .map(
+          (newsletter) => `<a class="public-topic" href="/topics/${encodeURIComponent(
+            newsletter.publicSlug,
+          )}"><span>${escapeHtml(newsletter.name)}</span><small>${escapeHtml(
+            String(newsletter.generatedCount),
+          )} Dossiers</small></a>`,
+        )
+        .join("")
+    : '<p class="public-empty">No published learning streams yet.</p>';
+  const archive = issues.length
+    ? issues.map(renderPublicIssueCard).join("")
+    : '<p class="public-empty">The first Dossier will appear here after it is generated.</p>';
+  return `<header class="public-hero"><p class="public-kicker">Personal learning archive</p><h1>${escapeHtml(
+    site.displayName,
+  )}</h1>${
+    site.description
+      ? `<p class="public-lede">${escapeHtml(site.description)}</p>`
+      : ""
+  }</header>
+  <section class="public-section"><div class="public-heading"><h2>Topics</h2></div><div class="public-topics">${topics}</div></section>
+  <section class="public-section"><div class="public-heading"><h2>Latest Dossiers</h2><span>${issues.length} published</span></div><div class="public-grid">${archive}</div></section>`;
+}
+
+function renderPublicTopic(site, newsletter, issues) {
+  return `<header class="public-hero compact"><a class="public-back" href="/">← ${escapeHtml(
+    site.displayName,
+  )}</a><p class="public-kicker">Learning stream</p><h1>${escapeHtml(
+    newsletter.name,
+  )}</h1><p class="public-lede">${escapeHtml(
+    newsletter.topic,
+  )}</p></header>
+  <section class="public-section"><div class="public-heading"><h2>Archive</h2><span>${
+    issues.length
+  } Dossiers</span></div><div class="public-grid">${
+    issues.length
+      ? issues.map(renderPublicIssueCard).join("")
+      : '<p class="public-empty">No published Dossiers in this stream yet.</p>'
+  }</div></section>`;
+}
+
+function renderPublicIssueCard(issue) {
+  const href = `/d/${encodeURIComponent(issue.publicId)}/${encodeURIComponent(
+    issue.publicSlug,
+  )}`;
+  return `<article class="public-card"><p>${escapeHtml(
+    issue.newsletterName,
+  )}</p><h3><a href="${href}">${escapeHtml(issue.title)}</a></h3><div><time datetime="${escapeAttribute(
+    issue.completedAt,
+  )}">${escapeHtml(formatPublicDate(issue.completedAt))}</time><a href="${href}">Read Dossier →</a></div></article>`;
+}
+
+function renderPublicDossier(site, issue, dossier, markdown) {
+  const rendered = renderDossierEmail(dossier, markdown).html;
+  const content =
+    /<body[^>]*>([\s\S]*)<\/body>/i.exec(rendered)?.[1] ?? rendered;
+  return `<header class="public-article-head"><a class="public-back" href="/topics/${encodeURIComponent(
+    issue.newsletterPublicSlug,
+  )}">← ${escapeHtml(issue.newsletterName)}</a><p class="public-kicker">Dossier · ${escapeHtml(
+    formatPublicDate(issue.completedAt),
+  )}</p><h1>${escapeHtml(issue.title)}</h1><p>Published by <a href="/">${escapeHtml(
+    site.displayName,
+  )}</a></p></header><article class="public-dossier">${content}</article>`;
+}
+
+function formatPublicDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "Published";
+  return new Intl.DateTimeFormat("en", { dateStyle: "long" }).format(date);
+}
+
 function dashboardSnapshot(workspace) {
   const newsletters = workspace.listNewsletters();
   return {
@@ -244,6 +663,8 @@ function dashboardSnapshot(workspace) {
       sentCount: newsletter.sentCount,
       emailEnabled: newsletter.emailEnabled,
       emailRecipients: newsletter.emailRecipients,
+      publicSlug: newsletter.publicSlug,
+      siteVisible: newsletter.siteVisible,
     })),
   };
 }
@@ -272,6 +693,8 @@ function newsletterDetailSnapshot(workspace, newsletter, csrfToken, baseConfig) 
       emailEnabled: newsletter.emailEnabled,
       emailRecipients: newsletter.emailRecipients,
       aiExplorationEnabled: newsletter.aiExplorationEnabled,
+      publicSlug: newsletter.publicSlug,
+      siteVisible: newsletter.siteVisible,
     },
     issues: workspace.listIssues(newsletter.id).map((issue) => ({
       id: issue.id,
@@ -283,6 +706,9 @@ function newsletterDetailSnapshot(workspace, newsletter, csrfToken, baseConfig) 
       createdAt: issue.createdAt,
       startedAt: issue.startedAt,
       completedAt: issue.completedAt,
+      publicId: issue.publicId,
+      publicSlug: issue.publicSlug,
+      publicationState: issue.publicationState,
       delivery: issue.delivery
         ? {
             status: issue.delivery.status,
@@ -302,10 +728,10 @@ function newsletterDetailSnapshot(workspace, newsletter, csrfToken, baseConfig) 
   };
 }
 
-async function sendReactApp(response, workspace) {
+async function sendReactApp(response, workspace, deployment) {
   try {
     const html = await readFile(new URL("index.html", FRONTEND_DIST), "utf8");
-    return sendAppHtml(response, 200, html);
+    return sendAppHtml(response, 200, html, deployment);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     return sendHtml(response, 200, renderOverview(workspace));
@@ -659,24 +1085,8 @@ function tokensEqual(actual, expected) {
   return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
 }
 
-function requireAllowedHost(hostHeader, configuredHosts) {
-  if (typeof hostHeader !== "string" || hostHeader.length > 255) {
-    throw httpError(421, "The request Host is not allowed.");
-  }
-  let hostname;
-  try {
-    hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase();
-  } catch {
-    throw httpError(421, "The request Host is not allowed.");
-  }
-  const allowedHosts = new Set(
-    (configuredHosts ?? ["127.0.0.1", "localhost", "[::1]"]).map((host) =>
-      String(host).toLowerCase(),
-    ),
-  );
-  if (!allowedHosts.has(hostname)) {
-    throw httpError(421, "The request Host is not allowed.");
-  }
+function sessionCsrfToken(secret, sessionId) {
+  return createHmac("sha256", secret).update(sessionId).digest("base64url");
 }
 
 function page(title, body) {
@@ -694,6 +1104,68 @@ function page(title, body) {
   <footer>Learnloom shapes source material into durable understanding.</footer>
 </body>
 </html>`;
+}
+
+function hostedPage(title, body) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} · Learnloom</title>
+  <style>${STYLES}</style>
+</head>
+<body>
+  <nav><a class="brand" href="/"><span>LL</span> Learnloom</a><span class="test-label">Hosted learning</span></nav>
+  <main>${body}</main>
+  <footer>Learnloom shapes source material into durable understanding.</footer>
+</body>
+</html>`;
+}
+
+function publicSitePage({
+  site,
+  title,
+  description,
+  canonical,
+  body,
+  type = "website",
+}) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} · ${escapeHtml(site.displayName)}</title>
+  <meta name="description" content="${escapeAttribute(description)}">
+  <meta property="og:type" content="${escapeAttribute(type)}">
+  <meta property="og:title" content="${escapeAttribute(title)}">
+  <meta property="og:description" content="${escapeAttribute(description)}">
+  <meta property="og:url" content="${escapeAttribute(canonical)}">
+  <link rel="canonical" href="${escapeAttribute(canonical)}">
+  <style>${PUBLIC_STYLES}</style>
+</head>
+<body>
+  <nav class="public-nav"><a href="/">${escapeHtml(
+    site.displayName,
+  )}</a><a href="https://learnloom.blog">Made with Learnloom</a></nav>
+  <main class="public-main">${body}</main>
+  <footer class="public-footer"><a href="/">${escapeHtml(
+    site.displayName,
+  )}</a><span>A daily practice of durable understanding.</span></footer>
+</body>
+</html>`;
+}
+
+function hostedNotFound(response) {
+  return sendHtml(
+    response,
+    404,
+    hostedPage(
+      "Not found",
+      '<section class="empty"><h1>That learning site is not available.</h1><p>Check the address and try again.</p></section>',
+    ),
+  );
 }
 
 function stat(label, value) {
@@ -747,6 +1219,38 @@ function redirect(response, location) {
   response.end();
 }
 
+function permanentRedirect(response, location) {
+  response.writeHead(308, {
+    location,
+    "cache-control": "public, max-age=3600",
+  });
+  response.end();
+}
+
+function temporaryRedirect(response, location) {
+  response.writeHead(302, {
+    location,
+    "cache-control": "no-store",
+  });
+  response.end();
+}
+
+function applyAuthenticationHeaders(response, headers) {
+  if (!headers) return;
+  for (const [name, value] of headers.entries()) {
+    if (name.toLowerCase() !== "set-cookie") response.setHeader(name, value);
+  }
+  const cookies = headers.getSetCookie?.() ?? [];
+  if (cookies.length > 0) response.setHeader("set-cookie", cookies);
+}
+
+function finishAuthenticationHandshake(response) {
+  const location = response.getHeader("location");
+  response.statusCode = location ? 307 : 401;
+  response.setHeader("cache-control", "no-store");
+  response.end();
+}
+
 function sendHtml(response, status, html) {
   response.writeHead(status, {
     "content-type": "text/html; charset=utf-8",
@@ -759,13 +1263,57 @@ function sendHtml(response, status, html) {
   response.end(html);
 }
 
-function sendAppHtml(response, status, html) {
+function sendPublicHtml(response, status, html) {
+  response.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "public, max-age=60, stale-while-revalidate=300",
+    "x-content-type-options": "nosniff",
+    "content-security-policy":
+      "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "referrer-policy": "strict-origin-when-cross-origin",
+  });
+  response.end(html);
+}
+
+function sendPublicText(response, status, value) {
+  response.writeHead(status, {
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "x-content-type-options": "nosniff",
+  });
+  response.end(value);
+}
+
+function sendPublicXml(response, status, value) {
+  response.writeHead(status, {
+    "content-type": "application/xml; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "x-content-type-options": "nosniff",
+  });
+  response.end(value);
+}
+
+function sendAppHtml(response, status, html, deployment) {
+  const clerkOrigin = deployment?.clerkFrontendApiOrigin;
+  const contentSecurityPolicy = clerkOrigin
+    ? [
+        "default-src 'self'",
+        `script-src 'self' ${clerkOrigin} https://challenges.cloudflare.com`,
+        `connect-src 'self' ${clerkOrigin}`,
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: https://img.clerk.com",
+        "worker-src 'self' blob:",
+        "frame-src https://challenges.cloudflare.com",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join("; ")
+    : "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
   response.writeHead(status, {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
-    "content-security-policy":
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "content-security-policy": contentSecurityPolicy,
     "referrer-policy": "no-referrer",
   });
   response.end(html);
@@ -830,4 +1378,8 @@ legend{padding:0 8px;font-weight:750}
 .delivery-state .error{max-width:260px;color:var(--red)}
 .link-button{border:0;background:none;padding:0;color:var(--green);font:inherit;font-weight:750;cursor:pointer}
 @media(max-width:760px){nav{padding:0 18px}.test-label{display:none}main{padding:44px 18px 70px}.hero,.detail-hero,.page-header{display:block}.hero .button{margin-top:24px}.stats{grid-template-columns:1fr}.stats>div{border-right:0;border-bottom:1px solid var(--line)}.card-grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}.action-stack{margin-top:24px}.issue-row{align-items:flex-start;flex-direction:column}.issue-meta{width:100%;justify-content:space-between}.dossier{padding:24px}}
+`;
+
+const PUBLIC_STYLES = `
+:root{--ink:#171b19;--muted:#6d746f;--paper:#f7f5ef;--card:#fff;--line:#dedfd8;--accent:#176b50}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:inherit}.public-nav,.public-footer{max-width:1080px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:24px}.public-nav{border-bottom:1px solid var(--line)}.public-nav a:first-child{font-family:Georgia,serif;font-size:21px;font-weight:700;text-decoration:none}.public-nav a:last-child,.public-footer{color:var(--muted);font-size:12px}.public-main{max-width:1080px;margin:auto;padding:88px 24px 110px}.public-hero{max-width:800px;margin-bottom:88px}.public-hero.compact{margin-bottom:64px}.public-kicker{margin:0 0 16px;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.public-hero h1,.public-article-head h1{margin:0;font-family:Georgia,serif;font-size:clamp(50px,8vw,90px);font-weight:500;line-height:.96;letter-spacing:-.045em}.public-hero.compact h1{font-size:clamp(44px,7vw,76px)}.public-lede{max-width:680px;margin:24px 0 0;color:var(--muted);font-size:19px;line-height:1.65}.public-section{margin-top:64px}.public-heading{display:flex;align-items:end;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--line)}.public-heading h2{margin:0;font-family:Georgia,serif;font-size:30px;font-weight:500}.public-heading span{color:var(--muted);font-size:12px}.public-topics{display:flex;flex-wrap:wrap;gap:10px;padding-top:20px}.public-topic{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.55);text-decoration:none}.public-topic small{color:var(--muted)}.public-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding-top:24px}.public-card{min-height:230px;display:flex;flex-direction:column;padding:26px;border:1px solid var(--line);border-radius:18px;background:var(--card)}.public-card>p{margin:0;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.public-card h3{margin:22px 0;font-family:Georgia,serif;font-size:27px;font-weight:500;line-height:1.15}.public-card h3 a{text-decoration:none}.public-card>div{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:auto;color:var(--muted);font-size:12px}.public-card>div a{color:var(--accent);font-weight:700;text-decoration:none}.public-empty{padding:22px 0;color:var(--muted)}.public-back{display:inline-block;margin-bottom:42px;color:var(--muted);font-size:13px;text-decoration:none}.public-article-head{max-width:850px;margin:0 auto 50px}.public-article-head h1{font-size:clamp(44px,7vw,72px)}.public-article-head>p:last-child{color:var(--muted)}.public-dossier{max-width:850px;margin:auto;padding:44px;border:1px solid var(--line);border-radius:18px;background:var(--card);line-height:1.7}.public-dossier h1,.public-dossier h2,.public-dossier h3{font-family:Georgia,serif;line-height:1.2}.public-dossier a{color:var(--accent)}.public-dossier pre{overflow:auto;white-space:pre-wrap}.public-footer{border-top:1px solid var(--line);padding-block:30px 50px}.public-footer a{text-decoration:none;font-weight:700}@media(max-width:700px){.public-main{padding:58px 18px 80px}.public-nav,.public-footer{padding-inline:18px}.public-nav a:last-child,.public-footer span{display:none}.public-hero{margin-bottom:62px}.public-grid{grid-template-columns:1fr}.public-dossier{padding:22px}.public-card{min-height:205px}}
 `;

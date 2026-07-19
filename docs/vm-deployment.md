@@ -75,6 +75,14 @@ ssh -L 3000:127.0.0.1:3000 user@your-vm
 Then open `http://127.0.0.1:3000`. Do not expose it publicly; authentication is
 not implemented.
 
+Hosted mode validates `LEARNLOOM_ROOT_DOMAIN`, an exact HTTPS
+`LEARNLOOM_APP_ORIGIN`, and Clerk server keys. The frontend image must also be
+built with the matching `VITE_CLERK_PUBLISHABLE_KEY`. Authenticated users are
+mapped to account-scoped Workspace access and claim one private-by-default
+site. Personal-site rendering, public ingress hardening, and untrusted feed URL
+protection are still incomplete, so keep using the loopback deployment above
+for real data until those launch blockers land.
+
 Dossier filenames include an immutable generation identifier. The Daily Run
 record points to the active generation, so an interrupted forced regeneration
 cannot overwrite content associated with an earlier Delivery Receipt.

@@ -21,14 +21,14 @@ export class ResendDelivery {
     this.endpoint = options.resendEndpoint ?? "https://api.resend.com/emails";
   }
 
-  async deliver({ runId, generationId, dossier, markdown }) {
+  async deliver({ runId, generationId, dossier, markdown, webUrl }) {
     const apiKey = this.environment[this.config.apiKeyEnv];
     if (!apiKey) {
       throw new Error(
         `Missing Resend credential in environment variable ${this.config.apiKeyEnv}.`,
       );
     }
-    const rendered = renderDossierEmail(dossier, markdown);
+    const rendered = renderDossierEmail(dossier, markdown, { webUrl });
     let response;
     try {
       response = await this.fetchImpl(this.endpoint, {

@@ -21,6 +21,12 @@ its own schedule, timezone, recipients, Issue history, Learning History,
 Dossier previews, durable email delivery status, and an optional AI Exploration
 setting.
 
+> **CLI deprecation:** the `learn` command is retained as a compatibility
+> launcher for existing local, scheduled, and container deployments. New hosted
+> administration and migration features must not be added to it; dedicated
+> service entrypoints and authenticated operator workflows will replace it
+> before removal.
+
 ## Five-minute local start
 
 Requirements: Node.js 22.13 or newer. There are no runtime dependencies.
@@ -113,6 +119,37 @@ Newsletter page.
 
 The dashboard is local-only and has no authentication. See
 [the dashboard guide](docs/dashboard-test-phase.md).
+
+## Hosted personal-subdomain foundation
+
+Learnloom now has an explicit hostname-routing boundary for the hosted product:
+
+- `learnloom.blog` is the apex surface.
+- `app.learnloom.blog` is reserved for the authenticated control plane.
+- `<username>.learnloom.blog` is reserved for a learner's reading site.
+- local/self-hosted mode retains the existing exact Host allowlist.
+
+The routing foundation can be configured with:
+
+```sh
+export LEARNLOOM_DEPLOYMENT_MODE=hosted
+export LEARNLOOM_ROOT_DOMAIN=learnloom.blog
+export LEARNLOOM_APP_ORIGIN=https://app.learnloom.blog
+```
+
+Hosted mode requires Clerk server keys and a matching
+`VITE_CLERK_PUBLISHABLE_KEY` at frontend build time. Google-authenticated users
+are provisioned into isolated local accounts, must claim one username, and can
+access only their own Newsletters and Issues. Sites start private. Once
+published, the claimed hostname serves a public home, per-topic archives,
+canonical Dossier pages, `robots.txt`, and a sitemap. Newsletter streams and
+individual Dossiers can be hidden independently, and hosted email includes the
+canonical reading link when the content is public.
+
+The hosted path is still an implementation preview: production DNS/TLS, Clerk
+production-domain validation, feed-fetch hardening, deletion lifecycle, and
+operational observability must be completed before public launch. See
+[the hosted-subdomains implementation plan](docs/hosted-subdomains-implementation-plan.md).
 
 ## Model providers
 

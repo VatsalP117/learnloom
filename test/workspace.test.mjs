@@ -18,7 +18,7 @@ test("SQLiteWorkspace initializes idempotently with safety pragmas", () => {
   const workspace = new SQLiteWorkspace(":memory:");
   workspace.initialize();
   const diagnostics = workspace.diagnostics();
-  assert.equal(diagnostics.userVersion, 3);
+  assert.equal(diagnostics.userVersion, 5);
   assert.equal(diagnostics.foreignKeys, true);
   assert.equal(diagnostics.busyTimeout, 5_000);
   assert.match(diagnostics.journalMode, /^(memory|wal)$/);
@@ -29,7 +29,7 @@ test("SQLiteWorkspace rejects a newer schema version", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-schema-"));
   const databasePath = path.join(directory, "workspace.sqlite");
   const workspace = new SQLiteWorkspace(databasePath);
-  workspace.database.exec("PRAGMA user_version = 4");
+  workspace.database.exec("PRAGMA user_version = 6");
   workspace.close();
   assert.throws(
     () => new SQLiteWorkspace(databasePath),
@@ -93,11 +93,13 @@ test("SQLiteWorkspace migrates schema v1 without losing data", async () => {
     startWorkspaceProcess(databasePath),
   ]);
   const workspace = new SQLiteWorkspace(databasePath);
-  assert.equal(workspace.diagnostics().userVersion, 3);
+  assert.equal(workspace.diagnostics().userVersion, 5);
   assert.equal(workspace.getNewsletter("legacy").emailEnabled, false);
   assert.deepEqual(workspace.getNewsletter("legacy").emailRecipients, []);
   assert.equal(workspace.getNewsletter("legacy").aiExplorationEnabled, false);
   assert.equal(workspace.getIssue("legacy-issue").status, "queued");
+  assert.match(workspace.getIssue("legacy-issue").publicId, /^dossier-/);
+  assert.equal(workspace.getNewsletter("legacy").publicSlug, "legacy");
   workspace.close();
 });
 
@@ -165,10 +167,159 @@ test("SQLiteWorkspace migrates schema v2 content settings without data loss", as
 
   const workspace = new SQLiteWorkspace(databasePath);
   const newsletter = workspace.getNewsletter("v2-newsletter");
-  assert.equal(workspace.diagnostics().userVersion, 3);
+  assert.equal(workspace.diagnostics().userVersion, 5);
   assert.equal(newsletter.emailEnabled, true);
   assert.deepEqual(newsletter.emailRecipients, ["reader@example.com"]);
   assert.equal(newsletter.aiExplorationEnabled, false);
+  workspace.close();
+});
+
+test("SQLiteWorkspace migrates schema v3 to hosted accounts without adopting legacy data", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "learnloom-v3-"));
+  const databasePath = path.join(directory, "workspace.sqlite");
+  const seeded = new SQLiteWorkspace(databasePath);
+  seeded.createNewsletter(newsletterInput("Legacy v3"));
+  seeded.close();
+
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    PRAGMA foreign_keys = OFF;
+    DROP INDEX issues_public_archive;
+    DROP INDEX issues_public_id;
+    DROP INDEX newsletters_owner_public_slug;
+    ALTER TABLE issues DROP COLUMN publication_state;
+    ALTER TABLE issues DROP COLUMN public_slug;
+    ALTER TABLE issues DROP COLUMN public_id;
+    ALTER TABLE newsletters DROP COLUMN site_visible;
+    ALTER TABLE newsletters DROP COLUMN public_slug;
+    DROP INDEX newsletters_owner;
+    ALTER TABLE newsletters DROP COLUMN owner_account_id;
+    DROP TABLE sites;
+    DROP TABLE accounts;
+    PRAGMA user_version = 3;
+  `);
+  legacy.close();
+
+  const workspace = new SQLiteWorkspace(databasePath);
+  assert.equal(workspace.diagnostics().userVersion, 5);
+  assert.equal(workspace.listNewsletters()[0].ownerAccountId, null);
+  const account = workspace.ensureAccount("user_migrated");
+  assert.deepEqual(workspace.forAccount(account.id).listNewsletters(), []);
+  workspace.close();
+});
+
+test("accounts claim one site and isolate Newsletter control", () => {
+  const workspace = fixtureWorkspace();
+  const alice = workspace.ensureAccount("user_alice");
+  const aliceAgain = workspace.ensureAccount("user_alice");
+  const bob = workspace.ensureAccount("user_bob");
+  assert.equal(aliceAgain.id, alice.id);
+
+  const aliceSite = workspace.claimSite(alice.id, {
+    username: "Alice-Learns",
+    displayName: "Alice",
+  });
+  assert.equal(aliceSite.username, "alice-learns");
+  assert.equal(aliceSite.visibility, "private");
+  assert.equal(
+    workspace.claimSite(alice.id, {
+      username: "alice-learns",
+      displayName: "Ignored",
+    }).id,
+    aliceSite.id,
+  );
+  assert.throws(
+    () => workspace.claimSite(alice.id, { username: "alice-new" }),
+    /already claimed a username/,
+  );
+  assert.throws(
+    () => workspace.claimSite(bob.id, { username: "alice-learns" }),
+    /already claimed/,
+  );
+
+  const aliceWorkspace = workspace.forAccount(alice.id);
+  const bobWorkspace = workspace.forAccount(bob.id);
+  const aliceNewsletter = aliceWorkspace.createNewsletter(
+    newsletterInput("Alice queues"),
+  );
+  const bobNewsletter = bobWorkspace.createNewsletter(
+    newsletterInput("Bob queues"),
+  );
+  assert.deepEqual(
+    aliceWorkspace.listNewsletters().map((item) => item.id),
+    [aliceNewsletter.id],
+  );
+  assert.deepEqual(
+    bobWorkspace.listNewsletters().map((item) => item.id),
+    [bobNewsletter.id],
+  );
+  assert.equal(aliceWorkspace.getNewsletter(bobNewsletter.id), null);
+  assert.throws(
+    () => aliceWorkspace.setNewsletterActive(bobNewsletter.id, false),
+    /was not found/,
+  );
+
+  aliceWorkspace.enqueueManualIssue(aliceNewsletter.id);
+  const aliceIssue = workspace
+    .listIssues(aliceNewsletter.id)
+    .at(0);
+  assert.equal(aliceWorkspace.getIssue(aliceIssue.id).id, aliceIssue.id);
+  assert.equal(bobWorkspace.getIssue(aliceIssue.id), null);
+  assert.throws(
+    () => bobWorkspace.enqueueManualIssue(aliceNewsletter.id),
+    /was not found/,
+  );
+  workspace.close();
+});
+
+test("public archives expose only published content from a public tenant", () => {
+  const workspace = fixtureWorkspace();
+  const alice = workspace.ensureAccount("user_public_alice");
+  const bob = workspace.ensureAccount("user_public_bob");
+  workspace.claimSite(alice.id, {
+    username: "alice-notes",
+    displayName: "Alice Notes",
+  });
+  workspace.claimSite(bob.id, {
+    username: "bob-notes",
+    displayName: "Bob Notes",
+  });
+  const aliceWorkspace = workspace.forAccount(alice.id);
+  const first = aliceWorkspace.createNewsletter(
+    newsletterInput("Queue Design"),
+  );
+  const second = aliceWorkspace.createNewsletter(
+    newsletterInput("Queue Design"),
+  );
+  assert.equal(first.publicSlug, "queue-design");
+  assert.equal(second.publicSlug, "queue-design-2");
+
+  aliceWorkspace.enqueueManualIssue(first.id);
+  const claimed = workspace.claimNextIssue();
+  const generated = workspace.completeIssue(claimed.id, {
+    title: "Delivery Guarantees & Retries",
+    generationId: "generation-public",
+    artifactPath: "/tmp/public.md",
+    dossierPath: "/tmp/public.json",
+  });
+  assert.match(generated.publicId, /^dossier-/);
+  assert.equal(generated.publicSlug, "delivery-guarantees-retries");
+  assert.deepEqual(workspace.listPublicIssues("alice-notes"), []);
+
+  workspace.updateSiteSettings(alice.id, { visibility: "public" });
+  assert.equal(workspace.getPublicSite("alice-notes").displayName, "Alice Notes");
+  assert.equal(workspace.listPublicIssues("alice-notes").length, 1);
+  assert.equal(workspace.listPublicIssues("bob-notes").length, 0);
+  assert.equal(
+    workspace.getPublicIssue("alice-notes", generated.publicId).title,
+    generated.title,
+  );
+
+  aliceWorkspace.setIssuePublication(generated.id, "hidden");
+  assert.equal(workspace.listPublicIssues("alice-notes").length, 0);
+  aliceWorkspace.setIssuePublication(generated.id, "published");
+  aliceWorkspace.setNewsletterSiteVisible(first.id, false);
+  assert.equal(workspace.listPublicIssues("alice-notes").length, 0);
   workspace.close();
 });
 

@@ -148,7 +148,13 @@ test("newsletterRuntimeConfig applies Newsletter AI Exploration preference", asy
 
 test("processNextDelivery sends persisted artifacts to Newsletter recipients", async () => {
   const fixture = await createFixture();
-  const newsletter = fixture.workspace.createNewsletter(
+  const account = fixture.workspace.ensureAccount("user_email_reader");
+  fixture.workspace.claimSite(account.id, {
+    username: "reader",
+    displayName: "Reader",
+  });
+  fixture.workspace.updateSiteSettings(account.id, { visibility: "public" });
+  const newsletter = fixture.workspace.forAccount(account.id).createNewsletter(
     newsletterInput("RabbitMQ", {
       emailEnabled: true,
       emailRecipients: ["reader@example.com", "team@example.com"],
@@ -188,6 +194,10 @@ test("processNextDelivery sends persisted artifacts to Newsletter recipients", a
   const result = await processNextDelivery({
     workspace: fixture.workspace,
     baseConfig: fixture.baseConfig,
+    deployment: {
+      mode: "hosted",
+      rootDomain: "learnloom.blog",
+    },
     now: fixture.now,
     env: { RESEND_API_KEY: "secret-resend-key" },
     async fetchImpl(url, options) {
@@ -210,6 +220,12 @@ test("processNextDelivery sends persisted artifacts to Newsletter recipients", a
   assert.deepEqual(body.to, ["reader@example.com", "team@example.com"]);
   assert.equal(body.from, "daily@example.com");
   assert.match(body.text, /RabbitMQ flow control/);
+  assert.match(
+    body.text,
+    new RegExp(
+      `https://reader\\.learnloom\\.blog/d/${issue.publicId}/${fixture.workspace.getIssue(issue.id).publicSlug}`,
+    ),
+  );
   fixture.workspace.close();
 });
 
