@@ -13,6 +13,54 @@
   --canvas: #fbfbfd;
 }
 
+.create-content { width: 100%; margin-left: 0; }
+.create-inner { max-width: 940px; }
+.create-heading { margin: 18px 0 30px; }
+.create-heading h1 { margin: 5px 0 8px; font-family: var(--serif); font-size: clamp(34px, 5vw, 54px); }
+.create-heading > p:last-child { color: var(--muted); }
+.newsletter-form { display: grid; gap: 22px; }
+.newsletter-form fieldset {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #fff;
+}
+.newsletter-form legend { padding: 0 8px; font-family: var(--serif); font-size: 22px; font-weight: 700; }
+.newsletter-form label:not(.switch-row) { display: grid; gap: 7px; color: var(--ink); font-size: 13px; font-weight: 650; }
+.newsletter-form input:not([type="checkbox"]),
+.newsletter-form textarea,
+.newsletter-form select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d8d6d0;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.newsletter-form textarea { resize: vertical; line-height: 1.5; }
+.newsletter-form input:focus,
+.newsletter-form textarea:focus,
+.newsletter-form select:focus { border-color: var(--accent); outline: 3px solid rgba(99, 91, 255, .12); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.field-help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.source-editor { display: grid; gap: 10px; }
+.source-row { display: grid; grid-template-columns: 1fr 2fr 78px 38px; gap: 8px; align-items: center; }
+.source-row button, .add-source {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+}
+.source-row button { display: grid; place-items: center; }
+.add-source { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; padding: 0 12px; }
+.form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding-bottom: 28px; }
+.form-actions > a { color: var(--muted); font-size: 13px; }
+
 * { box-sizing: border-box; }
 html { min-width: 320px; background: var(--canvas); }
 body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-font-smoothing: antialiased; }

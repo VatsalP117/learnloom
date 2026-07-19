@@ -1,162 +1,70 @@
 # Architecture
 
-```text
-Deprecated compatibility CLI / launchd / systemd / Docker
-                 │
-                 ▼
-             Daily Run
-                 │
-     ┌───────────┼────────────┐
-     ▼           ▼            ▼
- Source Items  Model       Learning History
-     │        adapter           │
-     └───────────┼──────────────┘
-                 ▼
-              Dossier
-          (canonical JSON)
-                 │
-        persist Markdown + JSON
-                 │
-                 ▼
-       delivery adapter(s)
-          Resend email
-                 │
-                 ▼
-         Delivery Receipt
+Learnloom is a hosted modular monolith with separately scaled web and worker
+processes. The package boundaries follow product responsibilities rather than
+transport or framework layers.
+
+```mermaid
+flowchart LR
+  Browser --> Web["Go web role"]
+  Clerk --> Web
+  Web --> PG[(Postgres)]
+  Web --> S3[(S3 artifacts)]
+  Worker["Go worker role"] --> PG
+  Worker --> Sources["RSS / Atom / articles"]
+  Worker --> Model["OpenAI-compatible API"]
+  Worker --> S3
+  Worker --> Resend
+  Migrate["Go migrate role"] --> PG
 ```
 
-The Dossier v2 content path is:
+## Modules
+
+- `internal/httpapp`: host classification, authentication, request policy,
+  control-plane JSON, Clerk lifecycle webhooks, and public reading surfaces.
+- `internal/store`: Postgres persistence, scheduling, fair Issue Claims,
+  delivery receipts, runtime controls, rate limits, and deletion work.
+- `internal/execution`: orchestration only. It renews Claims and coordinates
+  Dossier generation, artifact persistence, transactional completion, and
+  delivery.
+- `internal/source`: bounded acquisition with SSRF and redirect defenses.
+- `internal/dossier`: the multi-stage Dossier production pipeline, contract
+  repair, deterministic quality gate, and safe rendering.
+- `internal/artifact`: checksummed, opaque-key S3 persistence.
+- `internal/delivery`: Resend adapter and stable idempotency semantics.
+- `internal/domain`: shared hosted product vocabulary and state machines.
+
+Dependencies point inward: adapters implement narrow behavior consumed by the
+Dossier and execution modules. HTTP handlers never call model, source, or
+email providers directly.
+
+## State and concurrency
+
+Postgres owns mutable state. Workers claim due Issues with `SKIP LOCKED`,
+per-Account fairness, expiring leases, renewal tokens, attempt limits, and
+recovery of abandoned Claims. Artifact bytes are persisted before an Issue is
+transactionally marked generated. Delivery is a separate Claim so a retry
+never spends model tokens again.
+
+The important state transitions are:
 
 ```text
-Candidate Source Items
-        │
-        ▼
-     Curator ──► selected Source Items ──► bounded article enrichment
-                                                   │
-                                                   ▼
-Learning History ──► Learning Blueprint ──► research ──► skepticism
-                                                   │
-                                                   ▼
-                                    lesson + retrieval practice
-                                                   │
-                              optional AI Exploration (separate)
-                                                   │
-                                                   ▼
-                                    editor + deterministic gate
-                                                   │
-                                                   ▼
-                                             Dossier v2
+Issue:    queued -> generating -> generated
+                        |            |
+                        +-> failed   +-> delivery pending
+
+Delivery: pending -> sending -> sent
+                         |  \-> outcome_unknown
+                         +----> failed -> pending (explicit retry)
 ```
 
-The multi-newsletter path adds scheduling and dashboard control without
-changing the Daily Run's generation responsibilities:
+## Hosted boundary
 
-```text
-Dashboard ──► SQLite Workspace ◄──────── Worker
-                   │                      │
-                   │ claim Issue          ▼
-                   └─────────────────► Daily Run ──► Dossier
-                   │                      │
-                   │ pending receipt      │ persisted artifacts
-                   └──────────────────────┴──► Resend
-```
+The apex domain serves marketing, the `app` host serves the authenticated
+control plane, and `<username>` hosts serve public Personal Sites. Hostnames
+are classified before routing; arbitrary Host headers do not reach a default
+tenant. Account identity comes only from verified Clerk sessions and is
+included in all owner-scoped database operations.
 
-## Deep modules and seams
-
-- The **Daily Run** module owns ordering, reuse, failure policy, persistence,
-  delivery retry, and locking behind one interface.
-- The model seam has Command Code, OpenAI-compatible HTTP, and deterministic
-  demo adapters.
-- The delivery seam has a Resend adapter and injected deterministic adapters
-  in tests. Additional destinations do not alter generation.
-- The file run-store implementation owns Daily Run identity, locks, and
-  Delivery Receipts. Its interface can later gain a SQLite adapter.
-- The concrete **SQLite Workspace** module owns Newsletter validation,
-  schedules, Issue and Delivery Receipt queueing/claiming, lifecycle
-  transitions, and dashboard projections behind one interface. It does not
-  replace immutable Dossier files or the Daily Run file store.
-- The web and worker modules are thin adapters. HTTP queues an Issue; only the
-  worker invokes Daily Run.
-- The host-routing boundary separates local requests from the hosted apex,
-  app, and one-label personal-site planes. Clerk authenticates the app plane;
-  its account-scoped Workspace view prevents cross-tenant Newsletter and Issue
-  access. Personal-site hosts remain closed until public rendering lands.
-- Markdown and email are renderings of the canonical **Dossier**, not the
-  source of truth.
-- The source-enrichment module owns URL/address/redirect validation, bounded
-  retrieval, conservative HTML text extraction, and per-item fallback.
-- The content-quality module owns structured model contracts, citation and
-  teaching-structure validation, the sourced/synthetic boundary, and the
-  deterministic Dossier quality report.
-
-## Trust seams
-
-- Source XML and summaries are untrusted network input.
-- Enriched article URLs and every redirect must resolve only to public
-  addresses. Downloads are bounded by type, bytes, characters, redirects, and
-  timeout; page scripts are never executed.
-- Model endpoints require HTTPS. Loopback HTTP requires explicit insecure-local
-  opt-in; remote plaintext HTTP is rejected before a credential can be sent.
-- Source content is labeled as reference material and model adapters expose no
-  tools.
-- Command Code is spawned with `shell: false`.
-- Direct model and Resend credentials come only from named environment
-  variables and are never persisted.
-- Email rendering escapes model/source text and allows only HTTP(S) links.
-- Every container role runs non-root and excludes local secrets and state from
-  its build context. Only the dashboard role listens, and Compose publishes it
-  to host loopback.
-- Self-hosted/local dashboard mode adds CSRF protection and browser security
-  headers, binds to host loopback under Compose, and has no authentication.
-  It must not be exposed publicly.
-- Hosted configuration requires an exact HTTPS app origin and a valid root
-  domain. Request routing uses the normalized `Host` header and does not trust
-  forwarded-host headers.
-- Hosted app requests verify Clerk session tokens against the exact app origin.
-  The first authenticated request provisions an internal account; Clerk IDs
-  are not used as public or general foreign keys.
-- Claimed sites start private and private, suspended, hidden, or unowned content
-  resolves to the same generic `404`. Public queries require an active owner,
-  public site, visible Newsletter, generated Issue, published state, and both
-  persisted artifacts.
-- Public Dossier URLs use random stable identifiers plus canonical display slugs.
-  Public pages are server-rendered with a script-free CSP and short cache
-  lifetime; dashboard mutations remain session-authenticated and CSRF-protected.
-
-## Failure behavior
-
-- A single failed feed becomes a warning; all feeds failing aborts before model
-  calls.
-- A failed generation creates no delivery attempt.
-- Each canonical Dossier is persisted to immutable, generation-versioned paths
-  before its run-record pointer is atomically swapped and delivery begins.
-- A failed destination records a Delivery Receipt and can retry independently.
-- Newsletter generation and email have separate queues. Completing generation
-  and enqueueing its email receipt is one SQLite transaction.
-- Failed Newsletter email is manually retried from persisted artifacts and
-  never regenerates the Issue.
-- Ambiguous provider outcomes are recorded as non-retryable `unknown` receipts
-  because the email may already have been accepted.
-- Disabling Newsletter email atomically cancels receipts not yet in flight.
-- Successful destinations are not repeated on a same-day rerun.
-- An owner-token lock rejects overlapping execution and is never reclaimed
-  automatically. After a crash, an operator must confirm the process is gone
-  before removing the stale lock.
-- Atomic writes use unique temporary names and restrictive file modes.
-
-## Deliberate v0.5 limits
-
-- Daily Run records are atomic JSON rather than SQLite.
-- One trusted operator configures feeds; private-network URL blocking is absent.
-- Full-text extraction is conservative and falls back for paywalled,
-  client-rendered, thin, or unsupported pages.
-- Learning History supports continuity and recall context but does not yet
-  track demonstrated mastery or learner ratings.
-- Resend is the only external delivery adapter.
-- Learner feedback and Notion delivery are not yet implemented.
-- A worker crash can leave an Issue in `generating`; automatic recovery is not
-  implemented.
-- A worker crash can leave a Delivery Receipt in `delivering`; automatic stale
-  claim recovery and backoff are not implemented.
-- Newsletter recipients are a trusted owner's addresses, not public subscriber
-  lists; unsubscribe management is not implemented.
+The architectural decisions and rejected local-first alternatives are recorded
+under [`docs/adr`](adr).

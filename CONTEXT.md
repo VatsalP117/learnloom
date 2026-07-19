@@ -26,6 +26,14 @@ _Avoid_: Memory, state
 The durable outcome of attempting to send one Dossier through one configured destination.
 _Avoid_: Send result, notification status
 
+**Account**:
+The Learnloom-owned tenant identity provisioned from one authenticated Clerk user.
+_Avoid_: User record, profile, workspace
+
+**Personal Site**:
+An Account's public or private reading surface at its claimed Learnloom subdomain.
+_Avoid_: Tenant site, blog, publication
+
 **Newsletter**:
 A saved recurring learning stream containing a topic, Source Items, learner
 preferences, a local schedule, a timezone, and active or paused state. Its
@@ -47,3 +55,11 @@ An optional, explicitly synthetic Dossier section containing uncited analogies,
 deductions, scenarios, and experiments that remains separate from the
 source-grounded lesson.
 _Avoid_: AI facts, enhanced sources, sourced analysis
+
+**Dossier Artifact**:
+One immutable stored representation of a Dossier and its rendered reading forms.
+_Avoid_: Output file, blob, generated file
+
+**Issue Claim**:
+A time-bounded right held by one worker to advance an Issue or Delivery Receipt.
+_Avoid_: Lock, reservation, ownership
