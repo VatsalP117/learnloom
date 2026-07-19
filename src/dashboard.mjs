@@ -289,16 +289,16 @@ async function handleHostedRequest(request, response, options, host, url) {
     );
   }
   if (host.kind === "apex") {
-    if (method !== "GET") return methodNotAllowed(response, ["GET"]);
-    if (url.pathname !== "/") return hostedNotFound(response);
-    return sendHtml(
-      response,
-      200,
-      hostedPage(
-        "Learnloom",
-        `<section class="empty"><p class="eyebrow">Personal learning, woven daily</p><h1>Learnloom</h1><p>Your hosted learning workspace is taking shape.</p></section>`,
-      ),
-    );
+    if (!["GET", "HEAD"].includes(method)) {
+      return methodNotAllowed(response, ["GET", "HEAD"]);
+    }
+    if (/^\/assets\/[a-zA-Z0-9._-]+$/.test(url.pathname)) {
+      return sendFrontendAsset(response, url.pathname);
+    }
+    if (url.pathname !== "/" && url.pathname !== "/marketing") {
+      return hostedNotFound(response);
+    }
+    return sendReactApp(response, options.workspace, options.deployment);
   }
   if (host.kind === "app") {
     if (

@@ -334,7 +334,7 @@ test("hosted routing fails closed before authentication is enabled", async (cont
 
   const apex = await rawRequest(`${fixture.origin}/`, "learnloom.blog");
   assert.equal(apex.statusCode, 200);
-  assert.match(apex.body, /Personal learning, woven daily/);
+  assert.match(apex.body, /A learning home that grows with you/);
 
   const app = await rawRequest(
     `${fixture.origin}/api/newsletters`,
