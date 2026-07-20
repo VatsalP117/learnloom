@@ -102,6 +102,7 @@ func runWeb(
 			DailyAccountLimit:   cfg.Worker.DailyAccountLimit,
 			MaxDeliveryAttempts: cfg.Worker.MaxDeliveryAttempts,
 			ResendConfigured:    cfg.Resend.APIKey != "" && cfg.Resend.From != "",
+			SourceDiscovery:     cfg.SourceIntelligence.DiscoveryEnabled,
 			Static:              static,
 		},
 		database,
@@ -169,6 +170,32 @@ func runWorker(
 	if err != nil {
 		return err
 	}
+	sourceSvc := source.NewService(
+		database,
+		acquisition,
+		source.ServiceConfig{
+			DiscoveryEnabled:       cfg.SourceIntelligence.DiscoveryEnabled,
+			MinUsableItems:         cfg.SourceIntelligence.MinUsableItems,
+			TargetUsableItems:      cfg.SourceIntelligence.TargetUsableItems,
+			DiscoveryMaxQueries:    cfg.SourceIntelligence.DiscoveryMaxQueries,
+			DiscoveryMaxCandidates: cfg.SourceIntelligence.DiscoveryMaxCandidates,
+			DiscoveryMaxActive:     cfg.SourceIntelligence.DiscoveryMaxActive,
+			MaxItems:               18,
+			MaxItemCharacters:      cfg.Limits.MaxItemCharacters,
+			RefreshInterval:        cfg.SourceIntelligence.RefreshInterval,
+			DefaultMaxStaleAge:     cfg.SourceIntelligence.DefaultMaxStaleAge,
+		},
+	)
+	if cfg.SourceIntelligence.DiscoveryEnabled {
+		searcher, err := source.NewSearXNG(source.SearXNGConfig{
+			BaseURL: cfg.SourceIntelligence.SearXNGBaseURL,
+			Timeout: cfg.SourceIntelligence.SearXNGTimeout,
+		})
+		if err != nil {
+			return err
+		}
+		sourceSvc.WithSearcher(searcher)
+	}
 	mailer, err := delivery.NewResend(delivery.Config{
 		APIKey: cfg.Resend.APIKey, From: cfg.Resend.From,
 		SubjectPrefix: cfg.Resend.SubjectPrefix,
@@ -181,6 +208,7 @@ func runWorker(
 		producer,
 		artifacts,
 		mailer,
+		sourceSvc,
 		execution.Config{
 			PollInterval:        cfg.Worker.PollInterval,
 			ClaimDuration:       cfg.Worker.ClaimDuration,

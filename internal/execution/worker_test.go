@@ -26,6 +26,7 @@ func TestAcceptedDeliveryWithReceiptFailureBecomesUnknown(t *testing.T) {
 		unusedProducer{},
 		staticArtifacts{},
 		staticMailer{},
+		nil,
 		validConfig(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)

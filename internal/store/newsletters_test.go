@@ -24,6 +24,19 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestApplyCreateDefaultsSupportsTopicOnlyInput(t *testing.T) {
+	input := applyCreateDefaults(NewsletterInput{Topic: "LLM inference"})
+	if input.Name != "LLM inference" ||
+		input.LearnerLevel != "intermediate" ||
+		input.LearnerGoal != "Build a practical understanding of LLM inference." ||
+		input.LessonMinutes != 20 {
+		t.Fatalf("defaults=%#v", input)
+	}
+	if encoded := compatibilitySources(nil); encoded == nil || len(encoded) != 0 {
+		t.Fatalf("compatibility sources=%#v, want non-nil empty array", encoded)
+	}
+}
+
 func mustLocation(t *testing.T, name string) *time.Location {
 	t.Helper()
 	location, err := time.LoadLocation(name)

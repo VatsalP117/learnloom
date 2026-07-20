@@ -12,6 +12,7 @@ flowchart LR
   Web --> S3[(S3 artifacts)]
   Worker["Go worker role"] --> PG
   Worker --> Sources["RSS / Atom / articles"]
+  Worker --> Search["Self-hosted SearXNG"]
   Worker --> Model["OpenAI-compatible API"]
   Worker --> S3
   Worker --> Resend
@@ -28,6 +29,9 @@ flowchart LR
   Dossier generation, artifact persistence, transactional completion, and
   delivery.
 - `internal/source`: bounded acquisition with SSRF and redirect defenses.
+  It owns catalog-first SearXNG discovery, native resolution, immutable
+  snapshots, and Issue evidence freezing. Search snippets are candidate
+  metadata only and never become Dossier evidence.
 - `internal/dossier`: the multi-stage Dossier production pipeline, contract
   repair, deterministic quality gate, and safe rendering.
 - `internal/artifact`: checksummed, opaque-key S3 persistence.

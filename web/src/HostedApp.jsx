@@ -55,7 +55,7 @@ function OnboardingGate() {
   }
   return (
     <>
-      <App />
+      <App capabilities={profile.capabilities ?? {}} />
       <SiteControl
         site={profile.site}
         onUpdate={(site) => setProfile({ ...profile, site })}
@@ -64,7 +64,7 @@ function OnboardingGate() {
   );
 }
 
-function SiteControl({ site, onUpdate }) {
+export function SiteControl({ site, onUpdate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nextVisibility = site.visibility === "public" ? "private" : "public";

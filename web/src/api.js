@@ -1,6 +1,9 @@
 let tokenGetter = null;
 let csrfToken = "";
 
+export const demoMode =
+  import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true";
+
 export function configureAPI(getToken) {
   tokenGetter = getToken;
 }
@@ -37,6 +40,10 @@ export async function apiFetch(path, options = {}) {
 }
 
 export async function apiJSON(path, options) {
+  if (demoMode) {
+    const { demoResponse } = await import("./demoData.js");
+    return demoResponse(path, options);
+  }
   const response = await apiFetch(path, options);
   const body = await response.json().catch(() => null);
   if (!response.ok) {

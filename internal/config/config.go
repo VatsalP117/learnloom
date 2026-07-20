@@ -12,16 +12,30 @@ import (
 )
 
 type Config struct {
-	Environment string
-	LogLevel    string
-	HTTP        HTTP
-	Database    Database
-	ObjectStore ObjectStore
-	Model       Model
-	Clerk       Clerk
-	Resend      Resend
-	Worker      Worker
-	Limits      Limits
+	Environment        string
+	LogLevel           string
+	HTTP               HTTP
+	Database           Database
+	ObjectStore        ObjectStore
+	Model              Model
+	Clerk              Clerk
+	Resend             Resend
+	Worker             Worker
+	Limits             Limits
+	SourceIntelligence SourceIntelligence
+}
+
+type SourceIntelligence struct {
+	DiscoveryEnabled       bool
+	SearXNGBaseURL         string
+	SearXNGTimeout         time.Duration
+	DiscoveryMaxQueries    int
+	DiscoveryMaxCandidates int
+	DiscoveryMaxActive     int
+	MinUsableItems         int
+	TargetUsableItems      int
+	RefreshInterval        time.Duration
+	DefaultMaxStaleAge     time.Duration
 }
 
 type HTTP struct {
@@ -166,6 +180,18 @@ func Load() (Config, error) {
 			MaxNewslettersPerAccount:  envInt("MAX_NEWSLETTERS_PER_ACCOUNT", 10),
 			RequestBodyBytes:          envInt64("MAX_REQUEST_BODY_BYTES", 1<<20),
 		},
+		SourceIntelligence: SourceIntelligence{
+			DiscoveryEnabled:       envBool("SOURCE_DISCOVERY_ENABLED", false),
+			SearXNGBaseURL:         os.Getenv("SEARXNG_BASE_URL"),
+			SearXNGTimeout:         envDuration("SEARXNG_TIMEOUT", 8*time.Second),
+			DiscoveryMaxQueries:    envInt("SOURCE_DISCOVERY_MAX_QUERIES", 4),
+			DiscoveryMaxCandidates: envInt("SOURCE_DISCOVERY_MAX_CANDIDATES", 30),
+			DiscoveryMaxActive:     envInt("SOURCE_DISCOVERY_MAX_ACTIVE", 8),
+			MinUsableItems:         envInt("SOURCE_MIN_USABLE_ITEMS", 4),
+			TargetUsableItems:      envInt("SOURCE_TARGET_USABLE_ITEMS", 8),
+			RefreshInterval:        envDuration("SOURCE_REFRESH_INTERVAL", 12*time.Hour),
+			DefaultMaxStaleAge:     envDuration("SOURCE_DEFAULT_MAX_STALE_AGE", 720*time.Hour),
+		},
 	}
 	cfg.HTTP.ApexOrigin = "https://" + cfg.HTTP.RootDomain
 	return cfg, nil
@@ -287,6 +313,27 @@ func (c Config) ValidateFor(role string) error {
 	if role == "worker" && (c.Worker.ClaimDuration < time.Minute || c.Worker.GlobalConcurrency < 1 ||
 		c.Worker.AccountConcurrency < 1) {
 		problems = append(problems, errors.New("worker limits are invalid"))
+	}
+	if role == "worker" {
+		sourceCfg := c.SourceIntelligence
+		if sourceCfg.MinUsableItems < 1 ||
+			sourceCfg.TargetUsableItems < sourceCfg.MinUsableItems ||
+			sourceCfg.DiscoveryMaxQueries < 1 ||
+			sourceCfg.DiscoveryMaxCandidates < 1 ||
+			sourceCfg.DiscoveryMaxActive < 1 ||
+			sourceCfg.RefreshInterval <= 0 ||
+			sourceCfg.DefaultMaxStaleAge <= 0 {
+			problems = append(problems, errors.New("source intelligence limits are invalid"))
+		}
+		if sourceCfg.DiscoveryEnabled {
+			parsed, err := url.Parse(sourceCfg.SearXNGBaseURL)
+			if err != nil || parsed.Host == "" || parsed.User != nil ||
+				(parsed.Scheme != "http" && parsed.Scheme != "https") {
+				problems = append(problems, errors.New(
+					"SEARXNG_BASE_URL must be an HTTP(S) origin without credentials when discovery is enabled",
+				))
+			}
+		}
 	}
 	return errors.Join(problems...)
 }

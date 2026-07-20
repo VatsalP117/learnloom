@@ -65,5 +65,25 @@ func validWorkerConfig() Config {
 			ClaimDuration: 5 * time.Minute, GlobalConcurrency: 2,
 			AccountConcurrency: 1,
 		},
+		SourceIntelligence: SourceIntelligence{
+			MinUsableItems: 4, TargetUsableItems: 8,
+			DiscoveryMaxQueries: 4, DiscoveryMaxCandidates: 30,
+			DiscoveryMaxActive: 8,
+			RefreshInterval:    12 * time.Hour,
+			DefaultMaxStaleAge: 30 * 24 * time.Hour,
+		},
+	}
+}
+
+func TestValidateForRequiresSearXNGWhenDiscoveryEnabled(t *testing.T) {
+	cfg := validWorkerConfig()
+	cfg.SourceIntelligence.DiscoveryEnabled = true
+	if err := cfg.ValidateFor("worker"); err == nil ||
+		!strings.Contains(err.Error(), "SEARXNG_BASE_URL") {
+		t.Fatalf("expected SearXNG validation error, got %v", err)
+	}
+	cfg.SourceIntelligence.SearXNGBaseURL = "http://searxng:8080"
+	if err := cfg.ValidateFor("worker"); err != nil {
+		t.Fatalf("valid internal SearXNG URL failed: %v", err)
 	}
 }

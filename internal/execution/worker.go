@@ -13,6 +13,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/delivery"
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/dossier"
+	"github.com/VatsalP117/learnloom/internal/source"
 	"github.com/VatsalP117/learnloom/internal/store"
 	"github.com/google/uuid"
 )
@@ -69,6 +70,7 @@ type Worker struct {
 	producer    Producer
 	artifacts   Artifacts
 	mailer      Mailer
+	sourceSvc   *source.Service
 	cfg         Config
 	logger      *slog.Logger
 	now         func() time.Time
@@ -101,6 +103,7 @@ func New(
 	producer Producer,
 	artifacts Artifacts,
 	mailer Mailer,
+	sourceSvc *source.Service,
 	cfg Config,
 	logger *slog.Logger,
 ) (*Worker, error) {
@@ -123,7 +126,7 @@ func New(
 	}
 	return &Worker{
 		lifecycle: lifecycle, producer: producer, artifacts: artifacts,
-		mailer: mailer, cfg: cfg, logger: logger,
+		mailer: mailer, sourceSvc: sourceSvc, cfg: cfg, logger: logger,
 		now: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
@@ -226,43 +229,54 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 	ctx, cancel := context.WithCancel(ctx)
 	renewed := make(chan error, 1)
 	go w.renewIssueClaim(ctx, claim, cancel, renewed)
+	var err error
 	history, err := w.lifecycle.LoadLearningHistory(
 		ctx,
 		claim.Issue.NewsletterID,
 		w.cfg.HistoryEntries,
 	)
 	if err == nil {
-		var result dossier.GenerateResult
-		result, err = w.producer.Generate(ctx, dossier.GenerateRequest{
-			Newsletter: claim.Issue.Newsletter,
-			History:    history,
-			Now:        w.now(),
-			OnStage: func(stage string) {
-				w.logger.InfoContext(
-					ctx,
-					"Dossier stage",
-					"issue_id", claim.Issue.ID,
-					"stage", stage,
-				)
-			},
-		})
+		if w.sourceSvc == nil {
+			err = errors.New("source intelligence service is unavailable")
+		}
+	}
+	if err == nil {
+		var prepared source.PrepareIssueResult
+		prepared, err = w.sourceSvc.PrepareIssue(ctx, claim.Issue.Newsletter, claim.Issue.ID)
 		if err == nil {
-			generationID := uuid.NewString()
-			var saved artifact.PutResult
-			saved, err = w.artifacts.Put(ctx, artifact.PutInput{
-				AccountID: claim.AccountID, NewsletterID: claim.Issue.NewsletterID,
-				IssueID: claim.Issue.ID, GenerationID: generationID,
-				Artifact: result.Artifact,
+			var result dossier.GenerateResult
+			result, err = w.producer.Generate(ctx, dossier.GenerateRequest{
+				Newsletter: claim.Issue.Newsletter,
+				History:    history,
+				Now:        w.now(),
+				OnStage: func(stage string) {
+					w.logger.InfoContext(
+						ctx,
+						"Dossier stage",
+						"issue_id", claim.Issue.ID,
+						"stage", stage,
+					)
+				},
+				PreparedItems: prepared.Items,
 			})
 			if err == nil {
-				err = w.lifecycle.CompleteIssue(ctx, claim.Issue.ID, store.CompleteIssueInput{
-					ClaimToken: claim.Token, GenerationID: generationID,
-					ArtifactKey: saved.Key, Checksum: saved.Checksum, Bytes: saved.Bytes,
-					Title: result.Artifact.Dossier.Title, History: result.History,
-					HistoryLimit: w.cfg.HistoryEntries, CompletedAt: w.now(),
+				generationID := uuid.NewString()
+				var saved artifact.PutResult
+				saved, err = w.artifacts.Put(ctx, artifact.PutInput{
+					AccountID: claim.AccountID, NewsletterID: claim.Issue.NewsletterID,
+					IssueID: claim.Issue.ID, GenerationID: generationID,
+					Artifact: result.Artifact,
 				})
-				if err != nil {
-					_ = w.artifacts.Delete(context.Background(), saved.Key)
+				if err == nil {
+					err = w.lifecycle.CompleteIssue(ctx, claim.Issue.ID, store.CompleteIssueInput{
+						ClaimToken: claim.Token, GenerationID: generationID,
+						ArtifactKey: saved.Key, Checksum: saved.Checksum, Bytes: saved.Bytes,
+						Title: result.Artifact.Dossier.Title, History: result.History,
+						HistoryLimit: w.cfg.HistoryEntries, CompletedAt: w.now(),
+					})
+					if err != nil {
+						_ = w.artifacts.Delete(context.Background(), saved.Key)
+					}
 				}
 			}
 		}

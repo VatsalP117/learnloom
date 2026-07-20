@@ -634,7 +634,7 @@ const workerIssueSelect = `
 		COALESCE(i.public_slug, ''), i.publication_state, i.created_at,
 		i.started_at, i.completed_at,
 		n.id::text, n.owner_account_id::text, n.name, n.topic, n.learner_level,
-		n.learner_goal, n.lesson_minutes, n.sources, n.schedule_hour,
+		n.learner_goal, n.lesson_minutes, n.source_mode, n.sources, n.schedule_hour,
 		n.schedule_minute, n.time_zone, n.active, n.next_run_at,
 		n.email_enabled, n.ai_exploration_enabled, n.public_slug,
 		n.site_visible, n.created_at, n.updated_at,
@@ -673,6 +673,7 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 		&newsletter.LearnerLevel,
 		&newsletter.LearnerGoal,
 		&newsletter.LessonMinutes,
+		&newsletter.SourceMode,
 		&rawSources,
 		&newsletter.ScheduleHour,
 		&newsletter.ScheduleMinute,
@@ -691,7 +692,9 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 	if err != nil {
 		return domain.Issue{}, "", "", err
 	}
-	if err := json.Unmarshal(rawSources, &newsletter.Sources); err != nil {
+	if len(rawSources) == 0 || string(rawSources) == "null" {
+		newsletter.Sources = nil
+	} else if err := json.Unmarshal(rawSources, &newsletter.Sources); err != nil {
 		return domain.Issue{}, "", "", err
 	}
 	issue.ScheduledLocalDate = scheduledDate

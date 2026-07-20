@@ -44,6 +44,7 @@ type Config struct {
 	DailyAccountLimit   int
 	MaxDeliveryAttempts int
 	ResendConfigured    bool
+	SourceDiscovery     bool
 	Static              fs.FS
 	Authentication      func(http.Handler) http.Handler
 }

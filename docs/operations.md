@@ -46,3 +46,33 @@ Deployments are immutable. Roll back `web` and `worker` to the previous image;
 do not reverse a database migration in place. Schema changes must remain
 compatible with the immediately previous application image until a rollout is
 complete, even though no compatibility with the removed local product is kept.
+## Autonomous source discovery
+
+Source discovery is disabled by default. To run the self-hosted discovery
+profile:
+
+```sh
+docker compose --profile discovery up -d searxng searxng-valkey
+docker compose --profile discovery up -d web worker
+```
+
+Set `SOURCE_DISCOVERY_ENABLED=true`, keep `SEARXNG_BASE_URL` pointed at the
+operator-controlled SearXNG instance, and replace `SEARXNG_SECRET`. The
+same discovery flag is passed to `web` so the creation screen only offers
+discovered and hybrid modes when the worker capability is actually available. The
+SearXNG configuration explicitly enables JSON output; a `403` from `/search`
+usually means JSON was removed from `search.formats`.
+
+Useful checks:
+
+```sh
+docker compose --profile discovery config
+curl --get http://127.0.0.1:8080/search \
+  --data-urlencode 'q=LLM inference official documentation' \
+  --data 'format=json'
+```
+
+Do not expose SearXNG publicly unless it has an appropriate reverse proxy and
+rate limits. Search outages do not affect provided-only streams. Hybrid
+streams continue only when their provided catalog already satisfies the hard
+evidence minimum; otherwise the Issue fails without calling the model.

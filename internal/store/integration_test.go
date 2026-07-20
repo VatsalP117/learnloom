@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +67,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		NewsletterInput{
 			Name: "Systems", Topic: "software systems", LearnerLevel: "experienced",
 			LearnerGoal: "build durable understanding", LessonMinutes: 15,
+			SourceMode: domain.SourceModeProvided,
 			Sources: []domain.SourceDefinition{{
 				Name: "Example", URL: "https://example.com/feed.xml", Limit: 5,
 			}},
@@ -72,17 +75,15 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 			EmailEnabled: true, SiteVisible: true,
 		},
 		10,
+		5,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetNewsletterActive(ctx, account.ID, newsletter.ID, false); err != nil {
+	if err := database.SetNewsletterActive(ctx, account.ID, newsletter.Newsletter.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	issue, err := database.EnqueueManualIssue(ctx, account.ID, newsletter.ID, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	issue := newsletter.FirstIssue
 	claim, err := database.ClaimNextIssue(
 		ctx,
 		time.Now().UTC(),
@@ -108,7 +109,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := database.LoadLearningHistory(ctx, newsletter.ID, 14)
+	history, err := database.LoadLearningHistory(ctx, newsletter.Newsletter.ID, 14)
 	if err != nil || len(history) != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
@@ -145,10 +146,10 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.GetNewsletter(ctx, other.ID, newsletter.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetNewsletter(ctx, other.ID, newsletter.Newsletter.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-Account Newsletter read was not denied: %v", err)
 	}
-	if _, err := database.EnqueueManualIssue(ctx, other.ID, newsletter.ID, 5); !errors.Is(err, ErrNotFound) {
+	if _, err := database.EnqueueManualIssue(ctx, other.ID, newsletter.Newsletter.ID, 5); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-Account Issue creation was not denied: %v", err)
 	}
 
@@ -225,5 +226,303 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	deletion, err := database.ClaimAccountDeletion(ctx, time.Now().UTC(), 5*time.Minute)
 	if err != nil || deletion == nil || deletion.AccountID != account.ID {
 		t.Fatalf("artifact deletion was not queued: %#v %v", deletion, err)
+	}
+}
+
+func TestSourceCatalogReconciliationIntegration(t *testing.T) {
+	database := openIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	account, err := database.SyncAccountIdentity(
+		ctx,
+		"clerk-catalog-"+uuid.NewString(),
+		"catalog@example.com",
+		domain.AccountActive,
+		time.Now().UTC().UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := integrationNewsletterInput([]domain.SourceDefinition{
+		{Name: "First", URL: "https://example.com/first", Limit: 5},
+		{Name: "Remove me", URL: "https://example.com/remove", Limit: 6},
+	})
+	created, err := database.CreateNewsletter(ctx, account.ID, input, 10, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	discovered, err := database.UpsertDiscoveredSourceSpec(ctx, domain.SourceSpec{
+		ID:              uuid.NewString(),
+		NewsletterID:    created.Newsletter.ID,
+		Origin:          domain.SourceOriginDiscovered,
+		State:           domain.SourceStateActive,
+		DisplayName:     "Discovered reference",
+		InputURL:        "https://docs.example.org/guide",
+		CanonicalURL:    "https://docs.example.org/guide",
+		Scope:           domain.SourceScopeExact,
+		ItemLimit:       8,
+		DiscoveryReason: "official reference",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Sources = []domain.SourceDefinition{
+		{Name: "First renamed", URL: "https://example.com/first", Limit: 9},
+		{Name: "Added", URL: "https://example.com/added", Limit: 4},
+	}
+	updated, err := database.UpdateNewsletter(ctx, account.ID, created.Newsletter.ID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(updated.Sources, input.Sources) {
+		t.Fatalf("compatibility sources=%#v, want %#v", updated.Sources, input.Sources)
+	}
+	rows, err := database.pool.Query(ctx, `
+		SELECT canonical_url, display_name, item_limit, state
+		FROM source_specs
+		WHERE newsletter_id = $1 AND origin = 'provided'
+		ORDER BY canonical_url
+	`, created.Newsletter.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type catalogRow struct {
+		url, name, state string
+		limit            int
+	}
+	var got []catalogRow
+	for rows.Next() {
+		var row catalogRow
+		if err := rows.Scan(&row.url, &row.name, &row.limit, &row.state); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, row)
+	}
+	want := []catalogRow{
+		{url: "https://example.com/added", name: "Added", limit: 4, state: "active"},
+		{url: "https://example.com/first", name: "First renamed", limit: 9, state: "active"},
+		{url: "https://example.com/remove", name: "Remove me", limit: 6, state: "disabled"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("catalog=%#v, want %#v", got, want)
+	}
+	var discoveredState domain.SourceState
+	if err := database.pool.QueryRow(ctx, `
+		SELECT state FROM source_specs WHERE id = $1
+	`, discovered.ID).Scan(&discoveredState); err != nil {
+		t.Fatal(err)
+	}
+	if discoveredState != domain.SourceStateDisabled {
+		t.Fatalf("discovered state after provided update=%q", discoveredState)
+	}
+	input.SourceMode = domain.SourceModeHybrid
+	if _, err := database.UpdateNewsletter(
+		ctx,
+		account.ID,
+		created.Newsletter.ID,
+		input,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.pool.QueryRow(ctx, `
+		SELECT state FROM source_specs WHERE id = $1
+	`, discovered.ID).Scan(&discoveredState); err != nil {
+		t.Fatal(err)
+	}
+	if discoveredState != domain.SourceStateActive {
+		t.Fatalf("discovered state after hybrid update=%q", discoveredState)
+	}
+}
+
+func TestCreateNewsletterDailyQuotaRollsBackIntegration(t *testing.T) {
+	database := openIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	account, err := database.SyncAccountIdentity(
+		ctx,
+		"clerk-quota-"+uuid.NewString(),
+		"quota@example.com",
+		domain.AccountActive,
+		time.Now().UTC().UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := integrationNewsletterInput([]domain.SourceDefinition{{
+		Name: "One", URL: "https://example.com/one", Limit: 5,
+	}})
+	if _, err := database.CreateNewsletter(ctx, account.ID, input, 10, 1); err != nil {
+		t.Fatal(err)
+	}
+	input.Name = "Should roll back"
+	input.Topic = "a different topic"
+	input.Sources = []domain.SourceDefinition{{
+		Name: "Two", URL: "https://example.com/two", Limit: 5,
+	}}
+	if _, err := database.CreateNewsletter(ctx, account.ID, input, 10, 1); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("err=%v, want ErrQuotaExceeded", err)
+	}
+	var newsletters, specs, issues int
+	if err := database.pool.QueryRow(ctx, `
+		SELECT
+			(SELECT count(*) FROM newsletters WHERE owner_account_id = $1),
+			(SELECT count(*) FROM source_specs ss JOIN newsletters n ON n.id = ss.newsletter_id WHERE n.owner_account_id = $1),
+			(SELECT count(*) FROM issues i JOIN newsletters n ON n.id = i.newsletter_id WHERE n.owner_account_id = $1)
+	`, account.ID).Scan(&newsletters, &specs, &issues); err != nil {
+		t.Fatal(err)
+	}
+	if newsletters != 1 || specs != 1 || issues != 1 {
+		t.Fatalf("rollback counts newsletters=%d specs=%d issues=%d", newsletters, specs, issues)
+	}
+}
+
+func TestSourceEvidenceAndDiscoveryRepositoryIntegration(t *testing.T) {
+	database := openIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	account, err := database.SyncAccountIdentity(
+		ctx,
+		"clerk-source-repo-"+uuid.NewString(),
+		"source-repo@example.com",
+		domain.AccountActive,
+		time.Now().UTC().UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := integrationNewsletterInput(nil)
+	input.SourceMode = domain.SourceModeDiscovered
+	created, err := database.CreateNewsletter(ctx, account.ID, input, 10, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := database.UpsertDiscoveredSourceSpec(ctx, domain.SourceSpec{
+		ID: uuid.NewString(), NewsletterID: created.Newsletter.ID,
+		Origin: domain.SourceOriginDiscovered, State: domain.SourceStateCandidate,
+		DisplayName: "Discovered guide", InputURL: "https://example.com/guide",
+		CanonicalURL: "https://example.com/guide", Scope: domain.SourceScopeExact,
+		ItemLimit: 8, DiscoveryReason: "official reference",
+		DiscoveryQuery: "topic official documentation", RankScore: 42,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	endpoint, err := database.UpsertSourceEndpoint(ctx, domain.SourceEndpoint{
+		ID: uuid.NewString(), SourceSpecID: spec.ID,
+		EndpointURL: spec.InputURL, CanonicalURL: spec.CanonicalURL,
+		Kind: domain.SourceKindHTML, Health: "healthy",
+		LastCheckedAt: &now, LastSuccessAt: &now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := domain.SourceSnapshot{
+		ID: uuid.NewString(), SourceEndpointID: endpoint.ID,
+		ItemKey: spec.CanonicalURL, Title: spec.DisplayName,
+		CanonicalURL: spec.CanonicalURL, Content: strings.Repeat("evidence ", 100),
+		ContentSource: "article", ContentSHA256: "content-hash",
+		Metadata:  `{"source":"Discovered guide","origin":"discovered"}`,
+		FetchedAt: now,
+	}
+	firstID, err := database.InsertSourceSnapshot(ctx, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.ID = uuid.NewString()
+	secondID, err := database.InsertSourceSnapshot(ctx, snapshot)
+	if err != nil || secondID != firstID {
+		t.Fatalf("snapshot idempotency first=%q second=%q err=%v", firstID, secondID, err)
+	}
+	inserted, err := database.InsertIssueSources(ctx, created.FirstIssue.ID, []domain.IssueSource{{
+		IssueID: created.FirstIssue.ID, SourceSnapshotID: firstID,
+		Position: 0, CreatedAt: now,
+	}})
+	if err != nil || !inserted {
+		t.Fatalf("freeze inserted=%v err=%v", inserted, err)
+	}
+	inserted, err = database.InsertIssueSources(ctx, created.FirstIssue.ID, []domain.IssueSource{{
+		IssueID: created.FirstIssue.ID, SourceSnapshotID: firstID,
+		Position: 0, CreatedAt: now,
+	}})
+	if err != nil || inserted {
+		t.Fatalf("second freeze inserted=%v err=%v", inserted, err)
+	}
+	frozen, err := database.GetIssueSources(ctx, created.FirstIssue.ID)
+	if err != nil || len(frozen) != 1 || frozen[0].ID != firstID {
+		t.Fatalf("frozen=%#v err=%v", frozen, err)
+	}
+	if err := database.SetSourceSpecState(
+		ctx,
+		spec.ID,
+		domain.SourceStateActive,
+		domain.SourceKindHTML,
+	); err != nil {
+		t.Fatal(err)
+	}
+	started := now
+	run := domain.DiscoveryRun{
+		ID: uuid.NewString(), NewsletterID: created.Newsletter.ID,
+		IssueID: created.FirstIssue.ID, Reason: "initial", State: "running",
+		QueryBundle: `["topic official documentation"]`, StartedAt: &started,
+	}
+	if err := database.CreateDiscoveryRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	completed := now.Add(time.Second)
+	run.State = "completed"
+	run.ReturnedCandidates = 3
+	run.ResolvedCandidates = 1
+	run.ActivatedCandidates = 1
+	run.CompletedAt = &completed
+	if err := database.CompleteDiscoveryRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := database.ListSourceCatalog(ctx, account.ID, created.Newsletter.ID, 50)
+	if err != nil || len(catalog) != 1 || catalog[0].Origin != domain.SourceOriginDiscovered ||
+		catalog[0].Health != "healthy" {
+		t.Fatalf("catalog=%#v err=%v", catalog, err)
+	}
+	other, err := database.SyncAccountIdentity(
+		ctx,
+		"clerk-source-other-"+uuid.NewString(),
+		"source-other@example.com",
+		domain.AccountActive,
+		time.Now().UTC().UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog, err := database.ListSourceCatalog(ctx, other.ID, created.Newsletter.ID, 50); err != nil || len(catalog) != 0 {
+		t.Fatalf("cross-account catalog=%#v err=%v", catalog, err)
+	}
+}
+
+func openIntegrationStore(t *testing.T) *Store {
+	t.Helper()
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	t.Cleanup(cancel)
+	database, err := Open(ctx, Config{URL: databaseURL, MaxConnections: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(database.Close)
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return database
+}
+
+func integrationNewsletterInput(sources []domain.SourceDefinition) NewsletterInput {
+	return NewsletterInput{
+		Name: "Source integration", Topic: "source intelligence",
+		LearnerLevel: "intermediate", LearnerGoal: "build a practical understanding",
+		LessonMinutes: 20, SourceMode: domain.SourceModeProvided, Sources: sources,
+		ScheduleHour: 8, TimeZone: "UTC", Active: true,
 	}
 }
