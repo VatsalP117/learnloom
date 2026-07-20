@@ -154,7 +154,7 @@ func Load() (Config, error) {
 		Clerk: Clerk{
 			SecretKey:      os.Getenv("CLERK_SECRET_KEY"),
 			PublishableKey: os.Getenv("CLERK_PUBLISHABLE_KEY"),
-			JWTKey:         os.Getenv("CLERK_JWT_KEY"),
+			JWTKey:         strings.ReplaceAll(os.Getenv("CLERK_JWT_KEY"), `\n`, "\n"),
 			WebhookSecret:  os.Getenv("CLERK_WEBHOOK_SECRET"),
 			FrontendOrigin: os.Getenv("CLERK_FRONTEND_ORIGIN"),
 		},

@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+func TestLoadExpandsEscapedNewlinesInClerkJWTKey(t *testing.T) {
+	t.Setenv("CLERK_JWT_KEY", `-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	want := "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----"
+	if cfg.Clerk.JWTKey != want {
+		t.Errorf("Clerk.JWTKey = %q, want %q", cfg.Clerk.JWTKey, want)
+	}
+}
+
 func TestValidateForRejectsIncompleteWebRole(t *testing.T) {
 	cfg := Config{}
 	err := cfg.ValidateFor("web")
