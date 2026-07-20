@@ -89,7 +89,6 @@ function DashboardHome() {
                     icon={iconCycle[index % iconCycle.length]}
                   />
                 ))}
-                <CreateCard />
               </section>
             ) : null}
           </div>
@@ -126,7 +125,7 @@ function Topbar({ onMenu }) {
         </button>
         <a className="primary-button" href="/newsletters/new">
           <Plus size={17} strokeWidth={2.5} />
-          <span>Create Newsletter</span>
+          <span>Create Dossier</span>
         </a>
         <div className="avatar" aria-label="Account menu">VP</div>
       </div>
@@ -248,24 +247,36 @@ function DossierCard({ newsletter, icon: Icon }) {
   );
 }
 
-function CreateCard() {
-  return (
-    <a className="create-card" href="/newsletters/new">
-      <span className="create-icon"><Plus size={24} /></span>
-      <strong>Create a new dossier</strong>
-      <span>Choose a topic, trusted sources, and a delivery schedule.</span>
-    </a>
-  );
-}
-
 function EmptyState() {
   return (
     <section className="empty-state">
-      <span className="empty-icon"><LibraryBig size={28} /></span>
-      <p className="overline">A clean slate</p>
-      <h2>Build your first knowledge dossier</h2>
-      <p>Start with one question you want to understand more deeply.</p>
-      <a className="primary-button" href="/newsletters/new"><Plus size={17} />Create Newsletter</a>
+      <div className="empty-visual" aria-hidden="true">
+        <span className="empty-orbit empty-orbit-outer" />
+        <span className="empty-orbit empty-orbit-inner" />
+        <span className="empty-spark empty-spark-one" />
+        <span className="empty-spark empty-spark-two" />
+        <span className="empty-icon"><LibraryBig size={30} /></span>
+      </div>
+      <div className="empty-copy">
+        <p className="overline">Your learning starts here</p>
+        <h2>Turn a question into a lasting body of knowledge.</h2>
+        <p>
+          Choose a topic you care about. Learnloom will gather trusted sources
+          and shape them into thoughtful, recurring dossiers.
+        </p>
+        <div className="empty-benefits" aria-label="What your first dossier includes">
+          <span>Trusted sources</span>
+          <i />
+          <span>A learning schedule</span>
+          <i />
+          <span>Your own archive</span>
+        </div>
+        <a className="primary-button" href="/newsletters/new">
+          <Plus size={17} />
+          Create your first dossier
+        </a>
+        <small>It takes about two minutes to set up.</small>
+      </div>
     </section>
   );
 }
