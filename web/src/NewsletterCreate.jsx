@@ -2,12 +2,21 @@ import { Plus, BookOpen, Globe, Sparkles, Trash2, ChevronDown, ChevronUp } from 
 import { useState, useMemo } from "react";
 import { ErrorState, Footer, Topbar } from "./App.jsx";
 import { apiJSON } from "./api.js";
+import {
+  buildNewsletterPayload,
+  canSubmitNewsletter,
+  usableSources,
+} from "./newsletterForm.js";
 
 const defaultSource = () => ({ name: "", url: "", limit: 8 });
 
-export default function NewsletterCreate() {
-  const [sourceMode, setSourceMode] = useState("discovered");
-  const [sources, setSources] = useState([]);
+export default function NewsletterCreate({ sourceDiscovery = false }) {
+  const [sourceMode, setSourceMode] = useState(
+    sourceDiscovery ? "discovered" : "provided",
+  );
+  const [sources, setSources] = useState(
+    sourceDiscovery ? [] : [defaultSource()],
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -22,17 +31,15 @@ export default function NewsletterCreate() {
   const [active, setActive] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [aiExplorationEnabled, setAIExplorationEnabled] = useState(false);
-  const [siteVisible, setSiteVisible] = useState(true);
+  const [siteVisible, setSiteVisible] = useState(false);
 
   const validSources = useMemo(
-    () => sources.filter((s) => s.url.trim() !== ""),
+    () => usableSources(sources),
     [sources],
   );
 
   function canSubmit() {
-    if (!topic.trim()) return false;
-    if (sourceMode === "discovered") return true;
-    return validSources.length > 0;
+    return canSubmitNewsletter({ topic, sourceMode, sources });
   }
 
   function addSource() {
@@ -67,19 +74,11 @@ export default function NewsletterCreate() {
     setBusy(true);
     setError("");
 
-    const sourceLabel = (url) => {
-      try {
-        return new URL(url).hostname.replace(/^www\./, "");
-      } catch {
-        return url;
-      }
-    };
-
-    const body = {
-      name: name.trim() || undefined,
-      topic: topic.trim(),
+    const body = buildNewsletterPayload({
+      name,
+      topic,
       learnerLevel,
-      learnerGoal: learnerGoal.trim() || undefined,
+      learnerGoal,
       lessonMinutes,
       scheduleTime,
       timeZone,
@@ -88,14 +87,8 @@ export default function NewsletterCreate() {
       aiExplorationEnabled,
       siteVisible,
       sourceMode,
-      sources: sourceMode === "discovered"
-        ? []
-        : validSources.map((source) => ({
-            name: source.name.trim() || sourceLabel(source.url),
-            url: source.url,
-            limit: Number(source.limit),
-          })),
-    };
+      sources: validSources,
+    });
 
     try {
       const result = await apiJSON("/api/newsletters", { method: "POST", body });
@@ -143,12 +136,12 @@ export default function NewsletterCreate() {
               <legend>Source policy</legend>
               <p className="field-help">Choose how Learnloom finds and uses sources for your daily Knowledge Dossiers.</p>
               <div className={`mode-options ${busy ? "busy" : ""}`}>
-                <label className={`mode-card ${sourceMode === "discovered" ? "selected" : ""}`}>
-                  <input type="radio" name="sourceModeRadio" value="discovered" checked={sourceMode === "discovered"} onChange={() => handleModeChange("discovered")} disabled={busy} />
+                <label className={`mode-card ${sourceMode === "discovered" ? "selected" : ""} ${!sourceDiscovery ? "disabled" : ""}`}>
+                  <input type="radio" name="sourceModeRadio" value="discovered" checked={sourceMode === "discovered"} onChange={() => handleModeChange("discovered")} disabled={busy || !sourceDiscovery} />
                   <span className="mode-icon"><Sparkles size={20} /></span>
                   <div className="mode-body">
                     <strong>Find sources for me</strong>
-                    <small>Learnloom discovers, validates, and selects relevant sources automatically.</small>
+                    <small>{sourceDiscovery ? "Learnloom discovers, validates, and selects relevant sources automatically." : "Automatic discovery is not enabled on this deployment."}</small>
                   </div>
                 </label>
                 <label className={`mode-card ${sourceMode === "provided" ? "selected" : ""}`}>
@@ -159,8 +152,8 @@ export default function NewsletterCreate() {
                     <small>Supply specific RSS feeds, article URLs, or publications. Only your sources are used.</small>
                   </div>
                 </label>
-                <label className={`mode-card ${sourceMode === "hybrid" ? "selected" : ""}`}>
-                  <input type="radio" name="sourceModeRadio" value="hybrid" checked={sourceMode === "hybrid"} onChange={() => handleModeChange("hybrid")} disabled={busy} />
+                <label className={`mode-card ${sourceMode === "hybrid" ? "selected" : ""} ${!sourceDiscovery ? "disabled" : ""}`}>
+                  <input type="radio" name="sourceModeRadio" value="hybrid" checked={sourceMode === "hybrid"} onChange={() => handleModeChange("hybrid")} disabled={busy || !sourceDiscovery} />
                   <span className="mode-icon"><Globe size={20} /></span>
                   <div className="mode-body">
                     <strong>Use mine and find more when helpful</strong>

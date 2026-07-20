@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -83,7 +84,7 @@ func (s *Store) UpsertSourceEndpoint(ctx context.Context, endpoint domain.Source
 	return endpoint, nil
 }
 
-func (s *Store) GetSourceEndpoint(ctx context.Context, specID string) (domain.SourceEndpoint, error) {
+func (s *Store) GetSourceEndpoint(ctx context.Context, specID string) (domain.SourceEndpoint, bool, error) {
 	var ep domain.SourceEndpoint
 	err := s.pool.QueryRow(ctx, `
 		SELECT id::text, source_spec_id::text, endpoint_url, canonical_url, kind,
@@ -101,12 +102,12 @@ func (s *Store) GetSourceEndpoint(ctx context.Context, specID string) (domain.So
 		&ep.LastChangedAt, &ep.LastError, &ep.CreatedAt, &ep.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.SourceEndpoint{}, ErrNotFound
+		return domain.SourceEndpoint{}, false, nil
 	}
 	if err != nil {
-		return domain.SourceEndpoint{}, fmt.Errorf("get source endpoint: %w", err)
+		return domain.SourceEndpoint{}, false, fmt.Errorf("get source endpoint: %w", err)
 	}
-	return ep, nil
+	return ep, true, nil
 }
 
 func (s *Store) InsertSourceSnapshot(ctx context.Context, snapshot domain.SourceSnapshot) (string, error) {
@@ -136,11 +137,19 @@ func (s *Store) GetSourceSnapshots(ctx context.Context, endpointID string, limit
 		limit = 20
 	}
 	rows, err := s.pool.Query(ctx, `
+		WITH latest AS (
+			SELECT DISTINCT ON (item_key)
+			       id, source_endpoint_id, item_key, title, canonical_url,
+			       author, published_at, content, content_source,
+			       content_sha256, metadata, fetched_at
+			FROM source_snapshots
+			WHERE source_endpoint_id = $1
+			ORDER BY item_key, fetched_at DESC
+		)
 		SELECT id::text, source_endpoint_id::text, item_key, title, canonical_url,
 		       COALESCE(author, ''), published_at, content, content_source,
 		       content_sha256, metadata::text, fetched_at
-		FROM source_snapshots
-		WHERE source_endpoint_id = $1
+		FROM latest
 		ORDER BY COALESCE(published_at, fetched_at) DESC
 		LIMIT $2
 	`, endpointID, limit)
@@ -205,22 +214,44 @@ func (s *Store) GetIssueSources(ctx context.Context, issueID string) ([]domain.S
 	return snapshots, rows.Err()
 }
 
-func (s *Store) InsertIssueSources(ctx context.Context, issueID string, links []domain.IssueSource) error {
+func (s *Store) InsertIssueSources(ctx context.Context, issueID string, links []domain.IssueSource) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer rollback(tx)
+	if err := tx.QueryRow(ctx, `
+		SELECT id FROM issues WHERE id = $1 FOR UPDATE
+	`, issueID).Scan(new(string)); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrNotFound
+		}
+		return false, fmt.Errorf("lock Issue evidence: %w", err)
+	}
+	var frozen bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM issue_sources WHERE issue_id = $1)
+	`, issueID).Scan(&frozen); err != nil {
+		return false, fmt.Errorf("check frozen Issue evidence: %w", err)
+	}
+	if frozen {
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
 	for _, link := range links {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO issue_sources (issue_id, source_snapshot_id, position, created_at)
 			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (issue_id, source_snapshot_id) DO NOTHING
 		`, issueID, link.SourceSnapshotID, link.Position, link.CreatedAt); err != nil {
-			return fmt.Errorf("insert issue source: %w", err)
+			return false, fmt.Errorf("insert issue source: %w", err)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) GetSourceSummary(ctx context.Context, newsletterID string) (domain.SourceSummary, error) {
@@ -228,10 +259,10 @@ func (s *Store) GetSourceSummary(ctx context.Context, newsletterID string) (doma
 	var lastChecked *time.Time
 	if err := s.pool.QueryRow(ctx, `
 		SELECT
-			COALESCE(count(*) FILTER (WHERE ss.origin = 'provided'), 0)::int,
-			COALESCE(count(*) FILTER (WHERE ss.origin = 'discovered'), 0)::int,
-			COALESCE(count(*) FILTER (WHERE ss.state = 'active' AND (se.health IS NULL OR se.health IN ('unknown','healthy','stale'))), 0)::int,
-			COALESCE(count(*) FILTER (WHERE ss.state IN ('unhealthy', 'rejected', 'disabled') OR se.health IN ('failing','blocked')), 0)::int,
+			COALESCE(count(DISTINCT ss.id) FILTER (WHERE ss.origin = 'provided'), 0)::int,
+			COALESCE(count(DISTINCT ss.id) FILTER (WHERE ss.origin = 'discovered'), 0)::int,
+			COALESCE(count(DISTINCT ss.id) FILTER (WHERE ss.state = 'active' AND (se.health IS NULL OR se.health IN ('unknown','healthy','stale'))), 0)::int,
+			COALESCE(count(DISTINCT ss.id) FILTER (WHERE ss.state IN ('unhealthy', 'rejected') OR se.health IN ('failing','blocked')), 0)::int,
 			max(se.last_checked_at)
 		FROM source_specs ss
 		LEFT JOIN source_endpoints se ON se.source_spec_id = ss.id
@@ -245,6 +276,153 @@ func (s *Store) GetSourceSummary(ctx context.Context, newsletterID string) (doma
 	}
 	summary.LastCheckedAt = lastChecked
 	return summary, nil
+}
+
+func (s *Store) UpsertDiscoveredSourceSpec(
+	ctx context.Context,
+	spec domain.SourceSpec,
+) (domain.SourceSpec, error) {
+	if spec.ID == "" {
+		spec.ID = uuid.NewString()
+	}
+	now := time.Now().UTC()
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO source_specs (
+			id, newsletter_id, origin, state, display_name, input_url,
+			canonical_url, scope, kind, item_limit, discovery_reason,
+			discovery_query, rank_score, created_at, updated_at
+		)
+		VALUES ($1, $2, 'discovered', $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, $12, $13, $13)
+		ON CONFLICT (newsletter_id, canonical_url) WHERE canonical_url IS NOT NULL
+		DO UPDATE SET updated_at = EXCLUDED.updated_at
+		RETURNING id::text, newsletter_id::text, origin, state, display_name,
+		          input_url, COALESCE(canonical_url, ''), scope,
+		          COALESCE(kind, ''), item_limit, COALESCE(discovery_reason, ''),
+		          COALESCE(discovery_query, ''), COALESCE(rank_score, 0),
+		          created_at, updated_at
+	`, spec.ID, spec.NewsletterID, spec.State, spec.DisplayName, spec.InputURL,
+		spec.CanonicalURL, spec.Scope, spec.Kind, spec.ItemLimit,
+		nullString(spec.DiscoveryReason), nullString(spec.DiscoveryQuery),
+		spec.RankScore, now).Scan(
+		&spec.ID, &spec.NewsletterID, &spec.Origin, &spec.State,
+		&spec.DisplayName, &spec.InputURL, &spec.CanonicalURL, &spec.Scope,
+		&spec.Kind, &spec.ItemLimit, &spec.DiscoveryReason,
+		&spec.DiscoveryQuery, &spec.RankScore, &spec.CreatedAt, &spec.UpdatedAt,
+	)
+	if err != nil {
+		return domain.SourceSpec{}, fmt.Errorf("upsert discovered source spec: %w", err)
+	}
+	return spec, nil
+}
+
+func (s *Store) SetSourceSpecState(
+	ctx context.Context,
+	specID string,
+	state domain.SourceState,
+	kind domain.SourceKind,
+) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE source_specs
+		SET state = $2, kind = COALESCE(NULLIF($3, ''), kind), updated_at = now()
+		WHERE id = $1
+	`, specID, state, kind)
+	if err != nil {
+		return fmt.Errorf("set source spec state: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) CreateDiscoveryRun(ctx context.Context, run domain.DiscoveryRun) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO discovery_runs (
+			id, newsletter_id, issue_id, reason, state, query_bundle,
+			returned_candidates, rejected_candidates, resolved_candidates,
+			activated_candidates, error, started_at, completed_at
+		)
+		VALUES ($1, $2, NULLIF($3, '')::uuid, $4, $5, $6::jsonb, $7, $8, $9, $10, NULLIF($11, ''), $12, $13)
+	`, run.ID, run.NewsletterID, run.IssueID, run.Reason, run.State,
+		run.QueryBundle, run.ReturnedCandidates, run.RejectedCandidates,
+		run.ResolvedCandidates, run.ActivatedCandidates, run.Error,
+		run.StartedAt, run.CompletedAt)
+	if err != nil {
+		return fmt.Errorf("create discovery run: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CompleteDiscoveryRun(ctx context.Context, run domain.DiscoveryRun) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE discovery_runs
+		SET state = $2, returned_candidates = $3, rejected_candidates = $4,
+		    resolved_candidates = $5, activated_candidates = $6,
+		    error = NULLIF($7, ''), completed_at = $8
+		WHERE id = $1
+	`, run.ID, run.State, run.ReturnedCandidates, run.RejectedCandidates,
+		run.ResolvedCandidates, run.ActivatedCandidates, run.Error, run.CompletedAt)
+	if err != nil {
+		return fmt.Errorf("complete discovery run: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListSourceCatalog(
+	ctx context.Context,
+	accountID, newsletterID string,
+	limit int,
+) ([]domain.SourceCatalogItem, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT ss.id::text, ss.display_name, COALESCE(ss.canonical_url, ss.input_url),
+		       ss.origin, ss.scope, COALESCE(ss.kind, ''), ss.state,
+		       CASE
+		         WHEN ss.state = 'unhealthy' THEN 'failing'
+		         WHEN ss.state = 'rejected' THEN 'blocked'
+		         ELSE COALESCE(se.health, 'unknown')
+		       END,
+		       COALESCE(ss.discovery_reason, ''),
+		       se.last_checked_at, se.last_success_at,
+		       CASE
+		         WHEN ss.state IN ('unhealthy', 'rejected')
+		           OR se.health IN ('failing', 'blocked')
+		         THEN 'Source could not be refreshed.'
+		         ELSE ''
+		       END
+		FROM source_specs ss
+		JOIN newsletters n ON n.id = ss.newsletter_id
+		LEFT JOIN LATERAL (
+			SELECT health, last_checked_at, last_success_at, last_error
+			FROM source_endpoints
+			WHERE source_spec_id = ss.id
+			ORDER BY updated_at DESC
+			LIMIT 1
+		) se ON true
+		WHERE ss.newsletter_id = $1 AND n.owner_account_id = $2
+		ORDER BY CASE ss.origin WHEN 'provided' THEN 0 ELSE 1 END, ss.created_at
+		LIMIT $3
+	`, newsletterID, accountID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list source catalog: %w", err)
+	}
+	defer rows.Close()
+	var result []domain.SourceCatalogItem
+	for rows.Next() {
+		var item domain.SourceCatalogItem
+		if err := rows.Scan(
+			&item.ID, &item.DisplayName, &item.CanonicalURL, &item.Origin,
+			&item.Scope, &item.Kind, &item.State, &item.Health,
+			&item.DiscoveryReason, &item.LastCheckedAt,
+			&item.LastSuccessfulAt, &item.Error,
+		); err != nil {
+			return nil, fmt.Errorf("scan source catalog: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func nullString(value string) *string {

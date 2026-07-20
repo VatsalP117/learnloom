@@ -96,6 +96,7 @@ services:
       CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
       CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:?set CLERK_WEBHOOK_SECRET}
       CLERK_FRONTEND_ORIGIN: ${CLERK_FRONTEND_ORIGIN:-}
+      SOURCE_DISCOVERY_ENABLED: ${SOURCE_DISCOVERY_ENABLED:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -126,6 +127,16 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY}
       RESEND_FROM: ${RESEND_FROM:?set RESEND_FROM}
       RESEND_SUBJECT_PREFIX: ${RESEND_SUBJECT_PREFIX:-Learnloom}
+      SOURCE_DISCOVERY_ENABLED: ${SOURCE_DISCOVERY_ENABLED:-false}
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://searxng:8080}
+      SEARXNG_TIMEOUT: ${SEARXNG_TIMEOUT:-8s}
+      SOURCE_DISCOVERY_MAX_QUERIES: ${SOURCE_DISCOVERY_MAX_QUERIES:-4}
+      SOURCE_DISCOVERY_MAX_CANDIDATES: ${SOURCE_DISCOVERY_MAX_CANDIDATES:-30}
+      SOURCE_DISCOVERY_MAX_ACTIVE: ${SOURCE_DISCOVERY_MAX_ACTIVE:-8}
+      SOURCE_MIN_USABLE_ITEMS: ${SOURCE_MIN_USABLE_ITEMS:-4}
+      SOURCE_TARGET_USABLE_ITEMS: ${SOURCE_TARGET_USABLE_ITEMS:-8}
+      SOURCE_REFRESH_INTERVAL: ${SOURCE_REFRESH_INTERVAL:-12h}
+      SOURCE_DEFAULT_MAX_STALE_AGE: ${SOURCE_DEFAULT_MAX_STALE_AGE:-720h}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -135,9 +146,45 @@ services:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
 
+  searxng:
+    profiles: ["discovery"]
+    image: docker.io/searxng/searxng:2026.7.18-277d8469c
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-development-only-change-me}
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_VALKEY_URL: valkey://searxng-valkey:6379/0
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    depends_on:
+      searxng-valkey:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  searxng-valkey:
+    profiles: ["discovery"]
+    image: docker.io/valkey/valkey:9.0.3-alpine
+    command: ["valkey-server", "--save", "30", "1", "--loglevel", "warning"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - searxng-valkey-data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   object-data:
+  searxng-cache:
+  searxng-valkey-data:
 
 networks:
   backend:

@@ -173,6 +173,21 @@ type SourceSummary struct {
 	LastCheckedAt  *time.Time `json:"lastCheckedAt,omitempty"`
 }
 
+type SourceCatalogItem struct {
+	ID               string       `json:"id"`
+	DisplayName      string       `json:"displayName"`
+	CanonicalURL     string       `json:"canonicalUrl"`
+	Origin           SourceOrigin `json:"origin"`
+	Scope            SourceScope  `json:"scope"`
+	Kind             SourceKind   `json:"kind,omitempty"`
+	State            SourceState  `json:"state"`
+	Health           string       `json:"health"`
+	DiscoveryReason  string       `json:"discoveryReason,omitempty"`
+	LastCheckedAt    *time.Time   `json:"lastCheckedAt,omitempty"`
+	LastSuccessfulAt *time.Time   `json:"lastSuccessfulAt,omitempty"`
+	Error            string       `json:"error,omitempty"`
+}
+
 type Newsletter struct {
 	ID                   string             `json:"id"`
 	OwnerAccountID       string             `json:"-"`

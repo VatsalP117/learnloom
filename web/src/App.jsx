@@ -23,9 +23,9 @@ import { apiJSON } from "./api.js";
 
 const iconCycle = [Atom, BrainCircuit, BookOpen, LibraryBig];
 
-function App() {
+function App({ capabilities = {} }) {
   if (window.location.pathname === "/newsletters/new") {
-    return <NewsletterCreate />;
+    return <NewsletterCreate sourceDiscovery={Boolean(capabilities.sourceDiscovery)} />;
   }
   const detailMatch = /^\/newsletters\/([a-z0-9_-]+)$/.exec(
     window.location.pathname,

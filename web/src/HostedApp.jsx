@@ -55,7 +55,7 @@ function OnboardingGate() {
   }
   return (
     <>
-      <App />
+      <App capabilities={profile.capabilities ?? {}} />
       <SiteControl
         site={profile.site}
         onUpdate={(site) => setProfile({ ...profile, site })}

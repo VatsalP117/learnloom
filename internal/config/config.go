@@ -36,14 +36,6 @@ type SourceIntelligence struct {
 	TargetUsableItems      int
 	RefreshInterval        time.Duration
 	DefaultMaxStaleAge     time.Duration
-	Crawl4AIEnabled        bool
-	Crawl4AIBaseURL        string
-	Crawl4AIToken          string
-	Crawl4AITimeout        time.Duration
-	DoclingEnabled         bool
-	DoclingBaseURL         string
-	DoclingAPIKey          string
-	DoclingTimeout         time.Duration
 }
 
 type HTTP struct {
@@ -199,14 +191,6 @@ func Load() (Config, error) {
 			TargetUsableItems:      envInt("SOURCE_TARGET_USABLE_ITEMS", 8),
 			RefreshInterval:        envDuration("SOURCE_REFRESH_INTERVAL", 12*time.Hour),
 			DefaultMaxStaleAge:     envDuration("SOURCE_DEFAULT_MAX_STALE_AGE", 720*time.Hour),
-			Crawl4AIEnabled:        envBool("CRAWL4AI_ENABLED", false),
-			Crawl4AIBaseURL:        os.Getenv("CRAWL4AI_BASE_URL"),
-			Crawl4AIToken:          os.Getenv("CRAWL4AI_TOKEN"),
-			Crawl4AITimeout:        envDuration("CRAWL4AI_TIMEOUT", 45*time.Second),
-			DoclingEnabled:         envBool("DOCLING_ENABLED", false),
-			DoclingBaseURL:         os.Getenv("DOCLING_BASE_URL"),
-			DoclingAPIKey:          os.Getenv("DOCLING_API_KEY"),
-			DoclingTimeout:         envDuration("DOCLING_TIMEOUT", 2*time.Minute),
 		},
 	}
 	cfg.HTTP.ApexOrigin = "https://" + cfg.HTTP.RootDomain
@@ -329,6 +313,27 @@ func (c Config) ValidateFor(role string) error {
 	if role == "worker" && (c.Worker.ClaimDuration < time.Minute || c.Worker.GlobalConcurrency < 1 ||
 		c.Worker.AccountConcurrency < 1) {
 		problems = append(problems, errors.New("worker limits are invalid"))
+	}
+	if role == "worker" {
+		sourceCfg := c.SourceIntelligence
+		if sourceCfg.MinUsableItems < 1 ||
+			sourceCfg.TargetUsableItems < sourceCfg.MinUsableItems ||
+			sourceCfg.DiscoveryMaxQueries < 1 ||
+			sourceCfg.DiscoveryMaxCandidates < 1 ||
+			sourceCfg.DiscoveryMaxActive < 1 ||
+			sourceCfg.RefreshInterval <= 0 ||
+			sourceCfg.DefaultMaxStaleAge <= 0 {
+			problems = append(problems, errors.New("source intelligence limits are invalid"))
+		}
+		if sourceCfg.DiscoveryEnabled {
+			parsed, err := url.Parse(sourceCfg.SearXNGBaseURL)
+			if err != nil || parsed.Host == "" || parsed.User != nil ||
+				(parsed.Scheme != "http" && parsed.Scheme != "https") {
+				problems = append(problems, errors.New(
+					"SEARXNG_BASE_URL must be an HTTP(S) origin without credentials when discovery is enabled",
+				))
+			}
+		}
 	}
 	return errors.Join(problems...)
 }

@@ -236,6 +236,11 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 		w.cfg.HistoryEntries,
 	)
 	if err == nil {
+		if w.sourceSvc == nil {
+			err = errors.New("source intelligence service is unavailable")
+		}
+	}
+	if err == nil {
 		var prepared source.PrepareIssueResult
 		prepared, err = w.sourceSvc.PrepareIssue(ctx, claim.Issue.Newsletter, claim.Issue.ID)
 		if err == nil {

@@ -32,6 +32,9 @@ func (s *Server) handleControl(
 			"csrfToken":    s.csrfToken(current.SessionID),
 			"site":         s.sitePayload(site),
 			"primaryEmail": current.Account.PrimaryEmail,
+			"capabilities": map[string]bool{
+				"sourceDiscovery": s.cfg.SourceDiscovery,
+			},
 		})
 		return
 	}
@@ -198,6 +201,7 @@ func (s *Server) createNewsletter(
 		current.Account.ID,
 		input,
 		s.cfg.MaxNewsletters,
+		s.cfg.DailyAccountLimit,
 	)
 	if err != nil {
 		writeStoreError(response, err)
@@ -232,9 +236,20 @@ func (s *Server) updateNewsletter(
 		return
 	}
 	summary, _ := s.store.GetSourceSummary(request.Context(), newsletterID)
+	catalog, err := s.store.ListSourceCatalog(
+		request.Context(),
+		current.Account.ID,
+		newsletterID,
+		50,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]any{
 		"newsletter":    newsletterPayload(record, current.Account.PrimaryEmail),
 		"sourceSummary": summary,
+		"sourceCatalog": catalog,
 	})
 }
 
@@ -275,11 +290,22 @@ func (s *Server) newsletterDetail(
 		})
 	}
 	summary, _ := s.store.GetSourceSummary(request.Context(), newsletterID)
+	catalog, err := s.store.ListSourceCatalog(
+		request.Context(),
+		current.Account.ID,
+		newsletterID,
+		50,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]any{
 		"csrfToken":        s.csrfToken(current.SessionID),
 		"resendConfigured": s.cfg.ResendConfigured,
 		"newsletter":       newsletterPayload(record, current.Account.PrimaryEmail),
 		"sourceSummary":    summary,
+		"sourceCatalog":    catalog,
 		"issues":           issues,
 		"newsletters":      sidebar,
 	})
@@ -476,15 +502,19 @@ func (s *Server) decodeNewsletterInput(
 		Sources              []domain.SourceDefinition `json:"sources"`
 		ScheduleTime         string                    `json:"scheduleTime"`
 		TimeZone             string                    `json:"timeZone"`
-		Active               bool                      `json:"active"`
-		EmailEnabled         bool                      `json:"emailEnabled"`
-		AIExplorationEnabled bool                      `json:"aiExplorationEnabled"`
-		SiteVisible          bool                      `json:"siteVisible"`
+		Active               *bool                     `json:"active"`
+		EmailEnabled         *bool                     `json:"emailEnabled"`
+		AIExplorationEnabled *bool                     `json:"aiExplorationEnabled"`
+		SiteVisible          *bool                     `json:"siteVisible"`
 	}
 	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 		return store.NewsletterInput{}, false
 	}
-	hour, minute, err := parseScheduleTime(body.ScheduleTime)
+	scheduleTime := body.ScheduleTime
+	if scheduleTime == "" {
+		scheduleTime = "08:00"
+	}
+	hour, minute, err := parseScheduleTime(scheduleTime)
 	if err != nil {
 		writeProblem(response, http.StatusBadRequest, "invalid_schedule", err.Error())
 		return store.NewsletterInput{}, false
@@ -493,14 +523,23 @@ func (s *Server) decodeNewsletterInput(
 	if mode == "" && len(body.Sources) > 0 {
 		mode = "provided"
 	}
+	active := true
+	if body.Active != nil {
+		active = *body.Active
+	}
 	return store.NewsletterInput{
 		Name: body.Name, Topic: body.Topic, LearnerLevel: body.LearnerLevel,
 		LearnerGoal: body.LearnerGoal, LessonMinutes: body.LessonMinutes,
 		SourceMode: domain.SourceMode(mode), Sources: body.Sources,
 		ScheduleHour: hour, ScheduleMinute: minute,
-		TimeZone: body.TimeZone, Active: body.Active, EmailEnabled: body.EmailEnabled,
-		AIExplorationEnabled: body.AIExplorationEnabled, SiteVisible: body.SiteVisible,
+		TimeZone: body.TimeZone, Active: active, EmailEnabled: boolValue(body.EmailEnabled),
+		AIExplorationEnabled: boolValue(body.AIExplorationEnabled),
+		SiteVisible:          boolValue(body.SiteVisible),
 	}, true
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
 }
 
 func newsletterPayload(

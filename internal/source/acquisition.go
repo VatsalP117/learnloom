@@ -250,22 +250,3 @@ func deduplicate(items []domain.SourceItem) []domain.SourceItem {
 	}
 	return result
 }
-
-func (a *Acquisition) resolveKind(ctx context.Context, rawURL string) domain.SourceKind {
-	result, err := doHTTP(ctx, a.Client, rawURL, 4096,
-		"application/atom+xml, application/rss+xml, application/xml, text/xml, application/feed+json, application/json, text/html, text/plain;q=0.9",
-		"", "")
-	if err != nil {
-		return domain.SourceKindHTML
-	}
-	return detectKind(result.ContentType, result.Body)
-}
-
-func (a *Acquisition) findAutoFeed(ctx context.Context, rawURL string) (string, error) {
-	result, err := doHTTP(ctx, a.Client, rawURL, 65536,
-		"text/html;q=1.0", "", "")
-	if err != nil {
-		return "", err
-	}
-	return findFeedAutoDiscovery(string(result.Body), result.FinalURL), nil
-}

@@ -139,6 +139,11 @@ function NewsletterDetail({ newsletterId }) {
                     latestIssue={latestIssue}
                     active={newsletter.active}
                   />
+                  <SourceCatalogCard
+                    mode={newsletter.sourceMode}
+                    summary={snapshot.sourceSummary}
+                    sources={snapshot.sourceCatalog ?? []}
+                  />
                   <BlueprintCard newsletter={newsletter} />
                   <DeliveryCard
                     newsletter={newsletter}
@@ -161,7 +166,7 @@ function NewsletterDetail({ newsletterId }) {
                     onSaveSiteVisibility={(visible) =>
                       submit(
                         `/api/newsletters/${encodeURIComponent(newsletter.id)}/site`,
-                        { visible: String(visible) },
+                        { visible },
                         visible
                           ? "This learning stream will appear on your public site."
                           : "This learning stream is hidden from your public site.",
@@ -281,6 +286,57 @@ function PipelineCard({ latestIssue, active }) {
           {latestIssue.error ?? "Generation failed. Queue a new run to retry."}
         </div>
       ) : null}
+    </article>
+  );
+}
+
+function SourceCatalogCard({ mode, summary, sources }) {
+  const modeLabel = {
+    discovered: "Find sources for me",
+    provided: "Provided sources only",
+    hybrid: "Provided + discovered",
+  }[mode] ?? mode;
+
+  return (
+    <article className="detail-card source-catalog-card">
+      <div className="detail-card-heading">
+        <span>Source Intelligence</span>
+        <span className="blueprint-meta">{modeLabel}</span>
+      </div>
+      <div className="source-summary-row">
+        <span>{summary?.provided ?? 0} provided</span>
+        <span>{summary?.discovered ?? 0} discovered</span>
+        <span>{summary?.healthy ?? 0} ready</span>
+        {(summary?.needsAttention ?? 0) > 0
+          ? <span className="needs-attention">{summary.needsAttention} need attention</span>
+          : null}
+      </div>
+      {sources.length ? (
+        <div className="source-catalog-list">
+          {sources.map((source) => (
+            <div className="source-catalog-item" key={source.id}>
+              <span className={`source-health ${source.health}`} aria-label={source.health} />
+              <div>
+                <strong>{source.displayName}</strong>
+                <small>
+                  <span className={`source-origin ${source.origin}`}>{source.origin}</span>
+                  {source.kind || source.scope}
+                  {source.discoveryReason ? ` · ${source.discoveryReason}` : ""}
+                  {source.state !== "active" ? ` · ${source.state}` : ""}
+                </small>
+                {source.error ? <em>{source.error}</em> : null}
+              </div>
+              <a href={source.canonicalUrl} target="_blank" rel="noreferrer" aria-label={`Open ${source.displayName}`}>
+                <ExternalLink size={14} />
+              </a>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="source-catalog-empty">
+          Sources will appear here after the first discovery run.
+        </p>
+      )}
     </article>
   );
 }

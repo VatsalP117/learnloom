@@ -4,6 +4,8 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+
+	"github.com/VatsalP117/learnloom/internal/domain"
 )
 
 func TestPublicAddressPolicy(t *testing.T) {
@@ -127,5 +129,12 @@ func TestDetectKind(t *testing.T) {
 	}
 	if got := detectKind("text/html", []byte(`{"version": "https://jsonfeed.org/version/1.1"`)); got != "json_feed" {
 		t.Fatalf("expected json_feed, got: %s", got)
+	}
+}
+
+func TestDetectKindAtomWithXMLDeclaration(t *testing.T) {
+	body := []byte(`<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`)
+	if got := detectKind("application/xml", body); got != domain.SourceKindAtom {
+		t.Fatalf("detectKind()=%q, want %q", got, domain.SourceKindAtom)
 	}
 }

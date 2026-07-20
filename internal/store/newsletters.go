@@ -50,6 +50,7 @@ func (s *Store) CreateNewsletter(
 	accountID string,
 	input NewsletterInput,
 	maximumPerAccount int,
+	dailyAccountLimit int,
 ) (CreateNewsletterResult, error) {
 	if input.Name == "" || input.LearnerLevel == "" || input.LearnerGoal == "" || input.LessonMinutes == 0 {
 		input = applyCreateDefaults(input)
@@ -66,7 +67,7 @@ func (s *Store) CreateNewsletter(
 	if err != nil {
 		return CreateNewsletterResult{}, err
 	}
-	sources, _ := json.Marshal(normalized.Sources)
+	sources, _ := json.Marshal(compatibilitySources(normalized.Sources))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return CreateNewsletterResult{}, err
@@ -165,8 +166,10 @@ func (s *Store) CreateNewsletter(
 	`, accountID, now).Scan(&todayCount); err != nil {
 		return CreateNewsletterResult{}, fmt.Errorf("check daily Issue quota: %w", err)
 	}
-	dailyLimit := 5
-	if todayCount >= dailyLimit {
+	if dailyAccountLimit < 1 {
+		dailyAccountLimit = 5
+	}
+	if todayCount >= dailyAccountLimit {
 		return CreateNewsletterResult{}, ErrQuotaExceeded
 	}
 
@@ -249,7 +252,7 @@ func (s *Store) UpdateNewsletter(
 	if err != nil {
 		return NewsletterRecord{}, err
 	}
-	sources, _ := json.Marshal(normalized.Sources)
+	sources, _ := json.Marshal(compatibilitySources(normalized.Sources))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return NewsletterRecord{}, err
@@ -281,6 +284,17 @@ func (s *Store) UpdateNewsletter(
 	`, newsletterID); err != nil {
 		return NewsletterRecord{}, fmt.Errorf("disable source specs: %w", err)
 	}
+	discoveredState := domain.SourceStateActive
+	if normalized.SourceMode == domain.SourceModeProvided {
+		discoveredState = domain.SourceStateDisabled
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE source_specs SET state = $2, updated_at = now()
+		WHERE newsletter_id = $1 AND origin = 'discovered'
+		  AND state IN ('active', 'disabled')
+	`, newsletterID, discoveredState); err != nil {
+		return NewsletterRecord{}, fmt.Errorf("reconcile discovered source specs: %w", err)
+	}
 
 	now := time.Now().UTC()
 	for _, source := range normalized.Sources {
@@ -302,13 +316,18 @@ func (s *Store) UpdateNewsletter(
 			WHERE newsletter_id = $1 AND canonical_url = $2 AND origin = 'provided'
 		`, newsletterID, source.URL).Scan(&existingID)
 		if err == nil {
-			_, err = tx.Exec(ctx, `
+			if _, err := tx.Exec(ctx, `
 				UPDATE source_specs SET
-					state = 'active', display_name = $3, input_url = $4,
-					scope = $5, kind = $6, item_limit = $7, updated_at = $8
+					state = 'active', display_name = $2, input_url = $3,
+					scope = $4, kind = $5, item_limit = $6, updated_at = $7
 				WHERE id = $1
-			`, existingID, source.Name, source.URL, scope, kind, source.Limit, now)
+			`, existingID, source.Name, source.URL, scope, kind, source.Limit, now); err != nil {
+				return NewsletterRecord{}, fmt.Errorf("update source spec: %w", err)
+			}
 			continue
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return NewsletterRecord{}, fmt.Errorf("find source spec: %w", err)
 		}
 		_, err = tx.Exec(ctx, `
 			INSERT INTO source_specs (
@@ -628,6 +647,13 @@ func applyCreateDefaults(input NewsletterInput) NewsletterInput {
 		}
 	}
 	return input
+}
+
+func compatibilitySources(sources []domain.SourceDefinition) []domain.SourceDefinition {
+	if sources == nil {
+		return []domain.SourceDefinition{}
+	}
+	return sources
 }
 
 func NextOccurrence(after time.Time, zone string, hour, minute int) (time.Time, error) {

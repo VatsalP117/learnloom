@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	readability "codeberg.org/readeck/go-readability/v2"
 	"github.com/VatsalP117/learnloom/internal/domain"
 )
 
@@ -34,6 +35,20 @@ type article struct {
 }
 
 func extractArticle(raw string, pageURL *url.URL) (string, string, string) {
+	if parsed, err := readability.FromReader(strings.NewReader(raw), pageURL); err == nil {
+		var rendered strings.Builder
+		if err := parsed.RenderText(&rendered); err == nil {
+			text := strings.TrimSpace(rendered.String())
+			if text != "" {
+				return cleanText(text), resolveCanonicalURL(raw, pageURL),
+					truncateRunes(cleanText(parsed.Byline()), 300)
+			}
+		}
+	}
+	return extractArticleFallback(raw, pageURL)
+}
+
+func extractArticleFallback(raw string, pageURL *url.URL) (string, string, string) {
 	primary := firstCapture(articleBody, raw)
 	if primary == "" {
 		primary = firstCapture(mainBody, raw)
@@ -99,12 +114,12 @@ func detectKind(contentType string, body []byte) domain.SourceKind {
 		return domain.SourceKindJSONFeed
 	}
 	bodyStr := string(body)
-	if strings.HasPrefix(strings.TrimSpace(bodyStr), "<?xml") ||
-		strings.Contains(strings.ToLower(bodyStr[:min(len(bodyStr), 200)]), "<rss") {
-		return domain.SourceKindRSS
-	}
-	if strings.Contains(strings.ToLower(bodyStr[:min(len(bodyStr), 200)]), "<feed") {
+	prefix := strings.ToLower(bodyStr[:min(len(bodyStr), 500)])
+	if strings.Contains(prefix, "<feed") {
 		return domain.SourceKindAtom
+	}
+	if strings.Contains(prefix, "<rss") || strings.Contains(prefix, "<rdf:rdf") {
+		return domain.SourceKindRSS
 	}
 	if strings.Contains(strings.TrimSpace(bodyStr[:min(len(bodyStr), 50)]), `"version"`) {
 		return domain.SourceKindJSONFeed
