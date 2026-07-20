@@ -126,53 +126,17 @@ does not permit an unencrypted public Postgres or S3 endpoint. If Postgres or
 object storage is moved outside the private Compose network, use TLS and remove
 that override.
 
-## 5. Add Dokploy domains
+## 5. Route the Compose service
 
-In the Compose service's **Domains** tab, add all four routes to service
-`web`, container port `3000`, path `/`, internal path `/`, with Strip Path off:
+The checked-in Compose file configures Traefik labels for the apex, `www`,
+`app`, and valid first-level Personal Site subdomains. Do not add the same
+hosts in Dokploy's **Domains** tab: some Dokploy installations deploy Compose
+services through Docker Swarm, which reads `deploy.labels` rather than the
+ordinary labels injected by that UI.
 
-| Host | HTTPS |
-| --- | --- |
-| `learnloom.blog` | On |
-| `www.learnloom.blog` | On |
-| `app.learnloom.blog` | On |
-| `*.learnloom.blog` | On |
-
-Select the uploaded matching certificate for the apex and wildcard routes, or
-follow the certificate selection behavior shown by the installed Dokploy
-version. For an uploaded Cloudflare Origin CA certificate, Dokploy commonly
-uses certificate provider **None** and lets Traefik select the matching custom
-certificate.
-
-Click **Preview Compose** before deployment. Verify that Dokploy:
-
-- attaches only `web` to its ingress network;
-- routes every hostname above to `web:3000`;
-- renders the wildcard as a wildcard/host-regexp rule, not the literal string
-  `*.learnloom.blog`;
-- does not publish Postgres, MinIO, SearXNG, Valkey, or port `9090`.
-
-Dokploy requires a redeploy after changing a Docker Compose domain.
-
-If the installed Dokploy version renders the wildcard as a literal `Host`
-rule, do not deploy that rule. Keep the three exact hosts in the Domains UI
-and add a wildcard router in Dokploy's Traefik File Editor, using the generated
-web service URL shown in Preview Compose:
-
-```yaml
-http:
-  routers:
-    learnloom-personal-sites:
-      rule: HostRegexp(`[a-z][a-z0-9-]{2,29}\.learnloom\.blog`)
-      entryPoints: [websecure]
-      service: learnloom-web
-      tls: {}
-  services:
-    learnloom-web:
-      loadBalancer:
-        servers:
-          - url: http://REPLACE_WITH_DOKPLOY_WEB_SERVICE:3000
-```
+Click **Preview Compose** before deployment. Verify that Dokploy attaches only
+`web` to its ingress network, preserves the `learnloom-*` Traefik labels, and
+does not publish Postgres, MinIO, SearXNG, Valkey, or port `9090`.
 
 The application performs the stricter final username and reserved-name checks.
 The custom wildcard certificate must already be loaded into Traefik.
