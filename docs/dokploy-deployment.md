@@ -188,9 +188,9 @@ Click **Deploy** and watch the logs in this order:
 5. `worker` logs its metrics listener and begins polling.
 6. `searxng` and `searxng-valkey` remain healthy/running.
 
-If Dokploy reports a build failure for the remote MinIO source context, build
-and push that pinned image once, then set `MINIO_IMAGE` to its registry name.
-Do not replace it with an unpinned `latest` image.
+MinIO uses the official pinned image `minio/minio:RELEASE.2025-09-07T16-13-09Z`.
+Do not replace it with an unpinned `latest` image. Set `MINIO_IMAGE` only when
+using an approved private mirror of that exact release.
 
 ## 7. Verify the release
 
