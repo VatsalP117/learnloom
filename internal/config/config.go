@@ -12,17 +12,18 @@ import (
 )
 
 type Config struct {
-	Environment        string
-	LogLevel           string
-	HTTP               HTTP
-	Database           Database
-	ObjectStore        ObjectStore
-	Model              Model
-	Clerk              Clerk
-	Resend             Resend
-	Worker             Worker
-	Limits             Limits
-	SourceIntelligence SourceIntelligence
+	Environment                  string
+	LogLevel                     string
+	AllowInsecurePrivateServices bool
+	HTTP                         HTTP
+	Database                     Database
+	ObjectStore                  ObjectStore
+	Model                        Model
+	Clerk                        Clerk
+	Resend                       Resend
+	Worker                       Worker
+	Limits                       Limits
+	SourceIntelligence           SourceIntelligence
 }
 
 type SourceIntelligence struct {
@@ -116,6 +117,10 @@ func Load() (Config, error) {
 	cfg := Config{
 		Environment: env("LEARNLOOM_ENV", "development"),
 		LogLevel:    env("LOG_LEVEL", "info"),
+		AllowInsecurePrivateServices: envBool(
+			"ALLOW_INSECURE_PRIVATE_SERVICES",
+			false,
+		),
 		HTTP: HTTP{
 			Address:         env("HTTP_ADDR", ":3000"),
 			RootDomain:      strings.ToLower(env("LEARNLOOM_ROOT_DOMAIN", "learnloom.blog")),
@@ -260,14 +265,18 @@ func (c Config) ValidateFor(role string) error {
 		problems = append(problems, errors.New("DATABASE_URL must be a Postgres URL"))
 	} else if c.Environment == "production" {
 		sslMode := strings.ToLower(databaseURL.Query().Get("sslmode"))
-		if sslMode != "require" && sslMode != "verify-ca" && sslMode != "verify-full" {
+		encrypted := sslMode == "require" || sslMode == "verify-ca" || sslMode == "verify-full"
+		privateException := c.AllowInsecurePrivateServices && isPrivateServiceHost(databaseURL.Hostname())
+		if !encrypted && !privateException {
 			problems = append(problems, errors.New("DATABASE_URL must require TLS in production"))
 		}
 	}
 	if c.Environment == "production" && c.ObjectStore.Endpoint != "" {
 		endpoint, err := url.Parse(c.ObjectStore.Endpoint)
-		if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" ||
-			endpoint.User != nil {
+		privateException := err == nil && c.AllowInsecurePrivateServices &&
+			endpoint.Scheme == "http" && isPrivateServiceHost(endpoint.Hostname())
+		if err != nil || endpoint.Host == "" || endpoint.User != nil ||
+			(endpoint.Scheme != "https" && !privateException) {
 			problems = append(problems, errors.New("S3_ENDPOINT must use HTTPS in production"))
 		}
 	}
@@ -375,4 +384,16 @@ func envDuration(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return value
+}
+
+func isPrivateServiceHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || (!strings.Contains(host, ".") && !strings.Contains(host, ":")) {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
