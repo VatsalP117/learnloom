@@ -5,7 +5,9 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web ./web
 ARG VITE_CLERK_PUBLISHABLE_KEY
+ARG VITE_LEARNLOOM_ROOT_DOMAIN=learnloom.blog
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_LEARNLOOM_ROOT_DOMAIN=$VITE_LEARNLOOM_ROOT_DOMAIN
 RUN npm run build
 
 FROM golang:1.25.12-alpine AS service

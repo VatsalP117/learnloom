@@ -19,7 +19,8 @@ Postgres is the system of record. S3-compatible object storage owns immutable
 Dossier artifacts. Clerk owns identity, and Resend is the email boundary.
 
 See [architecture](docs/architecture.md), [architecture decisions](docs/adr),
-and the [production runbook](docs/operations.md).
+the [production runbook](docs/operations.md), and the
+[Dokploy deployment guide](docs/dokploy-deployment.md).
 
 ## Development
 

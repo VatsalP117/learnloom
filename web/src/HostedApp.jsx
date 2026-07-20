@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
 import { apiJSON, configureAPI, setCSRFToken } from "./api.js";
+import { personalSiteHost } from "./config.js";
 
 export default function HostedApp() {
   const path = window.location.pathname;
@@ -89,7 +90,7 @@ export function SiteControl({ site, onUpdate }) {
     <aside className="site-control" aria-label="Public site controls">
       <div>
         <span className={`site-status ${site.visibility}`}>{site.visibility}</span>
-        <strong>{site.username}.learnloom.blog</strong>
+        <strong>{personalSiteHost(site.username)}</strong>
       </div>
       <div className="site-control-actions">
         {site.visibility === "public" && site.url ? (
@@ -166,7 +167,9 @@ function ClaimUsername({ onClaim }) {
             <span>Username</span>
             <input required minLength={3} maxLength={30} pattern="[a-zA-Z][a-zA-Z0-9-]{1,28}[a-zA-Z0-9]" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
           </label>
-          <div className="subdomain-preview">{normalized || "yourname"}.learnloom.blog</div>
+          <div className="subdomain-preview">
+            {personalSiteHost(normalized || "yourname")}
+          </div>
           {availability !== null ? (
             <div className={availability ? "username-available" : "username-unavailable"}>
               {availability ? "Available" : "Unavailable"}

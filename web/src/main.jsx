@@ -9,13 +9,14 @@ import HostedApp from "./HostedApp.jsx";
 import DemoHostedApp from "./DemoHostedApp.jsx";
 import MarketingLanding from "./MarketingLanding.jsx";
 import { demoMode } from "./api.js";
+import { rootDomain } from "./config.js";
 import "./styles.css";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const hostname = window.location.hostname.toLowerCase();
 const isMarketingPage =
-  hostname === "learnloom.blog" ||
-  hostname === "www.learnloom.blog" ||
+  hostname === rootDomain ||
+  hostname === `www.${rootDomain}` ||
   window.location.pathname === "/marketing";
 
 createRoot(document.getElementById("root")).render(

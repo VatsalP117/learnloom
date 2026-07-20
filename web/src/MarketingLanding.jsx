@@ -13,9 +13,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect } from "react";
+import { appOrigin, personalSiteHost } from "./config.js";
 import "./marketing.css";
-
-const APP_ORIGIN = "https://app.learnloom.blog";
 
 export default function MarketingLanding() {
   useEffect(() => {
@@ -35,8 +34,8 @@ export default function MarketingLanding() {
           <a href="#dossiers">Dossiers</a>
         </nav>
         <div className="ll-nav-actions">
-          <a className="ll-sign-in" href={`${APP_ORIGIN}/sign-in`}>Sign in</a>
-          <a className="ll-button ll-button-dark ll-button-small" href={`${APP_ORIGIN}/sign-up`}>
+          <a className="ll-sign-in" href={`${appOrigin}/sign-in`}>Sign in</a>
+          <a className="ll-button ll-button-dark ll-button-small" href={`${appOrigin}/sign-up`}>
             Start learning <ArrowRight size={15} />
           </a>
           <button className="ll-menu" type="button" aria-label="Open navigation">
@@ -60,7 +59,7 @@ export default function MarketingLanding() {
               Dossiers—then publishes them to a personal corner of the web.
             </p>
             <div className="ll-hero-actions">
-              <a className="ll-button ll-button-dark" href={`${APP_ORIGIN}/sign-up`}>
+              <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
                 Claim your learning home <ArrowRight size={17} />
               </a>
               <a className="ll-text-link" href="#product">
@@ -71,7 +70,7 @@ export default function MarketingLanding() {
 
           <div className="ll-address-pill" aria-label="Example personal Learnloom address">
             <span className="ll-address-status"><Globe2 size={15} /></span>
-            <span><strong>maya</strong>.learnloom.blog</span>
+            <span>{personalSiteHost("maya")}</span>
             <span className="ll-live-dot"><i /> Public</span>
           </div>
 
@@ -92,7 +91,7 @@ export default function MarketingLanding() {
             <div className="ll-domain-window">
               <div className="ll-browser-bar">
                 <span className="ll-browser-dots"><i /><i /><i /></span>
-                <div><Globe2 size={13} /><strong>maya</strong>.learnloom.blog</div>
+                <div><Globe2 size={13} />{personalSiteHost("maya")}</div>
                 <span />
               </div>
               <div className="ll-public-site">
@@ -165,7 +164,7 @@ export default function MarketingLanding() {
               <li><Check size={17} /> New ideas connect to your Learning History</li>
               <li><Check size={17} /> Questions turn reading into recall</li>
             </ul>
-            <a className="ll-text-link ll-text-link-dark" href={`${APP_ORIGIN}/sign-up`}>
+            <a className="ll-text-link ll-text-link-dark" href={`${appOrigin}/sign-up`}>
               Create your first Dossier <ArrowRight size={16} />
             </a>
           </div>
@@ -186,7 +185,7 @@ export default function MarketingLanding() {
               <p>Urban Systems · Issue 14</p>
               <h3>Why cities remember the shape of their rivers</h3>
               <div className="ll-mail-lines"><i /><i /><i /><i /></div>
-              <a>Continue reading on maya.learnloom.blog <ArrowRight size={14} /></a>
+              <a>Continue reading on {personalSiteHost("maya")} <ArrowRight size={14} /></a>
             </div>
           </div>
           <div className="ll-email-copy">
@@ -217,7 +216,7 @@ export default function MarketingLanding() {
             <p className="ll-eyebrow">Your learning home is waiting</p>
             <h2>Make curiosity<br /><em>a place you return to.</em></h2>
             <p>Claim your personal Learnloom address and publish your first Dossier.</p>
-            <a className="ll-button ll-button-dark" href={`${APP_ORIGIN}/sign-up`}>
+            <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
               Get started with Learnloom <ArrowRight size={17} />
             </a>
           </div>
@@ -231,7 +230,7 @@ export default function MarketingLanding() {
         </div>
         <div className="ll-footer-links">
           <div><strong>Product</strong><a href="#product">Personal sites</a><a href="#dossiers">Dossiers</a><a href="#how-it-works">How it works</a></div>
-          <div><strong>Account</strong><a href={`${APP_ORIGIN}/sign-in`}>Sign in</a><a href={`${APP_ORIGIN}/sign-up`}>Get started</a></div>
+          <div><strong>Account</strong><a href={`${appOrigin}/sign-in`}>Sign in</a><a href={`${appOrigin}/sign-up`}>Get started</a></div>
         </div>
         <div className="ll-footer-bottom">
           <span>© 2026 Learnloom</span>

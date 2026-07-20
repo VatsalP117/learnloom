@@ -7,7 +7,10 @@
 3. Configure a verified Resend sender and OpenAI-compatible model endpoint.
 4. Run the immutable image as `migrate`; only then roll out `web` and `worker`.
 5. Route apex, app, and wildcard learner DNS through TLS to `web`.
-6. Verify `/health/live`, `/health/ready`, and `/metrics` before shifting traffic.
+6. Verify `/healthz`, `/readyz`, and `/metrics` before shifting traffic.
+
+For the self-contained VM deployment, follow the
+[Dokploy deployment guide](dokploy-deployment.md).
 
 Run one migration job at a time. The migration role takes a Postgres advisory
 lock and applies embedded migrations transactionally.

@@ -49,6 +49,30 @@ func TestValidateForRequiresEncryptedProductionDependencies(t *testing.T) {
 	}
 }
 
+func TestValidateForAllowsExplicitPrivateProductionDependencies(t *testing.T) {
+	cfg := validWorkerConfig()
+	cfg.Environment = "production"
+	cfg.AllowInsecurePrivateServices = true
+	cfg.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
+	cfg.ObjectStore.Endpoint = "http://minio:9000"
+	if err := cfg.ValidateFor("worker"); err != nil {
+		t.Fatalf("private production dependencies should be accepted with explicit opt-in: %v", err)
+	}
+}
+
+func TestValidateForDoesNotRelaxPublicProductionDependencies(t *testing.T) {
+	cfg := validWorkerConfig()
+	cfg.Environment = "production"
+	cfg.AllowInsecurePrivateServices = true
+	cfg.Database.URL = "postgres://database.example/learnloom?sslmode=disable"
+	cfg.ObjectStore.Endpoint = "http://objects.example"
+	err := cfg.ValidateFor("worker")
+	if err == nil || !strings.Contains(err.Error(), "TLS in production") ||
+		!strings.Contains(err.Error(), "S3_ENDPOINT") {
+		t.Fatalf("public dependencies must remain encrypted, got %v", err)
+	}
+}
+
 func validWorkerConfig() Config {
 	return Config{
 		Environment: "development",
