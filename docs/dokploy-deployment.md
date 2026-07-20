@@ -86,9 +86,11 @@ In Clerk:
    verification and certificate deployment.
 3. Copy the production `pk_live_...` value into both
    `VITE_CLERK_PUBLISHABLE_KEY` and `CLERK_PUBLISHABLE_KEY`.
-4. Copy the production secret key, PEM JWT public key, and exact Frontend API
-   HTTPS origin into `CLERK_SECRET_KEY`, `CLERK_JWT_KEY`, and
-   `CLERK_FRONTEND_ORIGIN`.
+4. Copy the production secret key and exact Frontend API HTTPS origin into
+   `CLERK_SECRET_KEY` and `CLERK_FRONTEND_ORIGIN`. Leave `CLERK_JWT_KEY`
+   empty: the server SDK retrieves Clerk's current signing key automatically,
+   so key rotation cannot break sign-in. A PEM public key is supported only as
+   an optional override, with line breaks encoded as literal `\n` characters.
 5. Restrict Clerk's allowed subdomains/origins to `app.learnloom.blog`. Public
    Personal Sites do not run authenticated application code.
 6. Add a webhook endpoint at

@@ -99,7 +99,9 @@ services:
       CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:?set CLERK_PUBLISHABLE_KEY}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?set CLERK_SECRET_KEY}
-      CLERK_JWT_KEY: ${CLERK_JWT_KEY:?set CLERK_JWT_KEY}
+      # Optional: without this override, Clerk's server SDK retrieves the
+      # current signing key safely from Clerk and handles key rotation.
+      CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
       CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:?set CLERK_WEBHOOK_SECRET}
       CLERK_FRONTEND_ORIGIN: ${CLERK_FRONTEND_ORIGIN:?set CLERK_FRONTEND_ORIGIN}
       SOURCE_DISCOVERY_ENABLED: ${SOURCE_DISCOVERY_ENABLED:-true}

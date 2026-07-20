@@ -240,9 +240,6 @@ func (c Config) ValidateFor(role string) error {
 			problems = append(problems, fmt.Errorf("%s is required", name))
 		}
 	}
-	if role == "web" && c.Environment == "production" && strings.TrimSpace(c.Clerk.JWTKey) == "" {
-		problems = append(problems, errors.New("CLERK_JWT_KEY is required in production"))
-	}
 	if role == "web" && c.Environment == "production" && strings.TrimSpace(c.Clerk.FrontendOrigin) == "" {
 		problems = append(problems, errors.New("CLERK_FRONTEND_ORIGIN is required in production"))
 	}

@@ -44,6 +44,33 @@ func TestValidateForRequiresHTTPSModel(t *testing.T) {
 	}
 }
 
+func TestValidateForAllowsProductionWebWithoutStaticClerkJWTKey(t *testing.T) {
+	cfg := Config{
+		Environment:                  "production",
+		AllowInsecurePrivateServices: true,
+		Database: Database{
+			URL:            "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable",
+			MaxConnections: 4,
+		},
+		ObjectStore: ObjectStore{
+			Bucket: "artifacts", Endpoint: "http://minio:9000",
+			AccessKeyID: "key", SecretAccessKey: "secret",
+		},
+		HTTP: HTTP{
+			RootDomain: "learnloom.blog", AppOrigin: "https://app.learnloom.blog",
+			CSRFSecret: "a-32-character-production-csrf-secret",
+		},
+		Clerk: Clerk{
+			SecretKey: "sk_live_example", PublishableKey: "pk_live_example",
+			WebhookSecret: "whsec_example", FrontendOrigin: "https://clerk.learnloom.blog",
+		},
+	}
+
+	if err := cfg.ValidateFor("web"); err != nil {
+		t.Fatalf("production web config without static Clerk JWT key failed: %v", err)
+	}
+}
+
 func TestValidateForAcceptsWorkerRole(t *testing.T) {
 	cfg := validWorkerConfig()
 	if err := cfg.ValidateFor("worker"); err != nil {
