@@ -193,7 +193,7 @@ func (s *Server) createNewsletter(
 	if !ok {
 		return
 	}
-	record, err := s.store.CreateNewsletter(
+	result, err := s.store.CreateNewsletter(
 		request.Context(),
 		current.Account.ID,
 		input,
@@ -203,8 +203,11 @@ func (s *Server) createNewsletter(
 		writeStoreError(response, err)
 		return
 	}
+	summary, _ := s.store.GetSourceSummary(request.Context(), result.Newsletter.ID)
 	writeJSON(response, http.StatusCreated, map[string]any{
-		"newsletter": newsletterPayload(record, current.Account.PrimaryEmail),
+		"newsletter":    newsletterPayload(result.Newsletter, current.Account.PrimaryEmail),
+		"issue":         result.FirstIssue,
+		"sourceSummary": summary,
 	})
 }
 
@@ -228,8 +231,10 @@ func (s *Server) updateNewsletter(
 		writeStoreError(response, err)
 		return
 	}
+	summary, _ := s.store.GetSourceSummary(request.Context(), newsletterID)
 	writeJSON(response, http.StatusOK, map[string]any{
-		"newsletter": newsletterPayload(record, current.Account.PrimaryEmail),
+		"newsletter":    newsletterPayload(record, current.Account.PrimaryEmail),
+		"sourceSummary": summary,
 	})
 }
 
@@ -269,10 +274,12 @@ func (s *Server) newsletterDetail(
 			"id": item.ID, "name": item.Name, "active": item.Active,
 		})
 	}
+	summary, _ := s.store.GetSourceSummary(request.Context(), newsletterID)
 	writeJSON(response, http.StatusOK, map[string]any{
 		"csrfToken":        s.csrfToken(current.SessionID),
 		"resendConfigured": s.cfg.ResendConfigured,
 		"newsletter":       newsletterPayload(record, current.Account.PrimaryEmail),
+		"sourceSummary":    summary,
 		"issues":           issues,
 		"newsletters":      sidebar,
 	})
@@ -465,6 +472,7 @@ func (s *Server) decodeNewsletterInput(
 		LearnerLevel         string                    `json:"learnerLevel"`
 		LearnerGoal          string                    `json:"learnerGoal"`
 		LessonMinutes        int                       `json:"lessonMinutes"`
+		SourceMode           string                    `json:"sourceMode"`
 		Sources              []domain.SourceDefinition `json:"sources"`
 		ScheduleTime         string                    `json:"scheduleTime"`
 		TimeZone             string                    `json:"timeZone"`
@@ -481,10 +489,15 @@ func (s *Server) decodeNewsletterInput(
 		writeProblem(response, http.StatusBadRequest, "invalid_schedule", err.Error())
 		return store.NewsletterInput{}, false
 	}
+	mode := body.SourceMode
+	if mode == "" && len(body.Sources) > 0 {
+		mode = "provided"
+	}
 	return store.NewsletterInput{
 		Name: body.Name, Topic: body.Topic, LearnerLevel: body.LearnerLevel,
 		LearnerGoal: body.LearnerGoal, LessonMinutes: body.LessonMinutes,
-		Sources: body.Sources, ScheduleHour: hour, ScheduleMinute: minute,
+		SourceMode: domain.SourceMode(mode), Sources: body.Sources,
+		ScheduleHour: hour, ScheduleMinute: minute,
 		TimeZone: body.TimeZone, Active: body.Active, EmailEnabled: body.EmailEnabled,
 		AIExplorationEnabled: body.AIExplorationEnabled, SiteVisible: body.SiteVisible,
 	}, true
@@ -501,7 +514,8 @@ func newsletterPayload(
 	return map[string]any{
 		"id": record.ID, "name": record.Name, "topic": record.Topic,
 		"learnerLevel": record.LearnerLevel, "learnerGoal": record.LearnerGoal,
-		"lessonMinutes": record.LessonMinutes, "sources": record.Sources,
+		"lessonMinutes": record.LessonMinutes, "sourceMode": record.SourceMode,
+		"sources":      record.Sources,
 		"scheduleTime": fmt.Sprintf("%02d:%02d", record.ScheduleHour, record.ScheduleMinute),
 		"timeZone":     record.TimeZone, "active": record.Active,
 		"nextRunAt": record.NextRunAt, "emailEnabled": record.EmailEnabled,

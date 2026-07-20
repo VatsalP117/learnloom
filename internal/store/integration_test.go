@@ -65,6 +65,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		NewsletterInput{
 			Name: "Systems", Topic: "software systems", LearnerLevel: "experienced",
 			LearnerGoal: "build durable understanding", LessonMinutes: 15,
+			SourceMode: domain.SourceModeProvided,
 			Sources: []domain.SourceDefinition{{
 				Name: "Example", URL: "https://example.com/feed.xml", Limit: 5,
 			}},
@@ -76,13 +77,10 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetNewsletterActive(ctx, account.ID, newsletter.ID, false); err != nil {
+	if err := database.SetNewsletterActive(ctx, account.ID, newsletter.Newsletter.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	issue, err := database.EnqueueManualIssue(ctx, account.ID, newsletter.ID, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	issue := newsletter.FirstIssue
 	claim, err := database.ClaimNextIssue(
 		ctx,
 		time.Now().UTC(),
@@ -108,7 +106,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := database.LoadLearningHistory(ctx, newsletter.ID, 14)
+	history, err := database.LoadLearningHistory(ctx, newsletter.Newsletter.ID, 14)
 	if err != nil || len(history) != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
@@ -145,10 +143,10 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.GetNewsletter(ctx, other.ID, newsletter.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetNewsletter(ctx, other.ID, newsletter.Newsletter.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-Account Newsletter read was not denied: %v", err)
 	}
-	if _, err := database.EnqueueManualIssue(ctx, other.ID, newsletter.ID, 5); !errors.Is(err, ErrNotFound) {
+	if _, err := database.EnqueueManualIssue(ctx, other.ID, newsletter.Newsletter.ID, 5); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-Account Issue creation was not denied: %v", err)
 	}
 

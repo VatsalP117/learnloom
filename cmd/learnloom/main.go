@@ -169,6 +169,15 @@ func runWorker(
 	if err != nil {
 		return err
 	}
+	sourceSvc := source.NewService(
+		database,
+		acquisition,
+		source.ServiceConfig{
+			DiscoveryEnabled:   cfg.SourceIntelligence.DiscoveryEnabled,
+			MinUsableItems:     cfg.SourceIntelligence.MinUsableItems,
+			DefaultMaxStaleAge: cfg.SourceIntelligence.DefaultMaxStaleAge,
+		},
+	)
 	mailer, err := delivery.NewResend(delivery.Config{
 		APIKey: cfg.Resend.APIKey, From: cfg.Resend.From,
 		SubjectPrefix: cfg.Resend.SubjectPrefix,
@@ -181,6 +190,7 @@ func runWorker(
 		producer,
 		artifacts,
 		mailer,
+		sourceSvc,
 		execution.Config{
 			PollInterval:        cfg.Worker.PollInterval,
 			ClaimDuration:       cfg.Worker.ClaimDuration,

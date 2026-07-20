@@ -29,6 +29,7 @@ type NewsletterInput struct {
 	LearnerLevel         string
 	LearnerGoal          string
 	LessonMinutes        int
+	SourceMode           domain.SourceMode
 	Sources              []domain.SourceDefinition
 	ScheduleHour         int
 	ScheduleMinute       int
@@ -39,15 +40,23 @@ type NewsletterInput struct {
 	SiteVisible          bool
 }
 
+type CreateNewsletterResult struct {
+	Newsletter NewsletterRecord
+	FirstIssue domain.Issue
+}
+
 func (s *Store) CreateNewsletter(
 	ctx context.Context,
 	accountID string,
 	input NewsletterInput,
 	maximumPerAccount int,
-) (NewsletterRecord, error) {
+) (CreateNewsletterResult, error) {
+	if input.Name == "" || input.LearnerLevel == "" || input.LearnerGoal == "" || input.LessonMinutes == 0 {
+		input = applyCreateDefaults(input)
+	}
 	normalized, err := normalizeNewsletterInput(input)
 	if err != nil {
-		return NewsletterRecord{}, err
+		return CreateNewsletterResult{}, err
 	}
 	if maximumPerAccount < 1 {
 		maximumPerAccount = 10
@@ -55,12 +64,12 @@ func (s *Store) CreateNewsletter(
 	now := time.Now().UTC()
 	next, err := NextOccurrence(now, normalized.TimeZone, normalized.ScheduleHour, normalized.ScheduleMinute)
 	if err != nil {
-		return NewsletterRecord{}, err
+		return CreateNewsletterResult{}, err
 	}
 	sources, _ := json.Marshal(normalized.Sources)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return NewsletterRecord{}, err
+		return CreateNewsletterResult{}, err
 	}
 	defer rollback(tx)
 	var status domain.AccountStatus
@@ -69,57 +78,115 @@ func (s *Store) CreateNewsletter(
 		SELECT status FROM accounts WHERE id = $1 FOR UPDATE
 	`, accountID).Scan(&status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return NewsletterRecord{}, ErrForbidden
+			return CreateNewsletterResult{}, ErrForbidden
 		}
-		return NewsletterRecord{}, fmt.Errorf("inspect Account Newsletter quota: %w", err)
+		return CreateNewsletterResult{}, fmt.Errorf("inspect Account Newsletter quota: %w", err)
 	}
 	if status != domain.AccountActive {
-		return NewsletterRecord{}, ErrForbidden
+		return CreateNewsletterResult{}, ErrForbidden
 	}
 	if err := tx.QueryRow(
 		ctx,
 		"SELECT count(*) FROM newsletters WHERE owner_account_id = $1",
 		accountID,
 	).Scan(&count); err != nil {
-		return NewsletterRecord{}, fmt.Errorf("count Account Newsletters: %w", err)
+		return CreateNewsletterResult{}, fmt.Errorf("count Account Newsletters: %w", err)
 	}
 	if count >= maximumPerAccount {
-		return NewsletterRecord{}, ErrQuotaExceeded
+		return CreateNewsletterResult{}, ErrQuotaExceeded
 	}
 	publicSlug, err := allocateNewsletterSlug(ctx, tx, accountID, normalized.Name)
 	if err != nil {
-		return NewsletterRecord{}, err
+		return CreateNewsletterResult{}, err
 	}
 	id := uuid.New()
 	row := tx.QueryRow(ctx, `
 		INSERT INTO newsletters (
 			id, owner_account_id, name, topic, learner_level, learner_goal,
-			lesson_minutes, sources, schedule_hour, schedule_minute, time_zone,
-			active, next_run_at, email_enabled, ai_exploration_enabled,
+			lesson_minutes, source_mode, sources, schedule_hour, schedule_minute,
+			time_zone, active, next_run_at, email_enabled, ai_exploration_enabled,
 			public_slug, site_visible, created_at, updated_at
 		)
 		VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11,
-			$12, $13, $14, $15, $16, $17, $18, $18
+			$1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
+			$12, $13, $14, $15, $16, $17, $18, $19, $19
 		)
 		RETURNING id::text, owner_account_id::text, name, topic, learner_level,
-		          learner_goal, lesson_minutes, sources, schedule_hour,
+		          learner_goal, lesson_minutes, source_mode, sources, schedule_hour,
 		          schedule_minute, time_zone, active, next_run_at, email_enabled,
 		          ai_exploration_enabled, public_slug, site_visible, created_at,
 		          updated_at, 0, 0, 0
 	`, id, accountID, normalized.Name, normalized.Topic, normalized.LearnerLevel,
-		normalized.LearnerGoal, normalized.LessonMinutes, sources,
-		normalized.ScheduleHour, normalized.ScheduleMinute, normalized.TimeZone,
+		normalized.LearnerGoal, normalized.LessonMinutes, normalized.SourceMode,
+		sources, normalized.ScheduleHour, normalized.ScheduleMinute, normalized.TimeZone,
 		normalized.Active, next, normalized.EmailEnabled,
 		normalized.AIExplorationEnabled, publicSlug, normalized.SiteVisible, now)
 	record, err := scanNewsletterRecord(row)
 	if err != nil {
-		return NewsletterRecord{}, fmt.Errorf("create Newsletter: %w", err)
+		return CreateNewsletterResult{}, fmt.Errorf("create Newsletter: %w", err)
+	}
+
+	for index, source := range normalized.Sources {
+		scope := domain.SourceScopeExact
+		kind := (*string)(nil)
+		lowerURL := strings.ToLower(source.URL)
+		if strings.Contains(lowerURL, "/feed") || strings.Contains(lowerURL, "/rss") {
+			scope = domain.SourceScopeFeed
+			k := "rss"
+			kind = &k
+		} else if strings.Contains(lowerURL, "/atom") {
+			scope = domain.SourceScopeFeed
+			k := "atom"
+			kind = &k
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO source_specs (
+				id, newsletter_id, origin, state, display_name, input_url,
+				canonical_url, scope, kind, item_limit, created_at, updated_at
+			)
+			VALUES ($1, $2, 'provided', 'active', $3, $4, $5, $6, $7, $8, $9, $9)
+		`, uuid.New(), id, source.Name, source.URL, source.URL, scope, kind, source.Limit, now)
+		if err != nil {
+			return CreateNewsletterResult{}, fmt.Errorf("backfill source spec %d: %w", index+1, err)
+		}
+	}
+
+	issueID := uuid.New()
+	publicID := uuid.New()
+
+	var todayCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM issues i
+		JOIN newsletters n ON n.id = i.newsletter_id
+		WHERE n.owner_account_id = $1
+		  AND i.created_at >= date_trunc('day', $2 AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+		  AND i.status <> 'cancelled'
+	`, accountID, now).Scan(&todayCount); err != nil {
+		return CreateNewsletterResult{}, fmt.Errorf("check daily Issue quota: %w", err)
+	}
+	dailyLimit := 5
+	if todayCount >= dailyLimit {
+		return CreateNewsletterResult{}, ErrQuotaExceeded
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO issues (
+			id, newsletter_id, trigger, status, available_at, public_id,
+			publication_state, created_at
+		)
+		VALUES ($1, $2, 'manual', 'queued', $3, $4, 'published', $3)
+	`, issueID, id, now, publicID); err != nil {
+		return CreateNewsletterResult{}, fmt.Errorf("enqueue first Issue: %w", err)
+	}
+	issue, err := getIssueTx(ctx, tx, accountID, issueID.String())
+	if err != nil {
+		return CreateNewsletterResult{}, fmt.Errorf("load first Issue: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return NewsletterRecord{}, fmt.Errorf("commit Newsletter: %w", err)
+		return CreateNewsletterResult{}, fmt.Errorf("commit Newsletter: %w", err)
 	}
-	return record, nil
+	return CreateNewsletterResult{Newsletter: record, FirstIssue: issue}, nil
 }
 
 func (s *Store) ListNewsletters(
@@ -183,17 +250,22 @@ func (s *Store) UpdateNewsletter(
 		return NewsletterRecord{}, err
 	}
 	sources, _ := json.Marshal(normalized.Sources)
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return NewsletterRecord{}, err
+	}
+	defer rollback(tx)
+	tag, err := tx.Exec(ctx, `
 		UPDATE newsletters SET
 			name = $3, topic = $4, learner_level = $5, learner_goal = $6,
-			lesson_minutes = $7, sources = $8::jsonb, schedule_hour = $9,
-			schedule_minute = $10, time_zone = $11, active = $12,
-			next_run_at = $13, email_enabled = $14,
-			ai_exploration_enabled = $15, site_visible = $16, updated_at = now()
+			lesson_minutes = $7, source_mode = $8, sources = $9::jsonb, schedule_hour = $10,
+			schedule_minute = $11, time_zone = $12, active = $13,
+			next_run_at = $14, email_enabled = $15,
+			ai_exploration_enabled = $16, site_visible = $17, updated_at = now()
 		WHERE owner_account_id = $1 AND id = $2
 	`, accountID, newsletterID, normalized.Name, normalized.Topic,
 		normalized.LearnerLevel, normalized.LearnerGoal, normalized.LessonMinutes,
-		sources, normalized.ScheduleHour, normalized.ScheduleMinute,
+		normalized.SourceMode, sources, normalized.ScheduleHour, normalized.ScheduleMinute,
 		normalized.TimeZone, normalized.Active, next, normalized.EmailEnabled,
 		normalized.AIExplorationEnabled, normalized.SiteVisible)
 	if err != nil {
@@ -201,6 +273,58 @@ func (s *Store) UpdateNewsletter(
 	}
 	if tag.RowsAffected() == 0 {
 		return NewsletterRecord{}, ErrNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE source_specs SET state = 'disabled', updated_at = now()
+		WHERE newsletter_id = $1 AND origin = 'provided'
+	`, newsletterID); err != nil {
+		return NewsletterRecord{}, fmt.Errorf("disable source specs: %w", err)
+	}
+
+	now := time.Now().UTC()
+	for _, source := range normalized.Sources {
+		scope := domain.SourceScopeExact
+		kind := (*string)(nil)
+		lowerURL := strings.ToLower(source.URL)
+		if strings.Contains(lowerURL, "/feed") || strings.Contains(lowerURL, "/rss") {
+			scope = domain.SourceScopeFeed
+			k := "rss"
+			kind = &k
+		} else if strings.Contains(lowerURL, "/atom") {
+			scope = domain.SourceScopeFeed
+			k := "atom"
+			kind = &k
+		}
+		var existingID string
+		err := tx.QueryRow(ctx, `
+			SELECT id::text FROM source_specs
+			WHERE newsletter_id = $1 AND canonical_url = $2 AND origin = 'provided'
+		`, newsletterID, source.URL).Scan(&existingID)
+		if err == nil {
+			_, err = tx.Exec(ctx, `
+				UPDATE source_specs SET
+					state = 'active', display_name = $3, input_url = $4,
+					scope = $5, kind = $6, item_limit = $7, updated_at = $8
+				WHERE id = $1
+			`, existingID, source.Name, source.URL, scope, kind, source.Limit, now)
+			continue
+		}
+		_, err = tx.Exec(ctx, `
+			INSERT INTO source_specs (
+				id, newsletter_id, origin, state, display_name, input_url,
+				canonical_url, scope, kind, item_limit, created_at, updated_at
+			)
+			VALUES ($1, $2, 'provided', 'active', $3, $4, $5, $6, $7, $8, $9, $9)
+		`, uuid.New(), newsletterID, source.Name, source.URL,
+			source.URL, scope, kind, source.Limit, now)
+		if err != nil {
+			return NewsletterRecord{}, fmt.Errorf("insert source spec: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return NewsletterRecord{}, err
 	}
 	return s.GetNewsletter(ctx, accountID, newsletterID)
 }
@@ -349,8 +473,8 @@ func (s *Store) updateNewsletterBoolean(
 
 const newsletterSelect = `
 	SELECT n.id::text, n.owner_account_id::text, n.name, n.topic,
-	       n.learner_level, n.learner_goal, n.lesson_minutes, n.sources,
-	       n.schedule_hour, n.schedule_minute, n.time_zone, n.active,
+	       n.learner_level, n.learner_goal, n.lesson_minutes, n.source_mode,
+	       n.sources, n.schedule_hour, n.schedule_minute, n.time_zone, n.active,
 	       n.next_run_at, n.email_enabled, n.ai_exploration_enabled,
 	       n.public_slug, n.site_visible, n.created_at, n.updated_at,
 	       count(DISTINCT i.id)::int,
@@ -372,6 +496,7 @@ func scanNewsletterRecord(row scanner) (NewsletterRecord, error) {
 		&record.LearnerLevel,
 		&record.LearnerGoal,
 		&record.LessonMinutes,
+		&record.SourceMode,
 		&rawSources,
 		&record.ScheduleHour,
 		&record.ScheduleMinute,
@@ -391,7 +516,9 @@ func scanNewsletterRecord(row scanner) (NewsletterRecord, error) {
 	if err != nil {
 		return NewsletterRecord{}, err
 	}
-	if err := json.Unmarshal(rawSources, &record.Sources); err != nil {
+	if len(rawSources) == 0 || string(rawSources) == "null" {
+		record.Sources = nil
+	} else if err := json.Unmarshal(rawSources, &record.Sources); err != nil {
 		return NewsletterRecord{}, fmt.Errorf("decode Newsletter sources: %w", err)
 	}
 	return record, nil
@@ -425,8 +552,27 @@ func normalizeNewsletterInput(input NewsletterInput) (NewsletterInput, error) {
 	if _, err := time.LoadLocation(input.TimeZone); err != nil {
 		return NewsletterInput{}, errors.New("Newsletter timezone is invalid")
 	}
-	if len(input.Sources) == 0 || len(input.Sources) > 12 {
-		return NewsletterInput{}, errors.New("Newsletter requires 1 to 12 sources")
+	if input.SourceMode == "" {
+		input.SourceMode = domain.SourceModeProvided
+	}
+	switch input.SourceMode {
+	case domain.SourceModeDiscovered:
+		if len(input.Sources) != 0 {
+			return NewsletterInput{}, errors.New("discovered mode must not include provided sources")
+		}
+	case domain.SourceModeProvided:
+		if len(input.Sources) == 0 {
+			return NewsletterInput{}, errors.New("provided mode requires at least one source")
+		}
+	case domain.SourceModeHybrid:
+		if len(input.Sources) == 0 {
+			return NewsletterInput{}, errors.New("hybrid mode requires at least one provided source")
+		}
+	default:
+		return NewsletterInput{}, errors.New("sourceMode must be discovered, provided, or hybrid")
+	}
+	if len(input.Sources) > 12 {
+		return NewsletterInput{}, errors.New("Newsletter supports at most 12 provided sources")
 	}
 	for index := range input.Sources {
 		input.Sources[index].Name, err = boundedText(
@@ -448,6 +594,40 @@ func normalizeNewsletterInput(input NewsletterInput) (NewsletterInput, error) {
 		}
 	}
 	return input, nil
+}
+
+func applyCreateDefaults(input NewsletterInput) NewsletterInput {
+	if input.Name == "" {
+		name := strings.TrimSpace(input.Topic)
+		if len([]rune(name)) > 60 {
+			name = string([]rune(name)[:60])
+		}
+		input.Name = name
+	}
+	if input.LearnerLevel == "" {
+		input.LearnerLevel = "intermediate"
+	}
+	if input.LearnerGoal == "" {
+		input.LearnerGoal = "Build a practical understanding of " + input.Topic + "."
+		const maxGoal = 500
+		if len([]rune(input.LearnerGoal)) > maxGoal {
+			input.LearnerGoal = string([]rune(input.LearnerGoal)[:maxGoal-1]) + "."
+		}
+	}
+	if input.LessonMinutes == 0 {
+		input.LessonMinutes = 20
+	}
+	for i := range input.Sources {
+		if input.Sources[i].Name == "" {
+			parsed, err := url.Parse(strings.TrimSpace(input.Sources[i].URL))
+			if err == nil && parsed.Host != "" {
+				input.Sources[i].Name = strings.TrimPrefix(parsed.Host, "www.")
+			} else if input.Sources[i].URL != "" {
+				input.Sources[i].Name = input.Sources[i].URL
+			}
+		}
+	}
+	return input
 }
 
 func NextOccurrence(after time.Time, zone string, hour, minute int) (time.Time, error) {

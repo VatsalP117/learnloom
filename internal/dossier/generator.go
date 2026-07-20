@@ -35,10 +35,11 @@ type Generator struct {
 }
 
 type GenerateRequest struct {
-	Newsletter domain.Newsletter
-	History    []domain.LearningHistoryEntry
-	Now        time.Time
-	OnStage    func(string)
+	Newsletter    domain.Newsletter
+	History       []domain.LearningHistoryEntry
+	Now           time.Time
+	OnStage       func(string)
+	PreparedItems []domain.SourceItem
 }
 
 type GenerateResult struct {
@@ -80,20 +81,29 @@ func (g *Generator) Generate(
 	ctx context.Context,
 	request GenerateRequest,
 ) (GenerateResult, error) {
-	if len(request.Newsletter.Sources) == 0 {
-		return GenerateResult{}, errors.New("Newsletter requires at least one Source Item definition")
-	}
 	now := request.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	items, warnings, err := g.sources.Fetch(
-		ctx,
-		request.Newsletter.Sources,
-		g.cfg.MaxItems,
-	)
-	if err != nil {
-		return GenerateResult{}, err
+
+	var items []domain.SourceItem
+	var warnings []string
+	var err error
+
+	if len(request.PreparedItems) > 0 {
+		items = request.PreparedItems
+	} else {
+		if len(request.Newsletter.Sources) == 0 {
+			return GenerateResult{}, errors.New("Newsletter requires at least one Source Item definition")
+		}
+		items, warnings, err = g.sources.Fetch(
+			ctx,
+			request.Newsletter.Sources,
+			g.cfg.MaxItems,
+		)
+		if err != nil {
+			return GenerateResult{}, err
+		}
 	}
 	learnerContext := g.learnerContext(request.Newsletter, request.History)
 	candidateCharacters := max(300, min(
@@ -122,9 +132,13 @@ func (g *Generator) Generate(
 		item.SourceID = fmt.Sprintf("S%d", index+1)
 		curated = append(curated, item)
 	}
-	enriched, err := g.sources.Enrich(ctx, curated)
-	if err != nil {
-		return GenerateResult{}, err
+	enriched := curated
+	if len(request.PreparedItems) == 0 {
+		var enrichErr error
+		enriched, enrichErr = g.sources.Enrich(ctx, curated)
+		if enrichErr != nil {
+			return GenerateResult{}, enrichErr
+		}
 	}
 	sourceCharacters := max(1000, min(
 		g.cfg.MaxArticleCharacters,

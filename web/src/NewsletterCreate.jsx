@@ -1,14 +1,47 @@
-import { Plus, Sparkles, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Plus, BookOpen, Globe, Sparkles, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useMemo } from "react";
 import { ErrorState, Footer, Topbar } from "./App.jsx";
 import { apiJSON } from "./api.js";
 
 const defaultSource = () => ({ name: "", url: "", limit: 8 });
 
 export default function NewsletterCreate() {
-  const [sources, setSources] = useState([defaultSource()]);
+  const [sourceMode, setSourceMode] = useState("discovered");
+  const [sources, setSources] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [topic, setTopic] = useState("");
+  const [name, setName] = useState("");
+  const [learnerLevel, setLearnerLevel] = useState("intermediate");
+  const [learnerGoal, setLearnerGoal] = useState("");
+  const [lessonMinutes, setLessonMinutes] = useState(20);
+  const [scheduleTime, setScheduleTime] = useState("08:00");
+  const [timeZone, setTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [active, setActive] = useState(true);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [aiExplorationEnabled, setAIExplorationEnabled] = useState(false);
+  const [siteVisible, setSiteVisible] = useState(true);
+
+  const validSources = useMemo(
+    () => sources.filter((s) => s.url.trim() !== ""),
+    [sources],
+  );
+
+  function canSubmit() {
+    if (!topic.trim()) return false;
+    if (sourceMode === "discovered") return true;
+    return validSources.length > 0;
+  }
+
+  function addSource() {
+    setSources((current) => [...current, defaultSource()]);
+  }
+
+  function removeSource(index) {
+    setSources((current) => current.filter((_, position) => position !== index));
+  }
 
   function updateSource(index, field, value) {
     setSources((current) =>
@@ -18,40 +51,64 @@ export default function NewsletterCreate() {
     );
   }
 
+  function handleModeChange(mode) {
+    setSourceMode(mode);
+    if (mode === "discovered") {
+      setSources([]);
+    } else if (mode === "provided" || mode === "hybrid") {
+      if (sources.length === 0) {
+        setSources([defaultSource()]);
+      }
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const data = new FormData(event.currentTarget);
-    try {
-      const body = await apiJSON("/api/newsletters", {
-        method: "POST",
-        body: {
-          name: data.get("name"),
-          topic: data.get("topic"),
-          learnerLevel: data.get("learnerLevel"),
-          learnerGoal: data.get("learnerGoal"),
-          lessonMinutes: Number(data.get("lessonMinutes")),
-          scheduleTime: data.get("scheduleTime"),
-          timeZone: data.get("timeZone"),
-          active: data.get("active") === "on",
-          emailEnabled: data.get("emailEnabled") === "on",
-          aiExplorationEnabled: data.get("aiExplorationEnabled") === "on",
-          siteVisible: data.get("siteVisible") === "on",
-          sources: sources.map((source) => ({
-            ...source,
+
+    const sourceLabel = (url) => {
+      try {
+        return new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        return url;
+      }
+    };
+
+    const body = {
+      name: name.trim() || undefined,
+      topic: topic.trim(),
+      learnerLevel,
+      learnerGoal: learnerGoal.trim() || undefined,
+      lessonMinutes,
+      scheduleTime,
+      timeZone,
+      active,
+      emailEnabled,
+      aiExplorationEnabled,
+      siteVisible,
+      sourceMode,
+      sources: sourceMode === "discovered"
+        ? []
+        : validSources.map((source) => ({
+            name: source.name.trim() || sourceLabel(source.url),
+            url: source.url,
             limit: Number(source.limit),
           })),
-        },
-      });
+    };
+
+    try {
+      const result = await apiJSON("/api/newsletters", { method: "POST", body });
       window.location.assign(
-        `/newsletters/${encodeURIComponent(body.newsletter.id)}?created=1`,
+        `/newsletters/${encodeURIComponent(result.newsletter.id)}?created=1`,
       );
     } catch (requestError) {
       setError(requestError.message);
       setBusy(false);
     }
   }
+
+  const showSources = sourceMode === "provided" || sourceMode === "hybrid";
 
   return (
     <div className="app">
@@ -61,78 +118,130 @@ export default function NewsletterCreate() {
           <a className="back-link" href="/">Newsletters <span>/</span></a>
           <section className="create-heading">
             <p className="overline">New learning stream</p>
-            <h1>Create a Knowledge Dossier</h1>
-            <p>Define the question, the learner, and the sources that deserve attention.</p>
+            <h1>What do you want to learn?</h1>
+            <p>Enter a topic and choose how sources should be handled. Advanced settings can be tuned after creation.</p>
           </section>
           {error ? <ErrorState message={error} /> : null}
           <form className="newsletter-form" onSubmit={submit}>
             <fieldset>
-              <legend>Learning brief</legend>
-              <label>
-                <span>Name</span>
-                <input name="name" required maxLength="120" placeholder="Distributed systems field notes" />
-              </label>
+              <legend>Learning topic</legend>
               <label>
                 <span>Topic</span>
-                <textarea name="topic" required maxLength="400" rows="3" placeholder="The systems question this Dossier should investigate" />
-              </label>
-              <div className="form-grid">
-                <label>
-                  <span>Learner level</span>
-                  <select name="learnerLevel" defaultValue="intermediate">
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Lesson length</span>
-                  <input name="lessonMinutes" type="number" min="5" max="90" defaultValue="20" required />
-                </label>
-              </div>
-              <label>
-                <span>Learning goal</span>
-                <textarea name="learnerGoal" required maxLength="500" rows="3" placeholder="What should become newly understandable or actionable?" />
+                <textarea
+                  name="topic"
+                  required
+                  maxLength="400"
+                  rows="3"
+                  placeholder="e.g. LLM inferencing, distributed systems, renaissance art history"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                />
               </label>
             </fieldset>
 
             <fieldset>
-              <legend>Trusted sources</legend>
-              <p className="field-help">Use direct article, publication, RSS, or Atom URLs. Learnloom validates every fetch.</p>
-              <div className="source-editor">
-                {sources.map((source, index) => (
-                  <div className="source-row" key={index}>
-                    <input aria-label={`Source ${index + 1} name`} required maxLength="120" placeholder="Source name" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} />
-                    <input aria-label={`Source ${index + 1} URL`} required type="url" placeholder="https://example.com/feed.xml" value={source.url} onChange={(event) => updateSource(index, "url", event.target.value)} />
-                    <input aria-label={`Source ${index + 1} item limit`} required type="number" min="1" max="50" value={source.limit} onChange={(event) => updateSource(index, "limit", event.target.value)} />
-                    <button type="button" aria-label={`Remove source ${index + 1}`} disabled={sources.length === 1} onClick={() => setSources((current) => current.filter((_, position) => position !== index))}><Trash2 size={16} /></button>
+              <legend>Source policy</legend>
+              <p className="field-help">Choose how Learnloom finds and uses sources for your daily Knowledge Dossiers.</p>
+              <div className={`mode-options ${busy ? "busy" : ""}`}>
+                <label className={`mode-card ${sourceMode === "discovered" ? "selected" : ""}`}>
+                  <input type="radio" name="sourceModeRadio" value="discovered" checked={sourceMode === "discovered"} onChange={() => handleModeChange("discovered")} disabled={busy} />
+                  <span className="mode-icon"><Sparkles size={20} /></span>
+                  <div className="mode-body">
+                    <strong>Find sources for me</strong>
+                    <small>Learnloom discovers, validates, and selects relevant sources automatically.</small>
                   </div>
-                ))}
+                </label>
+                <label className={`mode-card ${sourceMode === "provided" ? "selected" : ""}`}>
+                  <input type="radio" name="sourceModeRadio" value="provided" checked={sourceMode === "provided"} onChange={() => handleModeChange("provided")} disabled={busy} />
+                  <span className="mode-icon"><BookOpen size={20} /></span>
+                  <div className="mode-body">
+                    <strong>I'll provide them</strong>
+                    <small>Supply specific RSS feeds, article URLs, or publications. Only your sources are used.</small>
+                  </div>
+                </label>
+                <label className={`mode-card ${sourceMode === "hybrid" ? "selected" : ""}`}>
+                  <input type="radio" name="sourceModeRadio" value="hybrid" checked={sourceMode === "hybrid"} onChange={() => handleModeChange("hybrid")} disabled={busy} />
+                  <span className="mode-icon"><Globe size={20} /></span>
+                  <div className="mode-body">
+                    <strong>Use mine and find more when helpful</strong>
+                    <small>Your sources are prioritized. Learnloom adds discovered sources to fill coverage gaps.</small>
+                  </div>
+                </label>
               </div>
-              <button className="add-source" type="button" disabled={sources.length >= 12} onClick={() => setSources((current) => [...current, defaultSource()])}><Plus size={16} />Add source</button>
             </fieldset>
 
-            <fieldset>
-              <legend>Schedule & publishing</legend>
-              <div className="form-grid">
+            {showSources ? (
+              <fieldset>
+                <legend>Provided sources</legend>
+                <p className="field-help">Add RSS feeds, Atom feeds, article pages, or publication URLs. Learnloom validates every fetch.</p>
+                <div className="source-editor">
+                  {sources.map((source, index) => (
+                    <div className="source-row" key={index}>
+                      <input aria-label={`Source ${index + 1} name`} maxLength="120" placeholder="optional label" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} />
+                      <input aria-label={`Source ${index + 1} URL`} required type="url" placeholder="https://example.com/feed.xml" value={source.url} onChange={(event) => updateSource(index, "url", event.target.value)} />
+                      <input aria-label={`Source ${index + 1} item limit`} type="number" min="1" max="50" value={source.limit} onChange={(event) => updateSource(index, "limit", event.target.value)} />
+                      <button type="button" aria-label={`Remove source ${index + 1}`} disabled={busy} onClick={() => removeSource(index)}><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+                <button className="add-source" type="button" disabled={busy || sources.length >= 12} onClick={addSource}><Plus size={16} />Add source</button>
+              </fieldset>
+            ) : null}
+
+            <fieldset className="advanced-fieldset">
+              <legend className="sr-only">Learning preferences</legend>
+              <button
+                type="button"
+                className="advanced-toggle"
+                onClick={() => setShowAdvanced((v) => !v)}
+                aria-expanded={showAdvanced}
+              >
+                <span className="advanced-toggle-label">Learning preferences</span>
+                {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
+              <div className={`advanced-body ${showAdvanced ? "visible" : ""}`} hidden={!showAdvanced}>
                 <label>
-                  <span>Daily time</span>
-                  <input name="scheduleTime" type="time" defaultValue="08:00" required />
+                  <span>Stream name</span>
+                  <input name="name" maxLength="120" placeholder="Generated from topic if left empty" value={name} onChange={(e) => setName(e.target.value)} />
                 </label>
+                <div className="form-grid">
+                  <label>
+                    <span>Learner level</span>
+                    <select name="learnerLevel" value={learnerLevel} onChange={(e) => setLearnerLevel(e.target.value)}>
+                      <option value="beginner">Beginner</option>
+                      <option value="intermediate">Intermediate</option>
+                      <option value="advanced">Advanced</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Lesson length (minutes)</span>
+                    <input name="lessonMinutes" type="number" min="5" max="90" value={lessonMinutes} onChange={(e) => setLessonMinutes(Number(e.target.value))} />
+                  </label>
+                </div>
                 <label>
-                  <span>Time zone</span>
-                  <input name="timeZone" required defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone} />
+                  <span>Learning goal</span>
+                  <textarea name="learnerGoal" maxLength="500" rows="2" placeholder="What should become newly understandable?" value={learnerGoal} onChange={(e) => setLearnerGoal(e.target.value)} />
                 </label>
+                <div className="form-grid">
+                  <label>
+                    <span>Schedule time</span>
+                    <input name="scheduleTime" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+                  </label>
+                  <label>
+                    <span>Time zone</span>
+                    <input name="timeZone" value={timeZone} onChange={(e) => setTimeZone(e.target.value)} />
+                  </label>
+                </div>
+                <label className="switch-row"><span><strong>Active schedule</strong><small>Generate future Issues automatically.</small></span><input name="active" type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /></label>
+                <label className="switch-row"><span><strong>Email delivery</strong><small>Send to your verified primary email.</small></span><input name="emailEnabled" type="checkbox" checked={emailEnabled} onChange={(e) => setEmailEnabled(e.target.checked)} /></label>
+                <label className="switch-row"><span><strong>AI exploration</strong><small>Allow clearly marked model-generated extensions.</small></span><input name="aiExplorationEnabled" type="checkbox" checked={aiExplorationEnabled} onChange={(e) => setAIExplorationEnabled(e.target.checked)} /></label>
+                <label className="switch-row"><span><strong>Show on personal site</strong><small>New Issues remain individually publishable.</small></span><input name="siteVisible" type="checkbox" checked={siteVisible} onChange={(e) => setSiteVisible(e.target.checked)} /></label>
               </div>
-              <label className="switch-row"><span><strong>Active schedule</strong><small>Generate future Issues automatically.</small></span><input name="active" type="checkbox" defaultChecked /></label>
-              <label className="switch-row"><span><strong>Email delivery</strong><small>Send to your verified primary email.</small></span><input name="emailEnabled" type="checkbox" /></label>
-              <label className="switch-row"><span><strong>AI exploration</strong><small>Allow clearly marked model-generated extensions.</small></span><input name="aiExplorationEnabled" type="checkbox" /></label>
-              <label className="switch-row"><span><strong>Show on personal site</strong><small>New Issues remain individually publishable.</small></span><input name="siteVisible" type="checkbox" /></label>
             </fieldset>
 
             <div className="form-actions">
               <a href="/">Cancel</a>
-              <button className="primary-button" disabled={busy}>
+              <button className="primary-button" disabled={busy || !canSubmit()} type="submit">
                 <Sparkles size={17} />{busy ? "Creating…" : "Create Dossier"}
               </button>
             </div>

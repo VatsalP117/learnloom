@@ -12,16 +12,38 @@ import (
 )
 
 type Config struct {
-	Environment string
-	LogLevel    string
-	HTTP        HTTP
-	Database    Database
-	ObjectStore ObjectStore
-	Model       Model
-	Clerk       Clerk
-	Resend      Resend
-	Worker      Worker
-	Limits      Limits
+	Environment        string
+	LogLevel           string
+	HTTP               HTTP
+	Database           Database
+	ObjectStore        ObjectStore
+	Model              Model
+	Clerk              Clerk
+	Resend             Resend
+	Worker             Worker
+	Limits             Limits
+	SourceIntelligence SourceIntelligence
+}
+
+type SourceIntelligence struct {
+	DiscoveryEnabled       bool
+	SearXNGBaseURL         string
+	SearXNGTimeout         time.Duration
+	DiscoveryMaxQueries    int
+	DiscoveryMaxCandidates int
+	DiscoveryMaxActive     int
+	MinUsableItems         int
+	TargetUsableItems      int
+	RefreshInterval        time.Duration
+	DefaultMaxStaleAge     time.Duration
+	Crawl4AIEnabled        bool
+	Crawl4AIBaseURL        string
+	Crawl4AIToken          string
+	Crawl4AITimeout        time.Duration
+	DoclingEnabled         bool
+	DoclingBaseURL         string
+	DoclingAPIKey          string
+	DoclingTimeout         time.Duration
 }
 
 type HTTP struct {
@@ -165,6 +187,26 @@ func Load() (Config, error) {
 			HistoryEntries:            envInt("LEARNING_HISTORY_ENTRIES", 14),
 			MaxNewslettersPerAccount:  envInt("MAX_NEWSLETTERS_PER_ACCOUNT", 10),
 			RequestBodyBytes:          envInt64("MAX_REQUEST_BODY_BYTES", 1<<20),
+		},
+		SourceIntelligence: SourceIntelligence{
+			DiscoveryEnabled:       envBool("SOURCE_DISCOVERY_ENABLED", false),
+			SearXNGBaseURL:         os.Getenv("SEARXNG_BASE_URL"),
+			SearXNGTimeout:         envDuration("SEARXNG_TIMEOUT", 8*time.Second),
+			DiscoveryMaxQueries:    envInt("SOURCE_DISCOVERY_MAX_QUERIES", 4),
+			DiscoveryMaxCandidates: envInt("SOURCE_DISCOVERY_MAX_CANDIDATES", 30),
+			DiscoveryMaxActive:     envInt("SOURCE_DISCOVERY_MAX_ACTIVE", 8),
+			MinUsableItems:         envInt("SOURCE_MIN_USABLE_ITEMS", 4),
+			TargetUsableItems:      envInt("SOURCE_TARGET_USABLE_ITEMS", 8),
+			RefreshInterval:        envDuration("SOURCE_REFRESH_INTERVAL", 12*time.Hour),
+			DefaultMaxStaleAge:     envDuration("SOURCE_DEFAULT_MAX_STALE_AGE", 720*time.Hour),
+			Crawl4AIEnabled:        envBool("CRAWL4AI_ENABLED", false),
+			Crawl4AIBaseURL:        os.Getenv("CRAWL4AI_BASE_URL"),
+			Crawl4AIToken:          os.Getenv("CRAWL4AI_TOKEN"),
+			Crawl4AITimeout:        envDuration("CRAWL4AI_TIMEOUT", 45*time.Second),
+			DoclingEnabled:         envBool("DOCLING_ENABLED", false),
+			DoclingBaseURL:         os.Getenv("DOCLING_BASE_URL"),
+			DoclingAPIKey:          os.Getenv("DOCLING_API_KEY"),
+			DoclingTimeout:         envDuration("DOCLING_TIMEOUT", 2*time.Minute),
 		},
 	}
 	cfg.HTTP.ApexOrigin = "https://" + cfg.HTTP.RootDomain
