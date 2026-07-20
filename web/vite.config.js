@@ -12,7 +12,6 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:3000",
-      "/newsletters": "http://127.0.0.1:3000",
       "/issues": "http://127.0.0.1:3000",
     },
   },

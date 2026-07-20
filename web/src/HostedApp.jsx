@@ -64,7 +64,7 @@ function OnboardingGate() {
   );
 }
 
-function SiteControl({ site, onUpdate }) {
+export function SiteControl({ site, onUpdate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nextVisibility = site.visibility === "public" ? "private" : "public";

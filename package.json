@@ -16,6 +16,7 @@
   "scripts": {
     "build": "vite build --config web/vite.config.js",
     "dev": "vite --config web/vite.config.js",
+    "demo": "VITE_DEMO_MODE=true vite --config web/vite.config.js",
     "check": "eslint web/src && npm run build",
     "test": "vitest run --config web/vite.config.js"
   },
