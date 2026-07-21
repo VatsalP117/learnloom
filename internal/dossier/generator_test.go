@@ -39,9 +39,28 @@ func (fakeSources) Enrich(
 
 type fakeModel struct {
 	responses map[string]string
+	requests  *[]CompletionRequest
+}
+
+type sequenceModel struct {
+	requests  []CompletionRequest
+	responses []string
+}
+
+func (m *sequenceModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+	m.requests = append(m.requests, request)
+	if len(m.responses) == 0 {
+		return "", fmt.Errorf("unexpected stage %s", request.Stage)
+	}
+	response := m.responses[0]
+	m.responses = m.responses[1:]
+	return response, nil
 }
 
 func (f fakeModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+	if f.requests != nil {
+		*f.requests = append(*f.requests, request)
+	}
 	value, exists := f.responses[request.Stage]
 	if !exists {
 		return "", fmt.Errorf("missing stage %s", request.Stage)
@@ -53,6 +72,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	t.Parallel()
 	lesson := completeLesson()
 	practice := completePractice()
+	var requests []CompletionRequest
 	editor, _ := json.Marshal(editorialOutput{
 		Lesson: lesson, Critique: "Evidence is useful but remains bounded by the supplied Source Items [S1].",
 		Practice: practice, QualityNotes: []string{"Preserved the evidence contract."},
@@ -65,7 +85,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		"teacher":    lesson,
 		"examiner":   practice,
 		"editor":     string(editor),
-	}}
+	}, requests: &requests}
 	generator, err := NewGenerator(fakeSources{}, model, GenerationConfig{
 		ModelName: "deepseek-chat",
 	})
@@ -79,6 +99,14 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			TimeZone: "Asia/Kolkata",
 			Sources:  []domain.SourceDefinition{{Name: "Example", URL: "https://example.com/feed", Limit: 3}},
 		},
+		History: []domain.LearningHistoryEntry{{
+			Date:              "2026-07-18",
+			LearningObjective: "Compare recognition with independent recall",
+			Concepts:          []string{"retrieval strength", "storage strength"},
+			SourceTitles:      []string{"Prior evidence review"},
+			LessonSummary:     "Recognition can overstate what a learner can retrieve unaided.",
+			RecallQuestions:   []string{"Why can familiarity mislead a learner?"},
+		}},
 		Now: time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
@@ -93,13 +121,106 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	if len(result.Warnings) != 1 || len(result.History.RecallQuestions) != 3 {
 		t.Fatalf("missing warnings or history: %#v", result)
 	}
+	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 450 ||
+		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1350 {
+		t.Fatalf("missing time-fit quality metrics: %#v", result.Artifact.Dossier.Quality.Metrics)
+	}
+	var editorInput string
+	for _, request := range requests {
+		if request.Stage == "editor" {
+			editorInput = request.Input
+			break
+		}
+	}
+	for _, wanted := range []string{
+		"Level: experienced",
+		"Goal: build durable knowledge",
+		"Lesson body budget: 450-1350 words",
+		"Objective: Compare recognition with independent recall",
+		"Concepts: retrieval strength | storage strength",
+		"Sources: Prior evidence review",
+	} {
+		if !strings.Contains(editorInput, wanted) {
+			t.Fatalf("editor input is missing %q:\n%s", wanted, editorInput)
+		}
+	}
+}
+
+func TestEditorReceivesActionableTimeFitRepair(t *testing.T) {
+	t.Parallel()
+	practice := completePractice()
+	encode := func(lesson string) string {
+		value, err := json.Marshal(editorialOutput{
+			Lesson: lesson, Critique: "Evidence remains bounded [S1].", Practice: practice,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(value)
+	}
+	model := &sequenceModel{responses: []string{
+		encode(shortCompleteLesson()),
+		encode(completeLesson()),
+	}}
+	budget := lessonWordBudgetFor(15)
+	_, err := runStructured(
+		context.Background(),
+		model,
+		"editor",
+		stageInstructions()["editor"],
+		"original editor input",
+		nil,
+		func(value editorialOutput) error {
+			if err := value.validate(); err != nil {
+				return err
+			}
+			_, err := evaluateQuality(
+				value.Lesson,
+				value.Critique,
+				value.Practice,
+				nil,
+				[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
+				domain.LearningBlueprint{},
+				0,
+				budget,
+			)
+			return err
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(model.requests) != 2 ||
+		!strings.Contains(model.requests[1].Input, "Contract repair") ||
+		!strings.Contains(model.requests[1].Input, "must contain 450 to 1350 words") {
+		t.Fatalf("missing actionable repair request: %#v", model.requests)
+	}
 }
 
 func completeLesson() string {
 	var lesson strings.Builder
 	for index, heading := range requiredLessonSections {
 		lesson.WriteString("## " + heading + "\n\n")
-		lesson.WriteString("This section explains a useful causal mechanism with enough concrete detail to support durable understanding")
+		for paragraph := 0; paragraph < 4; paragraph++ {
+			lesson.WriteString("This section explains a useful causal mechanism with enough concrete detail to support durable understanding")
+			if index == 0 && paragraph == 0 {
+				lesson.WriteString(" [S1]")
+			}
+			if index == 1 && paragraph == 0 {
+				lesson.WriteString(" [S2]")
+			}
+			lesson.WriteString(". ")
+		}
+		lesson.WriteString("\n\n")
+	}
+	return lesson.String()
+}
+
+func shortCompleteLesson() string {
+	var lesson strings.Builder
+	for index, heading := range requiredLessonSections {
+		lesson.WriteString("## " + heading + "\n\n")
+		lesson.WriteString("Concise but substantive mechanism explanation for durable learning")
 		if index == 0 {
 			lesson.WriteString(" [S1]")
 		}

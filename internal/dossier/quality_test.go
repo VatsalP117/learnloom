@@ -9,54 +9,74 @@ import (
 
 func TestEvaluateQualityAcceptsCompleteDossier(t *testing.T) {
 	t.Parallel()
-	var lesson strings.Builder
-	for index, heading := range requiredLessonSections {
-		lesson.WriteString("## " + heading + "\n\n")
-		lesson.WriteString("This section explains a useful mechanism with enough concrete detail to support durable learning")
-		if index < 2 {
-			lesson.WriteString(" [S" + string(rune('1'+index)) + "]")
-		}
-		lesson.WriteString(".\n\n")
-	}
-	practice := `## Retrieval practice
-
-1. How does the central mechanism produce its intended learning effect?
-2. Which constraint most changes the mechanism under realistic conditions?
-3. Why does the common misconception lead to an incorrect prediction?
-
-## Application challenge
-
-Apply the mechanism to a realistic project and explain which evidence would falsify your chosen approach.
-
-<details>
-<summary>Answer key</summary>
-
-1. The mechanism creates the effect through repeated retrieval and corrective feedback.
-2. The available evidence changes how confidently the mechanism can be applied.
-3. The misconception ignores the causal step that connects practice with durable recall.
-
-</details>`
 	report, err := evaluateQuality(
-		lesson.String(),
+		completeLesson(),
 		"A skeptical review compares the evidence [S1].",
-		practice,
+		completePractice(),
 		nil,
 		[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
 		domain.LearningBlueprint{ContinuityBridge: "Prior learning"},
 		1,
+		lessonWordBudgetFor(15),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Score < 90 {
-		t.Fatalf("unexpected score: %d", report.Score)
+	if report.Score < 90 || !report.Checks["lessonTimeFit"] ||
+		report.Metrics["lessonWordsMinimum"] != 450 ||
+		report.Metrics["lessonWordsMaximum"] != 1350 {
+		t.Fatalf("unexpected report: %#v", report)
+	}
+}
+
+func TestEvaluateQualityRejectsLessonOutsideTimeBudget(t *testing.T) {
+	t.Parallel()
+	_, err := evaluateQuality(
+		shortCompleteLesson(),
+		"A skeptical review compares the evidence [S1].",
+		completePractice(),
+		nil,
+		[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
+		domain.LearningBlueprint{},
+		0,
+		lessonWordBudgetFor(5),
+	)
+	if err == nil || !strings.Contains(err.Error(), "must contain 300 to 700 words") {
+		t.Fatalf("expected actionable time-fit error, got %v", err)
+	}
+}
+
+func TestLessonWordBudgetBounds(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		minutes int
+		want    lessonWordBudget
+	}{
+		{minutes: 5, want: lessonWordBudget{minimum: 300, maximum: 700}},
+		{minutes: 20, want: lessonWordBudget{minimum: 600, maximum: 1800}},
+		{minutes: 90, want: lessonWordBudget{minimum: 1800, maximum: 3200}},
+		{minutes: 0, want: lessonWordBudget{minimum: 600, maximum: 1800}},
+	} {
+		if got := lessonWordBudgetFor(test.minutes); got != test.want {
+			t.Errorf("lessonWordBudgetFor(%d) = %#v, want %#v", test.minutes, got, test.want)
+		}
+	}
+}
+
+func TestMarkdownBodyWordCountExcludesHeadings(t *testing.T) {
+	t.Parallel()
+	if got := markdownBodyWordCount("## Three heading words\n\nOnly two"); got != 2 {
+		t.Fatalf("markdownBodyWordCount() = %d, want 2", got)
 	}
 }
 
 func TestEvaluateQualityRejectsExplorationCitation(t *testing.T) {
 	t.Parallel()
 	exploration := "A synthetic claim [S1]"
-	_, err := evaluateQuality("", "", "", &exploration, nil, domain.LearningBlueprint{}, 0)
+	_, err := evaluateQuality(
+		"", "", "", &exploration, nil, domain.LearningBlueprint{}, 0,
+		lessonWordBudgetFor(20),
+	)
 	if err == nil {
 		t.Fatal("expected validation error")
 	}

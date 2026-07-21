@@ -40,6 +40,7 @@ func evaluateQuality(
 	sources []domain.SourceItem,
 	blueprint domain.LearningBlueprint,
 	historyCount int,
+	wordBudget lessonWordBudget,
 ) (domain.QualityReport, error) {
 	sections, order, counts := markdownSections(lesson)
 	var missing []string
@@ -74,6 +75,15 @@ func evaluateQuality(
 		return domain.QualityReport{}, fmt.Errorf(
 			"editorial lesson sections need substantive content: %s",
 			strings.Join(shallow, ", "),
+		)
+	}
+	lessonWords := markdownBodyWordCount(lesson)
+	if lessonWords < wordBudget.minimum || lessonWords > wordBudget.maximum {
+		return domain.QualityReport{}, fmt.Errorf(
+			"editorial lesson has %d words; lesson body must contain %d to %d words to fit the learner's available time",
+			lessonWords,
+			wordBudget.minimum,
+			wordBudget.maximum,
 		)
 	}
 
@@ -194,6 +204,7 @@ func evaluateQuality(
 	checks := map[string]bool{
 		"requiredLessonSections":    true,
 		"substantiveLessonSections": true,
+		"lessonTimeFit":             true,
 		"sourceGrounding":           len(lessonCited) >= requiredCitations,
 		"validCitationIdentifiers":  true,
 		"retrievalPractice":         len(questions) >= 3,
@@ -222,10 +233,48 @@ func evaluateQuality(
 			"selectedSources":    len(sources),
 			"enrichedSources":    enriched,
 			"citedSources":       len(lessonCited),
+			"lessonWords":        lessonWords,
+			"lessonWordsMinimum": wordBudget.minimum,
+			"lessonWordsMaximum": wordBudget.maximum,
 			"retrievalQuestions": len(questions),
 			"answeredQuestions":  len(answers),
 		},
 	}, nil
+}
+
+type lessonWordBudget struct {
+	minimum int
+	maximum int
+}
+
+func lessonWordBudgetFor(minutes int) lessonWordBudget {
+	if minutes <= 0 {
+		minutes = 20
+	}
+	return lessonWordBudget{
+		minimum: min(max(minutes*30, 300), 1800),
+		maximum: min(max(minutes*90, 700), 3200),
+	}
+}
+
+func (b lessonWordBudget) promptLine() string {
+	return fmt.Sprintf(
+		"Lesson body budget: %d-%d words (practice, skeptical review, and sources are excluded).",
+		b.minimum,
+		b.maximum,
+	)
+}
+
+func markdownBodyWordCount(markdown string) int {
+	var body strings.Builder
+	for _, line := range strings.Split(markdown, "\n") {
+		if headingPattern.MatchString(line) {
+			continue
+		}
+		body.WriteString(line)
+		body.WriteByte('\n')
+	}
+	return len(words(body.String()))
 }
 
 func markdownSections(markdown string) (map[string]string, []string, map[string]int) {
