@@ -1,0 +1,16 @@
+.agent/tasks/2026-07-21-content-personalization-quality/TASK.md
+.agent/tasks/2026-07-21-content-personalization-quality/AI_FLOW_ROADMAP.md
+.agent/tasks/2026-07-21-content-personalization-quality/PLAN.md
+.agent/tasks/2026-07-21-content-personalization-quality/IMPLEMENTATION_REPORT.md
+.agent/tasks/2026-07-21-content-personalization-quality/REVIEW.md
+.agent/tasks/2026-07-21-content-personalization-quality/review/diff.patch
+.agent/tasks/2026-07-21-content-personalization-quality/review/diff-stat.txt
+.agent/tasks/2026-07-21-content-personalization-quality/review/files-changed.txt
+.agent/tasks/2026-07-21-content-personalization-quality/review/commits.txt
+.agent/tasks/2026-07-21-content-personalization-quality/review/status.txt
+.agent/tasks/2026-07-21-content-personalization-quality/review/test-output.txt
+docs/architecture.md
+internal/dossier/generator.go
+internal/dossier/generator_test.go
+internal/dossier/quality.go
+internal/dossier/quality_test.go

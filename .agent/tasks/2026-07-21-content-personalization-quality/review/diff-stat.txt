@@ -1,0 +1,6 @@
+ docs/architecture.md               |   3 +-
+ internal/dossier/generator.go      |  24 +++++--
+ internal/dossier/generator_test.go | 125 ++++++++++++++++++++++++++++++++++++-
+ internal/dossier/quality.go        |  49 +++++++++++++++
+ internal/dossier/quality_test.go   |  84 +++++++++++++++----------
+ 5 files changed, 246 insertions(+), 39 deletions(-)

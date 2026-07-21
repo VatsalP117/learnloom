@@ -33,7 +33,8 @@ flowchart LR
   snapshots, and Issue evidence freezing. Search snippets are candidate
   metadata only and never become Dossier evidence.
 - `internal/dossier`: the multi-stage Dossier production pipeline, contract
-  repair, deterministic quality gate, and safe rendering.
+  repair, learner-history continuity, time-fit enforcement, deterministic
+  quality gate, and safe rendering.
 - `internal/artifact`: checksummed, opaque-key S3 persistence.
 - `internal/delivery`: Resend adapter and stable idempotency semantics.
 - `internal/domain`: shared hosted product vocabulary and state machines.

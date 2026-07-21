@@ -1,0 +1,9 @@
+PASS: go test ./internal/dossier
+PASS: go test -race ./cmd/... ./internal/...
+PASS: go vet ./cmd/... ./internal/...
+PASS: staticcheck v0.7.0 ./cmd/... ./internal/...
+PASS: govulncheck (no reachable vulnerabilities)
+PASS: npm run check (ESLint and Vite production build)
+PASS: npm test (5 tests across 2 files)
+PASS: git diff --check main
+PASS: gofmt cleanliness for cmd and internal

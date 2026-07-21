@@ -1,0 +1,466 @@
+diff --git a/docs/architecture.md b/docs/architecture.md
+index e2597d0..704a4c0 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -33,7 +33,8 @@ flowchart LR
+   snapshots, and Issue evidence freezing. Search snippets are candidate
+   metadata only and never become Dossier evidence.
+ - `internal/dossier`: the multi-stage Dossier production pipeline, contract
+-  repair, deterministic quality gate, and safe rendering.
++  repair, learner-history continuity, time-fit enforcement, deterministic
++  quality gate, and safe rendering.
+ - `internal/artifact`: checksummed, opaque-key S3 persistence.
+ - `internal/delivery`: Resend adapter and stable idempotency semantics.
+ - `internal/domain`: shared hosted product vocabulary and state machines.
+diff --git a/internal/dossier/generator.go b/internal/dossier/generator.go
+index 02b6e40..689421c 100644
+--- a/internal/dossier/generator.go
++++ b/internal/dossier/generator.go
+@@ -106,6 +106,7 @@ func (g *Generator) Generate(
+ 		}
+ 	}
+ 	learnerContext := g.learnerContext(request.Newsletter, request.History)
++	wordBudget := lessonWordBudgetFor(request.Newsletter.LessonMinutes)
+ 	candidateCharacters := max(300, min(
+ 		g.cfg.MaxItemCharacters,
+ 		int(float64(g.cfg.MaxIntermediateCharacters)*0.7)/len(items),
+@@ -232,6 +233,7 @@ func (g *Generator) Generate(
+ 		"editor",
+ 		stageInstructions()["editor"],
+ 		fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
++			{"Learner context and time-fit contract", learnerContext, 2},
+ 			{"Learning blueprint", blueprintText, 2},
+ 			{"Enriched sources", sourceBundle, 3},
+ 			{"Draft lesson", lesson, 5},
+@@ -251,6 +253,7 @@ func (g *Generator) Generate(
+ 				enriched,
+ 				blueprint,
+ 				len(request.History),
++				wordBudget,
+ 			)
+ 			return err
+ 		},
+@@ -266,6 +269,7 @@ func (g *Generator) Generate(
+ 		enriched,
+ 		blueprint,
+ 		len(request.History),
++		wordBudget,
+ 	)
+ 	if err != nil {
+ 		return GenerateResult{}, err
+@@ -540,10 +544,21 @@ func (g *Generator) learnerContext(
+ 		if len(recall) > 3 {
+ 			recall = recall[:3]
+ 		}
++		concepts := entry.Concepts
++		if len(concepts) > 5 {
++			concepts = concepts[:5]
++		}
++		sourceTitles := entry.SourceTitles
++		if len(sourceTitles) > 3 {
++			sourceTitles = sourceTitles[:3]
++		}
+ 		prior = append(prior, fmt.Sprintf(
+-			"- %s: %s\n  Recall: %s",
++			"- %s\n  Objective: %s\n  Concepts: %s\n  Sources: %s\n  Summary: %s\n  Recall: %s",
+ 			entry.Date,
+-			entry.LessonSummary,
++			firstText(entry.LearningObjective, "not recorded"),
++			firstText(strings.Join(concepts, " | "), "none recorded"),
++			firstText(strings.Join(sourceTitles, " | "), "none recorded"),
++			firstText(entry.LessonSummary, "not recorded"),
+ 			firstText(strings.Join(recall, " | "), "none recorded"),
+ 		))
+ 	}
+@@ -556,6 +571,7 @@ func (g *Generator) learnerContext(
+ 		"Level: " + newsletter.LearnerLevel,
+ 		"Goal: " + newsletter.LearnerGoal,
+ 		fmt.Sprintf("Available time: %d minutes", newsletter.LessonMinutes),
++		lessonWordBudgetFor(newsletter.LessonMinutes).promptLine(),
+ 		"",
+ 		"# Previous lessons",
+ 		strings.Join(prior, "\n"),
+@@ -574,10 +590,10 @@ func stageInstructions() map[string]string {
+ 		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\", plus a non-empty string array \"prerequisites\".",
+ 		"researcher":  "Write a compact research brief serving the Learning Blueprint. Explain claims, mechanisms, conditions, and implications using only supplied Source Items. Cite identifiers like [S1], distinguish facts from inference, and identify disagreement or missing evidence.",
+ 		"skeptic":     "Audit the research brief against the enriched Source Items and Learning Blueprint. Identify weak evidence, missing context, alternatives, edge cases, and unsupported claims. Preserve valid Source Item identifiers and give exact constraints for a trustworthy lesson.",
+-		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, and end with the Takeaway.",
++		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, honor the lesson-body word budget in the learner context, and end with the Takeaway.",
+ 		"examiner":    "Create source-grounded retrieval practice. Use \"## Retrieval practice\" with at least three numbered short-answer questions ending in question marks, \"## Application challenge\" with one realistic transfer task, then <details>, <summary>Answer key</summary>, complete numbered answers, and </details>.",
+ 		"exploration": "Create explicitly synthetic AI Exploration with one novel analogy, one cross-domain deduction, one hypothetical scenario, and one experiment idea. Label uncertainty. Do not use [S#] citations or rewrite the source-grounded lesson.",
+-		"editor":      "Rewrite the source-grounded lesson and practice for precision and depth. Preserve every required lesson heading exactly once and in order, citations, the practice contract, and collapsed answer key. Return strict JSON only with string fields \"lesson\", \"critique\", \"practice\"; \"exploration\" must be null; \"qualityNotes\" is an array of short strings.",
++		"editor":      "Rewrite the source-grounded lesson and practice for precision, depth, and the supplied learner. Preserve every required lesson heading exactly once and in order, citations, the practice contract, and collapsed answer key. Keep the lesson body within the exact word budget in the learner context; practice and critique do not count toward it. Return strict JSON only with string fields \"lesson\", \"critique\", \"practice\"; \"exploration\" must be null; \"qualityNotes\" is an array of short strings.",
+ 	}
+ }
+ 
+diff --git a/internal/dossier/generator_test.go b/internal/dossier/generator_test.go
+index db97888..80e58b8 100644
+--- a/internal/dossier/generator_test.go
++++ b/internal/dossier/generator_test.go
+@@ -39,9 +39,28 @@ func (fakeSources) Enrich(
+ 
+ type fakeModel struct {
+ 	responses map[string]string
++	requests  *[]CompletionRequest
++}
++
++type sequenceModel struct {
++	requests  []CompletionRequest
++	responses []string
++}
++
++func (m *sequenceModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
++	m.requests = append(m.requests, request)
++	if len(m.responses) == 0 {
++		return "", fmt.Errorf("unexpected stage %s", request.Stage)
++	}
++	response := m.responses[0]
++	m.responses = m.responses[1:]
++	return response, nil
+ }
+ 
+ func (f fakeModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
++	if f.requests != nil {
++		*f.requests = append(*f.requests, request)
++	}
+ 	value, exists := f.responses[request.Stage]
+ 	if !exists {
+ 		return "", fmt.Errorf("missing stage %s", request.Stage)
+@@ -53,6 +72,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
+ 	t.Parallel()
+ 	lesson := completeLesson()
+ 	practice := completePractice()
++	var requests []CompletionRequest
+ 	editor, _ := json.Marshal(editorialOutput{
+ 		Lesson: lesson, Critique: "Evidence is useful but remains bounded by the supplied Source Items [S1].",
+ 		Practice: practice, QualityNotes: []string{"Preserved the evidence contract."},
+@@ -65,7 +85,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
+ 		"teacher":    lesson,
+ 		"examiner":   practice,
+ 		"editor":     string(editor),
+-	}}
++	}, requests: &requests}
+ 	generator, err := NewGenerator(fakeSources{}, model, GenerationConfig{
+ 		ModelName: "deepseek-chat",
+ 	})
+@@ -79,6 +99,14 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
+ 			TimeZone: "Asia/Kolkata",
+ 			Sources:  []domain.SourceDefinition{{Name: "Example", URL: "https://example.com/feed", Limit: 3}},
+ 		},
++		History: []domain.LearningHistoryEntry{{
++			Date:              "2026-07-18",
++			LearningObjective: "Compare recognition with independent recall",
++			Concepts:          []string{"retrieval strength", "storage strength"},
++			SourceTitles:      []string{"Prior evidence review"},
++			LessonSummary:     "Recognition can overstate what a learner can retrieve unaided.",
++			RecallQuestions:   []string{"Why can familiarity mislead a learner?"},
++		}},
+ 		Now: time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC),
+ 	})
+ 	if err != nil {
+@@ -93,13 +121,106 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
+ 	if len(result.Warnings) != 1 || len(result.History.RecallQuestions) != 3 {
+ 		t.Fatalf("missing warnings or history: %#v", result)
+ 	}
++	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 450 ||
++		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1350 {
++		t.Fatalf("missing time-fit quality metrics: %#v", result.Artifact.Dossier.Quality.Metrics)
++	}
++	var editorInput string
++	for _, request := range requests {
++		if request.Stage == "editor" {
++			editorInput = request.Input
++			break
++		}
++	}
++	for _, wanted := range []string{
++		"Level: experienced",
++		"Goal: build durable knowledge",
++		"Lesson body budget: 450-1350 words",
++		"Objective: Compare recognition with independent recall",
++		"Concepts: retrieval strength | storage strength",
++		"Sources: Prior evidence review",
++	} {
++		if !strings.Contains(editorInput, wanted) {
++			t.Fatalf("editor input is missing %q:\n%s", wanted, editorInput)
++		}
++	}
++}
++
++func TestEditorReceivesActionableTimeFitRepair(t *testing.T) {
++	t.Parallel()
++	practice := completePractice()
++	encode := func(lesson string) string {
++		value, err := json.Marshal(editorialOutput{
++			Lesson: lesson, Critique: "Evidence remains bounded [S1].", Practice: practice,
++		})
++		if err != nil {
++			t.Fatal(err)
++		}
++		return string(value)
++	}
++	model := &sequenceModel{responses: []string{
++		encode(shortCompleteLesson()),
++		encode(completeLesson()),
++	}}
++	budget := lessonWordBudgetFor(15)
++	_, err := runStructured(
++		context.Background(),
++		model,
++		"editor",
++		stageInstructions()["editor"],
++		"original editor input",
++		nil,
++		func(value editorialOutput) error {
++			if err := value.validate(); err != nil {
++				return err
++			}
++			_, err := evaluateQuality(
++				value.Lesson,
++				value.Critique,
++				value.Practice,
++				nil,
++				[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
++				domain.LearningBlueprint{},
++				0,
++				budget,
++			)
++			return err
++		},
++	)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(model.requests) != 2 ||
++		!strings.Contains(model.requests[1].Input, "Contract repair") ||
++		!strings.Contains(model.requests[1].Input, "must contain 450 to 1350 words") {
++		t.Fatalf("missing actionable repair request: %#v", model.requests)
++	}
+ }
+ 
+ func completeLesson() string {
+ 	var lesson strings.Builder
+ 	for index, heading := range requiredLessonSections {
+ 		lesson.WriteString("## " + heading + "\n\n")
+-		lesson.WriteString("This section explains a useful causal mechanism with enough concrete detail to support durable understanding")
++		for paragraph := 0; paragraph < 4; paragraph++ {
++			lesson.WriteString("This section explains a useful causal mechanism with enough concrete detail to support durable understanding")
++			if index == 0 && paragraph == 0 {
++				lesson.WriteString(" [S1]")
++			}
++			if index == 1 && paragraph == 0 {
++				lesson.WriteString(" [S2]")
++			}
++			lesson.WriteString(". ")
++		}
++		lesson.WriteString("\n\n")
++	}
++	return lesson.String()
++}
++
++func shortCompleteLesson() string {
++	var lesson strings.Builder
++	for index, heading := range requiredLessonSections {
++		lesson.WriteString("## " + heading + "\n\n")
++		lesson.WriteString("Concise but substantive mechanism explanation for durable learning")
+ 		if index == 0 {
+ 			lesson.WriteString(" [S1]")
+ 		}
+diff --git a/internal/dossier/quality.go b/internal/dossier/quality.go
+index 87403ea..2e53053 100644
+--- a/internal/dossier/quality.go
++++ b/internal/dossier/quality.go
+@@ -40,6 +40,7 @@ func evaluateQuality(
+ 	sources []domain.SourceItem,
+ 	blueprint domain.LearningBlueprint,
+ 	historyCount int,
++	wordBudget lessonWordBudget,
+ ) (domain.QualityReport, error) {
+ 	sections, order, counts := markdownSections(lesson)
+ 	var missing []string
+@@ -76,6 +77,15 @@ func evaluateQuality(
+ 			strings.Join(shallow, ", "),
+ 		)
+ 	}
++	lessonWords := markdownBodyWordCount(lesson)
++	if lessonWords < wordBudget.minimum || lessonWords > wordBudget.maximum {
++		return domain.QualityReport{}, fmt.Errorf(
++			"editorial lesson has %d words; lesson body must contain %d to %d words to fit the learner's available time",
++			lessonWords,
++			wordBudget.minimum,
++			wordBudget.maximum,
++		)
++	}
+ 
+ 	known := make(map[string]struct{}, len(sources))
+ 	for index, item := range sources {
+@@ -194,6 +204,7 @@ func evaluateQuality(
+ 	checks := map[string]bool{
+ 		"requiredLessonSections":    true,
+ 		"substantiveLessonSections": true,
++		"lessonTimeFit":             true,
+ 		"sourceGrounding":           len(lessonCited) >= requiredCitations,
+ 		"validCitationIdentifiers":  true,
+ 		"retrievalPractice":         len(questions) >= 3,
+@@ -222,12 +233,50 @@ func evaluateQuality(
+ 			"selectedSources":    len(sources),
+ 			"enrichedSources":    enriched,
+ 			"citedSources":       len(lessonCited),
++			"lessonWords":        lessonWords,
++			"lessonWordsMinimum": wordBudget.minimum,
++			"lessonWordsMaximum": wordBudget.maximum,
+ 			"retrievalQuestions": len(questions),
+ 			"answeredQuestions":  len(answers),
+ 		},
+ 	}, nil
+ }
+ 
++type lessonWordBudget struct {
++	minimum int
++	maximum int
++}
++
++func lessonWordBudgetFor(minutes int) lessonWordBudget {
++	if minutes <= 0 {
++		minutes = 20
++	}
++	return lessonWordBudget{
++		minimum: min(max(minutes*30, 300), 1800),
++		maximum: min(max(minutes*90, 700), 3200),
++	}
++}
++
++func (b lessonWordBudget) promptLine() string {
++	return fmt.Sprintf(
++		"Lesson body budget: %d-%d words (practice, skeptical review, and sources are excluded).",
++		b.minimum,
++		b.maximum,
++	)
++}
++
++func markdownBodyWordCount(markdown string) int {
++	var body strings.Builder
++	for _, line := range strings.Split(markdown, "\n") {
++		if headingPattern.MatchString(line) {
++			continue
++		}
++		body.WriteString(line)
++		body.WriteByte('\n')
++	}
++	return len(words(body.String()))
++}
++
+ func markdownSections(markdown string) (map[string]string, []string, map[string]int) {
+ 	sections := map[string]string{}
+ 	counts := map[string]int{}
+diff --git a/internal/dossier/quality_test.go b/internal/dossier/quality_test.go
+index 9afa258..c2c5f74 100644
+--- a/internal/dossier/quality_test.go
++++ b/internal/dossier/quality_test.go
+@@ -9,54 +9,74 @@ import (
+ 
+ func TestEvaluateQualityAcceptsCompleteDossier(t *testing.T) {
+ 	t.Parallel()
+-	var lesson strings.Builder
+-	for index, heading := range requiredLessonSections {
+-		lesson.WriteString("## " + heading + "\n\n")
+-		lesson.WriteString("This section explains a useful mechanism with enough concrete detail to support durable learning")
+-		if index < 2 {
+-			lesson.WriteString(" [S" + string(rune('1'+index)) + "]")
+-		}
+-		lesson.WriteString(".\n\n")
+-	}
+-	practice := `## Retrieval practice
+-
+-1. How does the central mechanism produce its intended learning effect?
+-2. Which constraint most changes the mechanism under realistic conditions?
+-3. Why does the common misconception lead to an incorrect prediction?
+-
+-## Application challenge
+-
+-Apply the mechanism to a realistic project and explain which evidence would falsify your chosen approach.
+-
+-<details>
+-<summary>Answer key</summary>
+-
+-1. The mechanism creates the effect through repeated retrieval and corrective feedback.
+-2. The available evidence changes how confidently the mechanism can be applied.
+-3. The misconception ignores the causal step that connects practice with durable recall.
+-
+-</details>`
+ 	report, err := evaluateQuality(
+-		lesson.String(),
++		completeLesson(),
+ 		"A skeptical review compares the evidence [S1].",
+-		practice,
++		completePractice(),
+ 		nil,
+ 		[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
+ 		domain.LearningBlueprint{ContinuityBridge: "Prior learning"},
+ 		1,
++		lessonWordBudgetFor(15),
+ 	)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if report.Score < 90 {
+-		t.Fatalf("unexpected score: %d", report.Score)
++	if report.Score < 90 || !report.Checks["lessonTimeFit"] ||
++		report.Metrics["lessonWordsMinimum"] != 450 ||
++		report.Metrics["lessonWordsMaximum"] != 1350 {
++		t.Fatalf("unexpected report: %#v", report)
++	}
++}
++
++func TestEvaluateQualityRejectsLessonOutsideTimeBudget(t *testing.T) {
++	t.Parallel()
++	_, err := evaluateQuality(
++		shortCompleteLesson(),
++		"A skeptical review compares the evidence [S1].",
++		completePractice(),
++		nil,
++		[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
++		domain.LearningBlueprint{},
++		0,
++		lessonWordBudgetFor(5),
++	)
++	if err == nil || !strings.Contains(err.Error(), "must contain 300 to 700 words") {
++		t.Fatalf("expected actionable time-fit error, got %v", err)
++	}
++}
++
++func TestLessonWordBudgetBounds(t *testing.T) {
++	t.Parallel()
++	for _, test := range []struct {
++		minutes int
++		want    lessonWordBudget
++	}{
++		{minutes: 5, want: lessonWordBudget{minimum: 300, maximum: 700}},
++		{minutes: 20, want: lessonWordBudget{minimum: 600, maximum: 1800}},
++		{minutes: 90, want: lessonWordBudget{minimum: 1800, maximum: 3200}},
++		{minutes: 0, want: lessonWordBudget{minimum: 600, maximum: 1800}},
++	} {
++		if got := lessonWordBudgetFor(test.minutes); got != test.want {
++			t.Errorf("lessonWordBudgetFor(%d) = %#v, want %#v", test.minutes, got, test.want)
++		}
++	}
++}
++
++func TestMarkdownBodyWordCountExcludesHeadings(t *testing.T) {
++	t.Parallel()
++	if got := markdownBodyWordCount("## Three heading words\n\nOnly two"); got != 2 {
++		t.Fatalf("markdownBodyWordCount() = %d, want 2", got)
+ 	}
+ }
+ 
+ func TestEvaluateQualityRejectsExplorationCitation(t *testing.T) {
+ 	t.Parallel()
+ 	exploration := "A synthetic claim [S1]"
+-	_, err := evaluateQuality("", "", "", &exploration, nil, domain.LearningBlueprint{}, 0)
++	_, err := evaluateQuality(
++		"", "", "", &exploration, nil, domain.LearningBlueprint{}, 0,
++		lessonWordBudgetFor(20),
++	)
+ 	if err == nil {
+ 		t.Fatal("expected validation error")
+ 	}

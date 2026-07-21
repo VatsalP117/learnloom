@@ -106,6 +106,7 @@ func (g *Generator) Generate(
 		}
 	}
 	learnerContext := g.learnerContext(request.Newsletter, request.History)
+	wordBudget := lessonWordBudgetFor(request.Newsletter.LessonMinutes)
 	candidateCharacters := max(300, min(
 		g.cfg.MaxItemCharacters,
 		int(float64(g.cfg.MaxIntermediateCharacters)*0.7)/len(items),
@@ -232,6 +233,7 @@ func (g *Generator) Generate(
 		"editor",
 		stageInstructions()["editor"],
 		fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
+			{"Learner context and time-fit contract", learnerContext, 2},
 			{"Learning blueprint", blueprintText, 2},
 			{"Enriched sources", sourceBundle, 3},
 			{"Draft lesson", lesson, 5},
@@ -251,6 +253,7 @@ func (g *Generator) Generate(
 				enriched,
 				blueprint,
 				len(request.History),
+				wordBudget,
 			)
 			return err
 		},
@@ -266,6 +269,7 @@ func (g *Generator) Generate(
 		enriched,
 		blueprint,
 		len(request.History),
+		wordBudget,
 	)
 	if err != nil {
 		return GenerateResult{}, err
@@ -540,10 +544,21 @@ func (g *Generator) learnerContext(
 		if len(recall) > 3 {
 			recall = recall[:3]
 		}
+		concepts := entry.Concepts
+		if len(concepts) > 5 {
+			concepts = concepts[:5]
+		}
+		sourceTitles := entry.SourceTitles
+		if len(sourceTitles) > 3 {
+			sourceTitles = sourceTitles[:3]
+		}
 		prior = append(prior, fmt.Sprintf(
-			"- %s: %s\n  Recall: %s",
+			"- %s\n  Objective: %s\n  Concepts: %s\n  Sources: %s\n  Summary: %s\n  Recall: %s",
 			entry.Date,
-			entry.LessonSummary,
+			firstText(entry.LearningObjective, "not recorded"),
+			firstText(strings.Join(concepts, " | "), "none recorded"),
+			firstText(strings.Join(sourceTitles, " | "), "none recorded"),
+			firstText(entry.LessonSummary, "not recorded"),
 			firstText(strings.Join(recall, " | "), "none recorded"),
 		))
 	}
@@ -556,6 +571,7 @@ func (g *Generator) learnerContext(
 		"Level: " + newsletter.LearnerLevel,
 		"Goal: " + newsletter.LearnerGoal,
 		fmt.Sprintf("Available time: %d minutes", newsletter.LessonMinutes),
+		lessonWordBudgetFor(newsletter.LessonMinutes).promptLine(),
 		"",
 		"# Previous lessons",
 		strings.Join(prior, "\n"),
@@ -574,10 +590,10 @@ func stageInstructions() map[string]string {
 		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\", plus a non-empty string array \"prerequisites\".",
 		"researcher":  "Write a compact research brief serving the Learning Blueprint. Explain claims, mechanisms, conditions, and implications using only supplied Source Items. Cite identifiers like [S1], distinguish facts from inference, and identify disagreement or missing evidence.",
 		"skeptic":     "Audit the research brief against the enriched Source Items and Learning Blueprint. Identify weak evidence, missing context, alternatives, edge cases, and unsupported claims. Preserve valid Source Item identifiers and give exact constraints for a trustworthy lesson.",
-		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, and end with the Takeaway.",
+		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, honor the lesson-body word budget in the learner context, and end with the Takeaway.",
 		"examiner":    "Create source-grounded retrieval practice. Use \"## Retrieval practice\" with at least three numbered short-answer questions ending in question marks, \"## Application challenge\" with one realistic transfer task, then <details>, <summary>Answer key</summary>, complete numbered answers, and </details>.",
 		"exploration": "Create explicitly synthetic AI Exploration with one novel analogy, one cross-domain deduction, one hypothetical scenario, and one experiment idea. Label uncertainty. Do not use [S#] citations or rewrite the source-grounded lesson.",
-		"editor":      "Rewrite the source-grounded lesson and practice for precision and depth. Preserve every required lesson heading exactly once and in order, citations, the practice contract, and collapsed answer key. Return strict JSON only with string fields \"lesson\", \"critique\", \"practice\"; \"exploration\" must be null; \"qualityNotes\" is an array of short strings.",
+		"editor":      "Rewrite the source-grounded lesson and practice for precision, depth, and the supplied learner. Preserve every required lesson heading exactly once and in order, citations, the practice contract, and collapsed answer key. Keep the lesson body within the exact word budget in the learner context; practice and critique do not count toward it. Return strict JSON only with string fields \"lesson\", \"critique\", \"practice\"; \"exploration\" must be null; \"qualityNotes\" is an array of short strings.",
 	}
 }
 
