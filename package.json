@@ -17,6 +17,8 @@
     "build": "vite build --config web/vite.config.js",
     "dev": "vite --config web/vite.config.js",
     "demo": "VITE_DEMO_MODE=true vite --config web/vite.config.js",
+    "remotion:studio": "remotion studio remotion/Root.jsx",
+    "remotion:render": "remotion render remotion/Root.jsx LearnloomLaunch out/learnloom-launch.mp4",
     "check": "eslint web/src && npm run build",
     "test": "vitest run --config web/vite.config.js"
   },
@@ -32,12 +34,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@remotion/cli": "^4.0.496",
     "@vitejs/plugin-react": "^6.0.3",
+    "caniuse-lite": "^1.0.30001718",
     "eslint": "^9.39.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
+    "remotion": "^4.0.496",
     "vite": "^8.1.5",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "zod": "^4.3.6"
   }
 }
