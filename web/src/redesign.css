@@ -382,9 +382,9 @@
 .today-feature h2 {
   margin: 10px 0 13px;
   font-family: var(--atelier-display);
-  font-size: clamp(32px, 3.8vw, 50px);
-  line-height: 1.02;
-  letter-spacing: -0.025em;
+  font-size: clamp(28px, 2.75vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
 }
 
 .today-feature-copy > p:last-child {
@@ -1392,7 +1392,7 @@
   .contextual-toolbar { align-items: stretch; flex-direction: column-reverse; }
   .contextual-search { width: 100%; }
   .today-feature { min-height: 330px; padding: 21px; }
-  .today-feature h2 { font-size: 36px; }
+  .today-feature h2 { font-size: 30px; }
   .today-side { display: grid; }
   .atelier-filter-row { max-width: 100%; overflow-x: auto; }
   .atelier-filter-row button { white-space: nowrap; }
