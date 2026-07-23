@@ -16,7 +16,9 @@
 .atelier-app {
   min-height: 100vh;
   color: var(--atelier-ink);
-  background: #d6e3f6;
+  background:
+    linear-gradient(180deg, rgba(204, 221, 247, 0.78) 0%, rgba(230, 237, 249, 0.26) 34%, rgba(255, 241, 225, 0.2) 70%, rgba(248, 245, 238, 0.42) 100%),
+    url("./assets/learning-landscape.jpeg") center / cover fixed no-repeat;
   font-family: var(--atelier-body);
 }
 
@@ -175,7 +177,7 @@
   z-index: -2;
   inset: 0 0 0 224px;
   content: "";
-  background: url("./assets/learning-landscape.jpeg") center / cover no-repeat;
+  background: transparent;
 }
 
 .atelier-main::after {
@@ -183,8 +185,7 @@
   z-index: -1;
   inset: 0 0 0 224px;
   content: "";
-  background:
-    linear-gradient(180deg, rgba(204, 221, 247, 0.78) 0%, rgba(230, 237, 249, 0.26) 34%, rgba(255, 241, 225, 0.2) 70%, rgba(248, 245, 238, 0.42) 100%);
+  background: transparent;
 }
 
 .atelier-page,

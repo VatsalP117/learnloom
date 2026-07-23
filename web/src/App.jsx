@@ -1,4 +1,5 @@
 import { Menu, Plus, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import IssueDetail from "./IssueDetail.jsx";
 import LibraryPage from "./LibraryPage.jsx";
 import NewsletterCreate from "./NewsletterCreate.jsx";
@@ -9,7 +10,50 @@ import StreamsPage from "./StreamsPage.jsx";
 import TodayPage from "./TodayPage.jsx";
 
 export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
-  const path = window.location.pathname;
+  const [location, setLocation] = useState(
+    () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
+  );
+  const path = new URL(location, window.location.origin).pathname;
+
+  useEffect(() => {
+    const updateLocation = () => {
+      setLocation(`${window.location.pathname}${window.location.search}${window.location.hash}`);
+    };
+    const navigate = (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) return;
+
+      const anchor = event.target.closest("a");
+      if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+
+      const next = new URL(anchor.href, window.location.href);
+      if (
+        next.origin !== window.location.origin ||
+        !["http:", "https:"].includes(next.protocol) ||
+        (next.pathname === window.location.pathname &&
+          next.search === window.location.search &&
+          next.hash)
+      ) return;
+
+      event.preventDefault();
+      window.history.pushState(null, "", `${next.pathname}${next.search}${next.hash}`);
+      updateLocation();
+      window.scrollTo({ top: 0 });
+    };
+
+    window.addEventListener("popstate", updateLocation);
+    document.addEventListener("click", navigate);
+    return () => {
+      window.removeEventListener("popstate", updateLocation);
+      document.removeEventListener("click", navigate);
+    };
+  }, []);
 
   if (path === "/newsletters/new") {
     return <NewsletterCreate sourceDiscovery={Boolean(capabilities.sourceDiscovery)} />;

@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading, formatShortDate } from "./LearningShell.jsx";
 import { apiJSON, demoMode } from "./api.js";
 import { lessonState } from "./learningState.js";
+import { invalidateWorkspaceCache } from "./useWorkspace.js";
 
 export default function NewsletterDetail({ newsletterId }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -56,6 +57,7 @@ export default function NewsletterDetail({ newsletterId }) {
     setError("");
     try {
       await apiJSON(action, { method: "POST", body });
+      invalidateWorkspaceCache(newsletterId);
       await load();
       setNotice(successMessage);
     } catch (requestError) {
