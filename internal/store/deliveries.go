@@ -153,12 +153,12 @@ func (s *Store) FailDelivery(
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE delivery_receipts SET
 			status = 'failed',
-			available_at = $3 + make_interval(
+			available_at = $3::timestamptz + make_interval(
 				secs => LEAST(3600, 30 * power(2, GREATEST(0, attempt_count - 1)))::int
 			),
 			claim_token = NULL, claim_expires_at = NULL, error = $5,
-			completed_at = CASE WHEN attempt_count >= $4 THEN $3 ELSE NULL END,
-			updated_at = $3
+			completed_at = CASE WHEN attempt_count >= $4 THEN $3::timestamptz ELSE NULL END,
+			updated_at = $3::timestamptz
 		WHERE issue_id = $1 AND claim_token = $2 AND status = 'delivering'
 	`, issueID, token, now, maxAttempts, message)
 	if err != nil {

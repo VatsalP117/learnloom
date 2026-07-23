@@ -118,6 +118,7 @@ func NewServer(
 		clerk.SetKey(cfg.ClerkSecretKey)
 		options := []clerkhttp.AuthorizationOption{
 			clerkhttp.AuthorizedPartyMatches(cfg.AppOrigin),
+			clerkhttp.AuthorizationJWTExtractor(clerkSessionToken),
 			clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(func(
 				response http.ResponseWriter,
 				_ *http.Request,
@@ -132,6 +133,21 @@ func NewServer(
 	}
 	server.authenticated = auth(http.HandlerFunc(server.handleAuthenticated))
 	return server, nil
+}
+
+func clerkSessionToken(request *http.Request) string {
+	const bearerPrefix = "Bearer "
+	authorization := strings.TrimSpace(request.Header.Get("Authorization"))
+	if strings.HasPrefix(authorization, bearerPrefix) {
+		if token := strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)); token != "" {
+			return token
+		}
+	}
+	cookie, err := request.Cookie("__session")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cookie.Value)
 }
 
 func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) {

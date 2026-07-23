@@ -177,6 +177,13 @@ function NewsletterDetail({ newsletterId }) {
                   <IssueHistory
                     issues={issues}
                     busy={busy}
+                    onRetryGeneration={(issue) =>
+                      submit(
+                        `/api/issues/${encodeURIComponent(issue.id)}/retry-generation`,
+                        {},
+                        "Issue queued for generation again.",
+                      )
+                    }
                     onRetry={(issue) =>
                       submit(
                         `/api/issues/${encodeURIComponent(issue.id)}/retry-delivery`,
@@ -481,7 +488,13 @@ function DeliveryCard({
   );
 }
 
-function IssueHistory({ issues, busy, onRetry, onPublicationChange }) {
+function IssueHistory({
+  issues,
+  busy,
+  onRetryGeneration,
+  onRetry,
+  onPublicationChange,
+}) {
   return (
     <article className="detail-card history-card">
       <div className="detail-card-heading history-heading">
@@ -549,6 +562,16 @@ function IssueHistory({ issues, busy, onRetry, onPublicationChange }) {
                             : "Publish"}
                         </button>
                       </>
+                    ) : null}
+                    {issue.status === "failed" ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(busy)}
+                        onClick={() => onRetryGeneration(issue)}
+                      >
+                        <RotateCcw size={14} />
+                        Retry
+                      </button>
                     ) : null}
                     {issue.delivery?.status === "failed" ? (
                       <button

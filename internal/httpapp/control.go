@@ -425,6 +425,17 @@ func (s *Server) issueAction(
 		return
 	}
 	switch action {
+	case "retry-generation":
+		if err := s.store.RetryIssue(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]string{"status": "queued"})
 	case "publication":
 		var body struct {
 			State domain.PublicationState `json:"state"`

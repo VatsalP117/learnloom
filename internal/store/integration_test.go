@@ -96,6 +96,56 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		t.Fatalf("claim=%#v err=%v", claim, err)
 	}
 	now := time.Now().UTC()
+	if err := database.FailIssue(
+		ctx,
+		issue.ID,
+		claim.Token,
+		errors.New("editor output contract failed"),
+		3,
+		now,
+	); err != nil {
+		t.Fatalf("fail Issue: %v", err)
+	}
+	claim, err = database.ClaimNextIssue(
+		ctx,
+		now.Add(16*time.Second),
+		5*time.Minute,
+		1,
+		5,
+		100,
+	)
+	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
+		t.Fatalf("retry claim=%#v err=%v", claim, err)
+	}
+	if err := database.FailIssue(
+		ctx,
+		issue.ID,
+		claim.Token,
+		errors.New("editor output contract failed again"),
+		1,
+		now.Add(17*time.Second),
+	); err != nil {
+		t.Fatalf("exhaust Issue attempts: %v", err)
+	}
+	if err := database.RetryIssue(
+		ctx,
+		account.ID,
+		issue.ID,
+		now.Add(18*time.Second),
+	); err != nil {
+		t.Fatalf("retry failed Issue: %v", err)
+	}
+	claim, err = database.ClaimNextIssue(
+		ctx,
+		now.Add(19*time.Second),
+		5*time.Minute,
+		1,
+		5,
+		100,
+	)
+	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
+		t.Fatalf("manual retry claim=%#v err=%v", claim, err)
+	}
 	err = database.CompleteIssue(ctx, issue.ID, CompleteIssueInput{
 		ClaimToken: claim.Token, GenerationID: uuid.NewString(),
 		ArtifactKey: "accounts/a/dossier.json", Checksum: "abc", Bytes: 100,

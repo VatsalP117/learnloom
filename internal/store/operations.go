@@ -161,7 +161,7 @@ func (s *Store) FailAccountDeletion(
 ) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE account_deletion_queue SET
-			available_at = $3 + make_interval(
+			available_at = $3::timestamptz + make_interval(
 				secs => LEAST(86400, 60 * power(2, GREATEST(0, attempt_count - 1)))::int
 			),
 			claim_token = NULL, claim_expires_at = NULL, error = $4

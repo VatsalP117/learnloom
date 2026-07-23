@@ -502,10 +502,10 @@ func (s *Store) FailIssue(
 			status = CASE WHEN attempt_count >= $4 THEN 'failed' ELSE 'queued' END,
 			available_at = CASE
 				WHEN attempt_count >= $4 THEN available_at
-				ELSE $3 + make_interval(secs => LEAST(900, 15 * power(2, GREATEST(0, attempt_count - 1)))::int)
+				ELSE $3::timestamptz + make_interval(secs => LEAST(900, 15 * power(2, GREATEST(0, attempt_count - 1)))::int)
 			END,
 			claim_token = NULL, claim_expires_at = NULL, error = $5,
-			completed_at = CASE WHEN attempt_count >= $4 THEN $3 ELSE NULL END
+			completed_at = CASE WHEN attempt_count >= $4 THEN $3::timestamptz ELSE NULL END
 		WHERE id = $1 AND claim_token = $2 AND status = 'generating'
 		RETURNING attempt_count
 	`, issueID, token, now, maxAttempts, message).Scan(&attempts); err != nil {
@@ -572,6 +572,38 @@ func (s *Store) GetIssue(
 	}
 	issue.Delivery = receipt
 	return issue, nil
+}
+
+func (s *Store) RetryIssue(
+	ctx context.Context,
+	accountID, issueID string,
+	now time.Time,
+) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE issues i SET
+			status = 'queued',
+			attempt_count = 0,
+			available_at = $3::timestamptz,
+			claim_token = NULL,
+			claim_expires_at = NULL,
+			error = NULL,
+			started_at = NULL,
+			completed_at = NULL
+		FROM newsletters n
+		JOIN accounts a ON a.id = n.owner_account_id
+		WHERE i.newsletter_id = n.id
+		  AND n.owner_account_id = $1
+		  AND i.id = $2
+		  AND i.status = 'failed'
+		  AND a.status = 'active'
+	`, accountID, issueID, now)
+	if err != nil {
+		return fmt.Errorf("retry Issue: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (s *Store) SetIssuePublication(
