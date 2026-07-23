@@ -1,12 +1,14 @@
 :root {
   --atelier-ink: #151719;
-  --atelier-muted: #5c626b;
+  --atelier-muted: #50565f;
   --atelier-line: rgba(21, 23, 25, 0.14);
-  --atelier-paper: rgba(255, 255, 255, 0.86);
+  --atelier-paper: rgba(247, 249, 253, 0.56);
+  --atelier-paper-strong: rgba(249, 250, 253, 0.7);
+  --atelier-paper-soft: rgba(247, 249, 253, 0.46);
   --atelier-paper-solid: #fffefb;
   --atelier-blue: #dce8fb;
   --atelier-sidebar: rgba(247, 249, 253, 0.92);
-  --atelier-shadow: 0 14px 36px rgba(29, 43, 68, 0.1);
+  --atelier-shadow: 0 12px 32px rgba(29, 43, 68, 0.075);
   --atelier-display: "Bricolage Grotesque", sans-serif;
   --atelier-body: "Manrope", sans-serif;
 }
@@ -232,11 +234,11 @@
 }
 
 .glass-panel {
-  border: 1px solid rgba(21, 23, 25, 0.13);
+  border: 1px solid rgba(21, 23, 25, 0.15);
   border-radius: 8px;
   background: var(--atelier-paper);
   box-shadow: var(--atelier-shadow);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
 }
 
 .atelier-primary {
@@ -295,8 +297,9 @@
   border: 1px solid var(--atelier-line);
   border-radius: 8px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(14px);
+  background: var(--atelier-paper);
+  box-shadow: var(--atelier-shadow);
+  backdrop-filter: blur(10px);
 }
 
 .atelier-state-card strong { font-family: var(--atelier-display); font-size: 23px; }
@@ -354,7 +357,7 @@
   flex-direction: column;
   padding: 25px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.91), rgba(255, 244, 233, 0.74));
+    linear-gradient(145deg, rgba(247, 249, 253, 0.62), rgba(255, 235, 220, 0.44));
 }
 
 .today-feature-top,
@@ -455,7 +458,8 @@
   padding: 4px;
   border: 1px solid var(--atelier-line);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--atelier-paper);
+  backdrop-filter: blur(10px);
   width: fit-content;
 }
 
@@ -479,8 +483,8 @@
   border: 1px solid var(--atelier-line);
   border-radius: 6px;
   color: #4d5660;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(14px);
+  background: var(--atelier-paper-strong);
+  backdrop-filter: blur(10px);
 }
 
 .contextual-search input {
@@ -530,7 +534,8 @@
   color: var(--atelier-ink);
   text-align: center;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--atelier-paper-soft);
+  backdrop-filter: blur(8px);
 }
 .stream-create-card strong { font-family: var(--atelier-display); font-size: 22px; }
 .stream-create-card span { max-width: 240px; color: var(--atelier-muted); font-size: 11px; line-height: 1.5; }
@@ -592,7 +597,7 @@
   border: 1px solid var(--atelier-line);
   border-radius: 5px;
   color: var(--atelier-ink);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--atelier-paper-strong);
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
@@ -656,7 +661,7 @@
 .review-card h2 { max-width: 680px; margin: 14px auto; font-family: var(--atelier-display); font-size: clamp(30px, 4vw, 46px); line-height: 1.12; }
 .review-instruction { max-width: 530px; margin: 0 auto 25px; color: var(--atelier-muted); font-size: 11px; line-height: 1.6; }
 .review-card > .atelier-primary { margin-bottom: auto; }
-.review-context { max-width: 620px; margin-bottom: auto; padding: 18px; border: 1px solid var(--atelier-line); text-align: left; background: rgba(255, 255, 255, 0.56); }
+.review-context { max-width: 620px; margin-bottom: auto; padding: 18px; border: 1px solid var(--atelier-line); text-align: left; background: var(--atelier-paper-soft); }
 .review-context > span { font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .review-context > p { color: #424a54; font-size: 11px; line-height: 1.6; }
 .review-context > a { display: flex; align-items: center; gap: 5px; color: var(--atelier-ink); font-size: 10px; font-weight: 750; }
@@ -669,7 +674,7 @@
   padding: 0 11px;
   border: 1px solid var(--atelier-line);
   color: var(--atelier-ink);
-  background: white;
+  background: var(--atelier-paper-strong);
   font-size: 9px;
   cursor: pointer;
 }
@@ -727,7 +732,7 @@
 .site-preview-paper > div span { padding: 7px 9px; background: #eef2f7; font-size: 8px; }
 .visibility-card { padding: 19px; }
 .visibility-card h2 { margin: 7px 0 17px; font-family: var(--atelier-display); font-size: 26px; }
-.visibility-level { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--atelier-line); background: rgba(255, 255, 255, 0.58); }
+.visibility-level { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--atelier-line); background: var(--atelier-paper-soft); }
 .visibility-level strong { font-size: 11px; }
 .visibility-level p { margin: 4px 0 0; color: var(--atelier-muted); font-size: 9px; line-height: 1.45; }
 .visibility-level button {
@@ -877,9 +882,9 @@
   border: 1px solid var(--atelier-line);
   border-radius: 8px;
   list-style: none;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--atelier-paper);
   box-shadow: var(--atelier-shadow);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
 }
 
 .create-page .setup-steps li::after { display: none; }
@@ -1038,7 +1043,7 @@
   border: 1px solid var(--atelier-line);
   border-radius: 5px;
   color: #414953;
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--atelier-paper);
   font-size: 9px;
   font-weight: 650;
   cursor: pointer;
@@ -1074,7 +1079,7 @@
   padding: 18px;
   border: 1px solid var(--atelier-line);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--atelier-paper-soft);
   cursor: pointer;
   transition: border-color 100ms ease-out, background 100ms ease-out, transform 100ms ease-out;
 }
@@ -1149,7 +1154,7 @@
   padding: 11px;
   border: 1px solid var(--atelier-line);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--atelier-paper-soft);
 }
 
 .create-page .guided-source-row label { gap: 4px !important; }
@@ -1199,7 +1204,7 @@
   padding: 11px 13px;
   border: 1px solid var(--atelier-line);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--atelier-paper-soft);
   cursor: pointer;
 }
 
@@ -1232,9 +1237,9 @@
   padding: 22px;
   border: 1px solid var(--atelier-line);
   border-radius: 8px;
-  background: linear-gradient(145deg, rgba(238, 244, 252, 0.94), rgba(255, 248, 240, 0.91));
+  background: linear-gradient(145deg, rgba(238, 244, 252, 0.66), rgba(255, 238, 222, 0.5));
   box-shadow: var(--atelier-shadow);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
 }
 
 .create-page .review-icon { width: 42px; height: 42px; margin: 18px 0 14px; }
