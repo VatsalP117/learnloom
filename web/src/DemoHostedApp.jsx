@@ -8,8 +8,9 @@ export default function DemoHostedApp() {
   return (
     <>
       <App />
-      <SiteControl site={site} onUpdate={setSite} />
+      {window.location.pathname !== "/newsletters/new" ? (
+        <SiteControl site={site} onUpdate={setSite} />
+      ) : null}
     </>
   );
 }
-

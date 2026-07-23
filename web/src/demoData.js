@@ -120,6 +120,51 @@ const issuesByNewsletter = Object.fromEntries(
   ]),
 );
 
+const dossierByIssue = {
+  "urban-systems-issue-1": {
+    readTime: 18,
+    deck:
+      "A river can disappear from the map without disappearing from the city. Trace the old water, and streets, density, and risk start to make more sense.",
+    objective:
+      "Use buried waterways as a mental model for reading how old infrastructure keeps shaping present-day urban life.",
+    sections: [
+      {
+        label: "The mechanism",
+        heading: "Cities keep the shape of what they cover.",
+        paragraphs: [
+          "When a stream is channelled, filled, or built over, its visible surface disappears first. The low ground, the soil, the drainage path, and the habits of settlement remain. A city inherits those constraints even when its maps tell a cleaner story.",
+          "That is why the same pattern appears across very different places: roads bend around old floodplains, dense development gathers on higher ground, and heavy rain exposes the routes water still wants to take. The buried river is not a metaphor. It is a piece of infrastructure with its interface removed.",
+        ],
+        callout:
+          "The useful question is not “Where did the river go?” but “What is the river still making possible—and difficult?”",
+      },
+      {
+        label: "A worked example",
+        heading: "Read Bengaluru from the water outward.",
+        paragraphs: [
+          "Bengaluru’s lakes and interconnected drainage channels were designed as a system, not as isolated blue patches. As the city expanded, roads and buildings interrupted those connections. During intense rain, water follows the older topography, while the newer city experiences that movement as flooding.",
+          "This changes the design problem. The solution is not only to move water away faster; it is to restore room for the system to hold, slow, and share water. A map of lakes becomes a map of relationships between ecology, housing, roads, and public decisions.",
+        ],
+      },
+      {
+        label: "Skeptical review",
+        heading: "The model explains a lot. It does not explain everything.",
+        paragraphs: [
+          "Old waterways are powerful evidence, but they are not a single-cause theory of urban risk. Drain maintenance, land use, rainfall intensity, construction quality, and unequal access to protection all matter. The same historical pattern can produce very different outcomes depending on who has the power to change it.",
+          "Treat the buried-river model as a starting lens. It helps you notice a hidden dependency, then asks you to look for the institutions and incentives that keep the dependency in place.",
+        ],
+      },
+    ],
+    retrieval: [
+      "Why can a covered stream continue to shape a city’s streets and flood risk?",
+      "What changes when a network of lakes is treated as one system?",
+      "Which factors would you check before blaming every flood on old waterways?",
+    ],
+    application:
+      "Choose one familiar street that floods after heavy rain. Look for the low points, nearby water bodies, and recent construction. Sketch the path water might be trying to take—and note what your sketch cannot yet explain.",
+  },
+};
+
 export const demoSite = {
   username: "maya",
   displayName: "Maya’s Learning Garden",
@@ -154,7 +199,44 @@ export function demoResponse(path, options = {}) {
       newsletter,
       newsletters,
       issues: issuesByNewsletter[newsletter.id] ?? issuesByNewsletter["urban-systems"],
+      sourceSummary: {
+        provided: newsletter.sources.length,
+        discovered: 0,
+        healthy: newsletter.sources.length,
+        needsAttention: 0,
+      },
+      sourceCatalog: newsletter.sources.map((source, index) => ({
+        id: `${newsletter.id}-source-${index + 1}`,
+        displayName: source.name,
+        canonicalUrl: source.url,
+        health: "healthy",
+        origin: "provided",
+        kind: "publication",
+        state: "active",
+      })),
       resendConfigured: true,
+    };
+  }
+
+  const issue = /^\/api\/issues\/([^/]+)$/.exec(path);
+  if (issue && method === "GET") {
+    const issueId = decodeURIComponent(issue[1]);
+    const newsletter = newsletters.find((item) =>
+      (issuesByNewsletter[item.id] ?? []).some((itemIssue) => itemIssue.id === issueId),
+    ) ?? newsletters[0];
+    const newsletterIssues = issuesByNewsletter[newsletter.id] ?? [];
+    const currentIssue = newsletterIssues.find((itemIssue) => itemIssue.id === issueId)
+      ?? newsletterIssues[0];
+    const dossier = dossierByIssue[currentIssue.id] ?? dossierByIssue["urban-systems-issue-1"];
+    return {
+      issue: currentIssue,
+      newsletter,
+      newsletters,
+      dossier,
+      sources: newsletter.sources.slice(0, 3).map((source) => ({
+        name: source.name,
+        url: source.url,
+      })),
     };
   }
 
@@ -164,4 +246,3 @@ export function demoResponse(path, options = {}) {
 
   throw new Error(`No demo response is configured for ${path}.`);
 }
-

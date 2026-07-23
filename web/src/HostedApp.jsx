@@ -7,6 +7,7 @@ import {
   SignUp,
   useAuth,
 } from "@clerk/react";
+import { ExternalLink, Globe2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
 import { apiJSON, configureAPI, setCSRFToken } from "./api.js";
@@ -34,6 +35,8 @@ function OnboardingGate() {
   const { getToken } = useAuth();
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
+  const [siteSetupOpen, setSiteSetupOpen] = useState(false);
+  const showSiteControl = window.location.pathname !== "/newsletters/new";
 
   useEffect(() => {
     configureAPI(getToken);
@@ -51,16 +54,34 @@ function OnboardingGate() {
 
   if (error) return <AuthPage><p>{error}</p></AuthPage>;
   if (!profile) return <AuthPage><p>Preparing your workspace…</p></AuthPage>;
-  if (!profile.site) {
-    return <ClaimUsername onClaim={(site) => setProfile({ ...profile, site })} />;
-  }
   return (
     <>
       <App capabilities={profile.capabilities ?? {}} />
-      <SiteControl
-        site={profile.site}
-        onUpdate={(site) => setProfile({ ...profile, site })}
-      />
+      {profile.site && showSiteControl ? (
+        <SiteControl
+          site={profile.site}
+          onUpdate={(site) => setProfile({ ...profile, site })}
+        />
+      ) : !profile.site && showSiteControl ? (
+        <>
+          <button className="site-setup-launcher" type="button" onClick={() => setSiteSetupOpen(true)}>
+            <Globe2 size={16} />
+            <span><strong>Personal site</strong><small>Set up when you’re ready to share</small></span>
+          </button>
+          {siteSetupOpen ? (
+            <div className="site-setup-overlay" role="presentation" onMouseDown={() => setSiteSetupOpen(false)}>
+              <ClaimUsername
+                embedded
+                onCancel={() => setSiteSetupOpen(false)}
+                onClaim={(site) => {
+                  setProfile({ ...profile, site });
+                  setSiteSetupOpen(false);
+                }}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }
@@ -68,6 +89,7 @@ function OnboardingGate() {
 export function SiteControl({ site, onUpdate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const nextVisibility = site.visibility === "public" ? "private" : "public";
 
   async function toggleVisibility() {
@@ -87,29 +109,32 @@ export function SiteControl({ site, onUpdate }) {
   }
 
   return (
-    <aside className="site-control" aria-label="Public site controls">
-      <div>
-        <span className={`site-status ${site.visibility}`}>{site.visibility}</span>
-        <strong>{personalSiteHost(site.username)}</strong>
-      </div>
-      <div className="site-control-actions">
-        {site.visibility === "public" && site.url ? (
-          <a href={site.url} target="_blank" rel="noreferrer">View site</a>
-        ) : null}
-        <button type="button" disabled={busy} onClick={toggleVisibility}>
-          {busy
-            ? "Saving…"
-            : nextVisibility === "public"
-              ? "Publish site"
-              : "Make private"}
-        </button>
-      </div>
-      {error ? <p>{error}</p> : null}
+    <aside className={`site-control ${expanded ? "expanded" : ""}`} aria-label="Personal site controls">
+      <button className="site-control-summary" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
+        <Globe2 size={16} />
+        <span><strong>Personal site</strong><small>{personalSiteHost(site.username)}</small></span>
+        <i className={`site-dot ${site.visibility}`} />
+      </button>
+      {expanded ? (
+        <div className="site-control-panel">
+          <div><span className={`site-status ${site.visibility}`}>{site.visibility}</span><button type="button" onClick={() => setExpanded(false)} aria-label="Close personal site controls"><X size={15} /></button></div>
+          <p>{site.visibility === "public" ? "Your published learning is visible at your personal address." : "Your site is private. Publish it whenever you have something ready to share."}</p>
+          <div className="site-control-actions">
+            {site.visibility === "public" && site.url ? (
+              <a href={site.url} target="_blank" rel="noreferrer">View site <ExternalLink size={13} /></a>
+            ) : null}
+            <button type="button" disabled={busy} onClick={toggleVisibility}>
+              {busy ? "Saving…" : nextVisibility === "public" ? "Publish site" : "Make private"}
+            </button>
+          </div>
+          {error ? <p className="site-control-error">{error}</p> : null}
+        </div>
+      ) : null}
     </aside>
   );
 }
 
-function ClaimUsername({ onClaim }) {
+function ClaimUsername({ onClaim, onCancel, embedded = false }) {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -156,12 +181,12 @@ function ClaimUsername({ onClaim }) {
   }
 
   const normalized = username.trim().toLowerCase();
-  return (
-    <main className="auth-shell">
-      <section className="claim-card">
+  const card = (
+      <section className="claim-card" onMouseDown={(event) => event.stopPropagation()}>
+        {onCancel ? <button className="claim-close" type="button" onClick={onCancel} aria-label="Close"><X size={18} /></button> : null}
         <p className="overline">Claim your learning home</p>
-        <h1>Choose your Learnloom address</h1>
-        <p>Your Dossiers will live at a personal subdomain after you choose to publish them.</p>
+        <h1>A lasting home for what you learn</h1>
+        <p>Choose an address for the lessons you decide to publish. Your streams stay private unless you explicitly share them.</p>
         <form onSubmit={submit}>
           <label>
             <span>Username</span>
@@ -180,11 +205,11 @@ function ClaimUsername({ onClaim }) {
             <input required maxLength={100} value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" />
           </label>
           {error ? <p className="claim-error">{error}</p> : null}
-          <button className="primary-button claim-submit" disabled={busy}>{busy ? "Claiming…" : "Claim username"}</button>
+          <button className="primary-button claim-submit" disabled={busy || availability === false}>{busy ? "Creating your site…" : "Create personal site"}</button>
         </form>
       </section>
-    </main>
   );
+  return embedded ? card : <main className="auth-shell">{card}</main>;
 }
 
 function AuthPage({ children }) {

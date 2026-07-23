@@ -28,3 +28,18 @@ node launch-video/render.mjs
 
 The renderer creates SVG motion frames, rasterizes them, synthesizes the
 soundtrack, and exports `output/learnloom-launch-film.mp4`.
+
+## Remotion cut
+
+The editable launch-film composition now lives in `remotion/` and is the
+preferred path for the revised cut:
+
+```sh
+cd launch-video/remotion
+npm install
+npm run studio
+npm run render
+```
+
+It exports `output/learnloom-launch-remotion.mp4` and uses the captured
+Learnloom lesson state in `screenshots/11-demo-lesson.jpg`.

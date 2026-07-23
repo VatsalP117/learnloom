@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState, Footer, Sidebar, Topbar } from "./App.jsx";
-import { apiJSON } from "./api.js";
+import { apiJSON, demoMode } from "./api.js";
 
 const pipelineSteps = [
   { label: "Curation", icon: BookOpen },
@@ -107,6 +107,7 @@ function NewsletterDetail({ newsletterId }) {
               <>
                 <DetailHeader
                   newsletter={newsletter}
+                  hasIssues={issues.length > 0}
                   busy={busy}
                   onRun={() =>
                     submit(
@@ -209,11 +210,11 @@ function NewsletterDetail({ newsletterId }) {
   );
 }
 
-function DetailHeader({ newsletter, busy, onRun, onToggle }) {
+function DetailHeader({ newsletter, hasIssues, busy, onRun, onToggle }) {
   return (
     <section className="detail-header">
       <div>
-        <a className="back-link" href="/">Newsletters <span>/</span></a>
+        <a className="back-link" href="/">Learning streams <span>/</span></a>
         <div className="detail-title-row">
           <h1>{newsletter.name}</h1>
           <span className={`detail-status ${newsletter.active ? "active" : ""}`}>
@@ -239,7 +240,7 @@ function DetailHeader({ newsletter, busy, onRun, onToggle }) {
           onClick={onRun}
         >
           <RefreshCw className={busy.endsWith("/run") ? "spin" : ""} size={17} />
-          Run Manual Sync
+          {hasIssues ? "Create a lesson now" : "Create your first lesson"}
         </button>
       </div>
     </section>
@@ -257,7 +258,7 @@ function PipelineCard({ latestIssue, active }) {
   return (
     <article className="detail-card pipeline-card">
       <div className="detail-card-heading">
-        <span>Dossier Pipeline</span>
+        <span>How your lesson is made</span>
         <div className="pipeline-current">
           <i className={latestIssue?.status ?? "idle"} />
           {stateLabel}
@@ -300,7 +301,7 @@ function SourceCatalogCard({ mode, summary, sources }) {
   return (
     <article className="detail-card source-catalog-card">
       <div className="detail-card-heading">
-        <span>Source Intelligence</span>
+        <span>Your source library</span>
         <span className="blueprint-meta">{modeLabel}</span>
       </div>
       <div className="source-summary-row">
@@ -334,7 +335,7 @@ function SourceCatalogCard({ mode, summary, sources }) {
         </div>
       ) : (
         <p className="source-catalog-empty">
-          Sources will appear here after the first discovery run.
+          Your sources will appear here after the first lesson begins.
         </p>
       )}
     </article>
@@ -362,8 +363,8 @@ function BlueprintCard({ newsletter }) {
         <span className="blueprint-icon"><FlaskConical size={22} /></span>
         <h2>{newsletter.learnerGoal}</h2>
         <p>
-          Designed for a {newsletter.learnerLevel}. Each issue synthesizes trusted
-          sources into a focused lesson, skeptical review, retrieval practice, and
+          Designed for {newsletter.learnerLevel}-level learning. Each lesson synthesizes
+          trusted sources into a focused explanation, skeptical review, retrieval practice, and
           an application exercise.
         </p>
         <div className="source-pills">
@@ -485,16 +486,16 @@ function IssueHistory({ issues, busy, onRetry, onPublicationChange }) {
     <article className="detail-card history-card">
       <div className="detail-card-heading history-heading">
         <div>
-          <span>Recent Dossiers</span>
-          <small>{issues.length} total issue{issues.length === 1 ? "" : "s"}</small>
+          <span>Lesson archive</span>
+          <small>{issues.length} lesson{issues.length === 1 ? "" : "s"}</small>
         </div>
-        <a href="#archive">View Archive <ArrowRight size={14} /></a>
+        <span className="history-continuity">Each lesson builds on the last <ArrowRight size={14} /></span>
       </div>
       {issues.length === 0 ? (
         <div className="history-empty">
           <CircleDashed size={24} />
-          <strong>No issues yet</strong>
-          <span>Run a manual sync to start the first dossier.</span>
+          <strong>Your first lesson is waiting to be made</strong>
+          <span>Create it now, or let Learnloom prepare it at the scheduled time.</span>
         </div>
       ) : (
         <div className="history-table-wrap">
@@ -535,7 +536,7 @@ function IssueHistory({ issues, busy, onRetry, onPublicationChange }) {
                   <td className="row-action" data-label="Action">
                     {issue.status === "generated" ? (
                       <>
-                        <a href={`/issues/${encodeURIComponent(issue.id)}`}>
+                        <a href={lessonHref(issue.id)}>
                           View <ExternalLink size={14} />
                         </a>
                         <button
@@ -609,12 +610,18 @@ function formatDate(value) {
 
 function noticeFromLocation() {
   const search = new URLSearchParams(window.location.search);
-  if (search.has("created")) return "Knowledge Dossier created.";
-  if (search.has("queued")) return "Issue queued. The worker will pick it up shortly.";
+  if (search.has("created")) return "Your learning stream is ready. Create a lesson now, or let it begin on schedule.";
+  if (search.has("queued")) return "Your lesson is queued and will be ready shortly.";
   if (search.get("delivery") === "saved") return "Email delivery settings saved.";
   if (search.get("delivery") === "retried") return "Email delivery queued for another attempt.";
   if (search.get("content") === "saved") return "Content settings saved for future Issues.";
   return "";
+}
+
+function lessonHref(issueId) {
+  return demoMode
+    ? `/?demoIssue=${encodeURIComponent(issueId)}`
+    : `/issues/${encodeURIComponent(issueId)}`;
 }
 
 export default NewsletterDetail;

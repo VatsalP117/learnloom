@@ -1,0 +1,16 @@
+{
+  "name": "learnloom-launch-video-remotion",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.jsx LearnloomLaunch",
+    "render": "remotion render src/index.jsx LearnloomLaunch ../output/learnloom-launch-remotion.mp4",
+    "still": "remotion still src/index.jsx LearnloomLaunch ../output/remotion-preview.png"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.496",
+    "remotion": "4.0.496",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}
