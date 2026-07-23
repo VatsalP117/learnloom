@@ -1,6 +1,8 @@
 package httpapp
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -131,6 +134,14 @@ func (s *Server) handleControl(
 		s.workspaceSnapshot(response, request, current)
 		return
 	}
+	if request.URL.Path == "/api/issues" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(response, http.MethodGet)
+			return
+		}
+		s.listWorkspaceIssues(response, request, current)
+		return
+	}
 	if len(route) >= 3 && route[0] == "api" && route[1] == "newsletters" {
 		newsletterID := route[2]
 		if len(route) == 3 {
@@ -184,6 +195,7 @@ func (s *Server) workspaceSnapshot(
 	var (
 		records []store.NewsletterRecord
 		issues  []domain.Issue
+		next    *store.WorkspaceIssueCursor
 		reviews []store.WorkspaceReview
 	)
 	group, context := errgroup.WithContext(request.Context())
@@ -194,7 +206,12 @@ func (s *Server) workspaceSnapshot(
 	})
 	group.Go(func() error {
 		var err error
-		issues, err = s.store.ListWorkspaceIssues(context, current.Account.ID, 500)
+		issues, next, err = s.store.ListWorkspaceIssuesPage(
+			context,
+			current.Account.ID,
+			24,
+			nil,
+		)
 		return err
 	})
 	group.Go(func() error {
@@ -219,10 +236,111 @@ func (s *Server) workspaceSnapshot(
 		"summary": map[string]int{
 			"newsletters": len(records), "active": active, "generated": generated,
 		},
-		"newsletters": items,
-		"issues":      issues,
-		"reviews":     reviews,
+		"newsletters":     items,
+		"issues":          workspaceIssuePayloads(issues),
+		"nextIssueCursor": encodeIssueCursor(next),
+		"reviews":         reviews,
 	})
+}
+
+func (s *Server) listWorkspaceIssues(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+) {
+	limit := 40
+	if raw := request.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			writeProblem(response, http.StatusBadRequest, "invalid_limit", "The Issue page limit must be between 1 and 100.")
+			return
+		}
+		limit = value
+	}
+	cursor, err := decodeIssueCursor(request.URL.Query().Get("cursor"))
+	if err != nil {
+		writeProblem(response, http.StatusBadRequest, "invalid_cursor", "The Issue page cursor is invalid.")
+		return
+	}
+	issues, next, err := s.store.ListWorkspaceIssuesPage(
+		request.Context(),
+		current.Account.ID,
+		limit,
+		cursor,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		"issues":          workspaceIssuePayloads(issues),
+		"nextIssueCursor": encodeIssueCursor(next),
+	})
+}
+
+func workspaceIssuePayloads(issues []domain.Issue) []map[string]any {
+	items := make([]map[string]any, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, map[string]any{
+			"id":                 issue.ID,
+			"newsletterId":       issue.NewsletterID,
+			"trigger":            issue.Trigger,
+			"scheduledLocalDate": issue.ScheduledLocalDate,
+			"status":             issue.Status,
+			"title":              issue.Title,
+			"error":              issue.Error,
+			"publicId":           issue.PublicID,
+			"publicSlug":         issue.PublicSlug,
+			"publicationState":   issue.PublicationState,
+			"createdAt":          issue.CreatedAt,
+			"startedAt":          issue.StartedAt,
+			"completedAt":        issue.CompletedAt,
+		})
+	}
+	return items
+}
+
+type issueCursorToken struct {
+	CreatedAt time.Time `json:"createdAt"`
+	IssueID   string    `json:"issueId"`
+}
+
+func encodeIssueCursor(cursor *store.WorkspaceIssueCursor) string {
+	if cursor == nil {
+		return ""
+	}
+	raw, _ := json.Marshal(issueCursorToken{
+		CreatedAt: cursor.CreatedAt,
+		IssueID:   cursor.IssueID,
+	})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeIssueCursor(raw string) (*store.WorkspaceIssueCursor, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	if len(raw) > 512 {
+		return nil, errors.New("Issue cursor is too long")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, err
+	}
+	var token issueCursorToken
+	if err := json.Unmarshal(decoded, &token); err != nil {
+		return nil, err
+	}
+	if token.CreatedAt.IsZero() {
+		return nil, errors.New("Issue cursor timestamp is missing")
+	}
+	if _, err := uuid.Parse(token.IssueID); err != nil {
+		return nil, errors.New("Issue cursor ID is invalid")
+	}
+	return &store.WorkspaceIssueCursor{
+		CreatedAt: token.CreatedAt,
+		IssueID:   token.IssueID,
+	}, nil
 }
 
 func (s *Server) listNewsletters(

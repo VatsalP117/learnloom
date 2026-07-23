@@ -180,7 +180,7 @@ export function demoResponse(path, options = {}) {
     const issues = newsletters.flatMap((newsletter) =>
       (issuesByNewsletter[newsletter.id] ?? []).map((issue) => ({
         ...issue,
-        newsletter,
+        newsletterId: newsletter.id,
       })),
     );
     const reviews = issues
@@ -202,6 +202,7 @@ export function demoResponse(path, options = {}) {
       },
       newsletters,
       issues,
+      nextIssueCursor: "",
       reviews,
     };
   }

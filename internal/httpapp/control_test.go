@@ -1,12 +1,15 @@
 package httpapp
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/store"
 )
 
 func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
@@ -30,6 +33,34 @@ func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
 		input.ScheduleHour != 8 || input.ScheduleMinute != 0 ||
 		!input.Active || input.SiteVisible || len(input.Sources) != 0 {
 		t.Fatalf("input=%#v", input)
+	}
+}
+
+func TestIssueCursorRoundTrip(t *testing.T) {
+	t.Parallel()
+	cursor := &store.WorkspaceIssueCursor{
+		CreatedAt: time.Date(2026, 7, 24, 3, 15, 45, 123, time.UTC),
+		IssueID:   "40cd6201-3df1-4a69-aa23-c609b0920923",
+	}
+	encoded := encodeIssueCursor(cursor)
+	decoded, err := decodeIssueCursor(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.CreatedAt.Equal(cursor.CreatedAt) || decoded.IssueID != cursor.IssueID {
+		t.Fatalf("decoded=%#v, want %#v", decoded, cursor)
+	}
+}
+
+func TestIssueCursorRejectsMalformedValues(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		"not-base64",
+		base64.RawURLEncoding.EncodeToString([]byte(`{"createdAt":"2026-07-24T03:00:00Z","issueId":"not-a-uuid"}`)),
+	} {
+		if _, err := decodeIssueCursor(raw); err == nil {
+			t.Fatalf("decodeIssueCursor(%q) succeeded", raw)
+		}
 	}
 }
 

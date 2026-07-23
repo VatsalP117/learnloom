@@ -39,6 +39,11 @@ type WorkspaceReview struct {
 	RecallQuestions []string `json:"questions"`
 }
 
+type WorkspaceIssueCursor struct {
+	CreatedAt time.Time
+	IssueID   string
+}
+
 type DeliveryClaim struct {
 	Issue        domain.Issue
 	AccountID    string
@@ -564,35 +569,53 @@ func (s *Store) ListIssues(
 	return issues, nil
 }
 
-func (s *Store) ListWorkspaceIssues(
+func (s *Store) ListWorkspaceIssuesPage(
 	ctx context.Context,
 	accountID string,
 	limit int,
-) ([]domain.Issue, error) {
-	if limit < 1 || limit > 1000 {
-		limit = 500
+	cursor *WorkspaceIssueCursor,
+) ([]domain.Issue, *WorkspaceIssueCursor, error) {
+	if limit < 1 || limit > 100 {
+		limit = 40
+	}
+	hasCursor := cursor != nil
+	cursorCreatedAt := time.Time{}
+	cursorIssueID := uuid.Nil.String()
+	if cursor != nil {
+		cursorCreatedAt = cursor.CreatedAt
+		cursorIssueID = cursor.IssueID
 	}
 	rows, err := s.pool.Query(ctx, workerIssueSelect+`
 		WHERE n.owner_account_id = $1
-		ORDER BY i.created_at DESC
-		LIMIT $2
-	`, accountID, limit)
+		  AND (
+			NOT $2::boolean OR
+			(i.created_at, i.id) < ($3::timestamptz, $4::uuid)
+		  )
+		ORDER BY i.created_at DESC, i.id DESC
+		LIMIT $5
+	`, accountID, hasCursor, cursorCreatedAt, cursorIssueID, limit+1)
 	if err != nil {
-		return nil, fmt.Errorf("list workspace Issues: %w", err)
+		return nil, nil, fmt.Errorf("list workspace Issues: %w", err)
 	}
 	defer rows.Close()
 	issues := make([]domain.Issue, 0)
 	for rows.Next() {
 		issue, _, _, err := scanWorkerIssue(rows)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		issues = append(issues, issue)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return issues, nil
+	if len(issues) <= limit {
+		return issues, nil, nil
+	}
+	issues = issues[:limit]
+	last := issues[len(issues)-1]
+	next := &WorkspaceIssueCursor{CreatedAt: last.CreatedAt, IssueID: last.ID}
+	return issues, next, nil
 }
 
 func (s *Store) ListWorkspaceReviews(

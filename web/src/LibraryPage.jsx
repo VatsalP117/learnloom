@@ -122,6 +122,18 @@ export default function LibraryPage() {
             );
           })}
         </div>
+        {workspace.hasMore ? (
+          <div className="library-load-more">
+            <button
+              className="atelier-primary"
+              type="button"
+              disabled={workspace.loadingMore}
+              onClick={workspace.loadMore}
+            >
+              {workspace.loadingMore ? "Loading older lessons…" : "Load older lessons"}
+            </button>
+          </div>
+        ) : null}
       </section>
     </LearningShell>
   );
