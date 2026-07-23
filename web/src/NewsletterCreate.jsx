@@ -134,7 +134,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
       <Topbar onMenu={() => {}} />
       <main className="content create-content">
         <div className="content-inner create-inner">
-          <a className="back-link" href="/"><ArrowLeft size={14} /> Back to your streams</a>
+          <a className="back-link" href="/streams"><ArrowLeft size={14} /> Back to your streams</a>
           <section className="create-heading">
             <p className="overline">Create a learning stream</p>
             <h1>{step === 1 ? "What should become clearer?" : step === 2 ? "Where should we learn from?" : "Make it fit your life."}</h1>
@@ -322,7 +322,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
             ) : null}
 
             <div className="form-actions setup-actions">
-              {step > 1 ? <button className="text-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={15} />Back</button> : <a href="/">Cancel</a>}
+              {step > 1 ? <button className="text-button" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={15} />Back</button> : <a href="/streams">Cancel</a>}
               <span>Step {step} of 3</span>
               {step < 3 ? (
                 <button className="primary-button" disabled={!stepReady} type="submit">Continue <ArrowRight size={16} /></button>

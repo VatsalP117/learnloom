@@ -5,12 +5,15 @@ import "@fontsource/inter/latin-400.css";
 import "@fontsource/inter/latin-500.css";
 import "@fontsource/inter/latin-600.css";
 import "@fontsource/inter/latin-700.css";
+import "@fontsource/playfair-display/latin-600.css";
+import "@fontsource/playfair-display/latin-700.css";
 import HostedApp from "./HostedApp.jsx";
 import DemoHostedApp from "./DemoHostedApp.jsx";
 import MarketingLanding from "./MarketingLanding.jsx";
 import { demoMode } from "./api.js";
 import { rootDomain } from "./config.js";
 import "./styles.css";
+import "./redesign.css";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const hostname = window.location.hostname.toLowerCase();
