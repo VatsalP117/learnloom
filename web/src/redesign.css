@@ -7,7 +7,7 @@
   --atelier-paper-soft: rgba(247, 249, 253, 0.46);
   --atelier-paper-solid: #fffefb;
   --atelier-blue: #dce8fb;
-  --atelier-sidebar: rgba(247, 249, 253, 0.92);
+  --atelier-sidebar: var(--atelier-paper);
   --atelier-shadow: 0 12px 32px rgba(29, 43, 68, 0.075);
   --atelier-display: "Bricolage Grotesque", sans-serif;
   --atelier-body: "Manrope", sans-serif;
@@ -28,9 +28,9 @@
   display: flex;
   flex-direction: column;
   padding: 28px 22px 22px;
-  border-right: 1px solid rgba(21, 23, 25, 0.1);
+  border-right: 1px solid rgba(21, 23, 25, 0.15);
   background: var(--atelier-sidebar);
-  backdrop-filter: blur(22px);
+  backdrop-filter: blur(10px);
 }
 
 .atelier-brand-row {
