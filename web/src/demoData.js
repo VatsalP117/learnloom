@@ -240,6 +240,28 @@ export function demoResponse(path, options = {}) {
     };
   }
 
+  if (path === "/api/me/site/claim" && method === "POST") {
+    return {
+      site: {
+        ...demoSite,
+        username: options.body?.username ?? demoSite.username,
+        displayName: options.body?.displayName ?? demoSite.displayName,
+        visibility: "private",
+      },
+    };
+  }
+
+  if (path === "/api/me/site/settings" && method === "POST") {
+    return {
+      site: {
+        ...demoSite,
+        visibility: options.body?.visibility ?? demoSite.visibility,
+        displayName: options.body?.displayName ?? demoSite.displayName,
+        description: options.body?.description ?? demoSite.description,
+      },
+    };
+  }
+
   if (method === "POST") {
     return { ok: true, site: demoSite };
   }
