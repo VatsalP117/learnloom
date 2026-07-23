@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,8 +39,11 @@ func (fakeSources) Enrich(
 }
 
 type fakeModel struct {
-	responses map[string]string
-	requests  *[]CompletionRequest
+	mu             sync.Mutex
+	responses      map[string]string
+	requests       *[]CompletionRequest
+	parallelActive int
+	parallelPeak   int
 }
 
 type sequenceModel struct {
@@ -57,11 +61,24 @@ func (m *sequenceModel) Complete(_ context.Context, request CompletionRequest) (
 	return response, nil
 }
 
-func (f fakeModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+func (f *fakeModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+	f.mu.Lock()
 	if f.requests != nil {
 		*f.requests = append(*f.requests, request)
 	}
 	value, exists := f.responses[request.Stage]
+	isParallelStage := request.Stage == "examiner" || request.Stage == "exploration"
+	if isParallelStage {
+		f.parallelActive++
+		f.parallelPeak = max(f.parallelPeak, f.parallelActive)
+	}
+	f.mu.Unlock()
+	if isParallelStage {
+		time.Sleep(20 * time.Millisecond)
+		f.mu.Lock()
+		f.parallelActive--
+		f.mu.Unlock()
+	}
 	if !exists {
 		return "", fmt.Errorf("missing stage %s", request.Stage)
 	}
@@ -78,15 +95,16 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		Practice: practice, QualityNotes: []string{"Preserved the evidence contract."},
 	})
 	model := fakeModel{responses: map[string]string{
-		"curator":    `{"theme":"Retrieval and feedback","rationale":"The sources explain one complementary mechanism.","selectedSourceIds":["S1","S2","S3"]}`,
-		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Repeated retrieval plus feedback","workedExample":"A learner recalls then corrects an answer","misconception":"Rereading is equivalent","practicalExperiment":"Compare recall with rereading","continuityBridge":"Builds on the prior lesson"}`,
-		"researcher": "Research grounded in [S1] and [S2].",
-		"skeptic":    "The evidence has limits [S1].",
-		"teacher":    lesson,
-		"examiner":   practice,
-		"editor":     string(editor),
+		"curator":     `{"theme":"Retrieval and feedback","rationale":"The sources explain one complementary mechanism.","selectedSourceIds":["S1","S2","S3"]}`,
+		"blueprint":   `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Repeated retrieval plus feedback","workedExample":"A learner recalls then corrects an answer","misconception":"Rereading is equivalent","practicalExperiment":"Compare recall with rereading","continuityBridge":"Builds on the prior lesson"}`,
+		"researcher":  "Research grounded in [S1] and [S2].",
+		"skeptic":     "The evidence has limits [S1].",
+		"teacher":     lesson,
+		"examiner":    practice,
+		"exploration": "A synthetic analogy and experiment without source citations.",
+		"editor":      string(editor),
 	}, requests: &requests}
-	generator, err := NewGenerator(fakeSources{}, model, GenerationConfig{
+	generator, err := NewGenerator(fakeSources{}, &model, GenerationConfig{
 		ModelName: "deepseek-chat",
 	})
 	if err != nil {
@@ -96,8 +114,9 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		Newsletter: domain.Newsletter{
 			ID: "newsletter-1", Topic: "learning science", LearnerLevel: "experienced",
 			LearnerGoal: "build durable knowledge", LessonMinutes: 15,
-			TimeZone: "Asia/Kolkata",
-			Sources:  []domain.SourceDefinition{{Name: "Example", URL: "https://example.com/feed", Limit: 3}},
+			TimeZone:             "Asia/Kolkata",
+			AIExplorationEnabled: true,
+			Sources:              []domain.SourceDefinition{{Name: "Example", URL: "https://example.com/feed", Limit: 3}},
 		},
 		History: []domain.LearningHistoryEntry{{
 			Date:              "2026-07-18",
@@ -120,6 +139,9 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	}
 	if len(result.Warnings) != 1 || len(result.History.RecallQuestions) != 3 {
 		t.Fatalf("missing warnings or history: %#v", result)
+	}
+	if result.Artifact.Dossier.Exploration == nil || model.parallelPeak != 2 {
+		t.Fatalf("exploration=%v peak parallel stages=%d", result.Artifact.Dossier.Exploration, model.parallelPeak)
 	}
 	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 450 ||
 		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1350 {

@@ -21,6 +21,7 @@ export default function IssueDetail({ issueId }) {
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(() => lessonState(issueId).progress ?? 0);
   const latestProgress = useRef(progress);
+  const renderedProgress = useRef(Math.round(progress));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -43,17 +44,27 @@ export default function IssueDetail({ issueId }) {
   }, [snapshot?.issue?.title]);
 
   useEffect(() => {
+    let frame = 0;
     function measure() {
-      const available = document.documentElement.scrollHeight - window.innerHeight;
-      if (available <= 0) return;
-      const next = Math.min(100, Math.max(0, (window.scrollY / available) * 100));
-      latestProgress.current = next;
-      setProgress(next);
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const available = document.documentElement.scrollHeight - window.innerHeight;
+        if (available <= 0) return;
+        const next = Math.round(
+          Math.min(100, Math.max(0, (window.scrollY / available) * 100)),
+        );
+        latestProgress.current = next;
+        if (next === renderedProgress.current) return;
+        renderedProgress.current = next;
+        setProgress(next);
+      });
     }
     window.addEventListener("scroll", measure, { passive: true });
     measure();
     return () => {
       window.removeEventListener("scroll", measure);
+      if (frame) window.cancelAnimationFrame(frame);
       updateLessonState(issueId, {
         progress: Math.max(lessonState(issueId).progress ?? 0, latestProgress.current),
         lastOpenedAt: new Date().toISOString(),
@@ -75,6 +86,7 @@ export default function IssueDetail({ issueId }) {
       progress={progress}
       onComplete={() => {
         latestProgress.current = 100;
+        renderedProgress.current = 100;
         setProgress(100);
         updateLessonState(issueId, {
           progress: 100,

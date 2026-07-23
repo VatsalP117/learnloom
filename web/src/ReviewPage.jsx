@@ -16,9 +16,10 @@ export default function ReviewPage() {
   const [, refreshState] = useState(0);
 
   const queue = useMemo(
-    () =>
-      workspace.reviews.flatMap((review) => {
-        const lesson = workspace.lessons.find((item) => item.id === review.issueId);
+    () => {
+      const lessonsByID = new Map(workspace.lessons.map((lesson) => [lesson.id, lesson]));
+      return workspace.reviews.flatMap((review) => {
+        const lesson = lessonsByID.get(review.issueId);
         return (review.questions ?? []).map((question, index) => ({
           id: `${review.issueId}:${index}`,
           issueId: review.issueId,
@@ -27,7 +28,8 @@ export default function ReviewPage() {
           newsletter: lesson?.newsletter,
           issue: lesson,
         }));
-      }),
+      });
+    },
     [workspace.lessons, workspace.reviews],
   );
   const due = queue.filter((item) => reviewState(item.id).status !== "mastered");

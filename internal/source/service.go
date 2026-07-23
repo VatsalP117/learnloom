@@ -98,6 +98,7 @@ type ServiceConfig struct {
 	MaxItemCharacters      int
 	RefreshInterval        time.Duration
 	DefaultMaxStaleAge     time.Duration
+	MaxConcurrency         int
 }
 
 func NewService(repo Repository, acquisition *Acquisition, cfg ServiceConfig) *Service {
@@ -133,6 +134,9 @@ func NewService(repo Repository, acquisition *Acquisition, cfg ServiceConfig) *S
 	}
 	if cfg.DefaultMaxStaleAge <= 0 {
 		cfg.DefaultMaxStaleAge = 30 * 24 * time.Hour
+	}
+	if cfg.MaxConcurrency < 1 {
+		cfg.MaxConcurrency = 4
 	}
 	return &Service{repo: repo, acquisition: acquisition, cfg: cfg}
 }
@@ -187,13 +191,24 @@ func (svc *Service) PrepareIssue(
 
 	var candidates []preparedEvidence
 	var warnings []string
-	for _, spec := range specs {
-		evidence, err := svc.resolveAndSnapshot(ctx, spec)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s: %v", sourceName(spec), err))
+	resolvedSpecs := parallelMapOrdered(
+		ctx,
+		specs,
+		svc.cfg.MaxConcurrency,
+		func(ctx context.Context, spec domain.SourceSpec) ([]preparedEvidence, error) {
+			return svc.resolveAndSnapshot(ctx, spec)
+		},
+	)
+	for index, outcome := range resolvedSpecs {
+		if outcome.err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: %v",
+				sourceName(specs[index]),
+				outcome.err,
+			))
 			continue
 		}
-		candidates = append(candidates, evidence...)
+		candidates = append(candidates, outcome.value...)
 	}
 
 	selected := svc.selectEvidence(candidates)

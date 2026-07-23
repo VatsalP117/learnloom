@@ -37,6 +37,7 @@ type SourceIntelligence struct {
 	TargetUsableItems      int
 	RefreshInterval        time.Duration
 	DefaultMaxStaleAge     time.Duration
+	MaxConcurrency         int
 }
 
 type HTTP struct {
@@ -196,6 +197,7 @@ func Load() (Config, error) {
 			TargetUsableItems:      envInt("SOURCE_TARGET_USABLE_ITEMS", 8),
 			RefreshInterval:        envDuration("SOURCE_REFRESH_INTERVAL", 12*time.Hour),
 			DefaultMaxStaleAge:     envDuration("SOURCE_DEFAULT_MAX_STALE_AGE", 720*time.Hour),
+			MaxConcurrency:         envInt("SOURCE_FETCH_CONCURRENCY", 4),
 		},
 	}
 	cfg.HTTP.ApexOrigin = "https://" + cfg.HTTP.RootDomain
@@ -327,6 +329,7 @@ func (c Config) ValidateFor(role string) error {
 			sourceCfg.DiscoveryMaxQueries < 1 ||
 			sourceCfg.DiscoveryMaxCandidates < 1 ||
 			sourceCfg.DiscoveryMaxActive < 1 ||
+			sourceCfg.MaxConcurrency < 1 ||
 			sourceCfg.RefreshInterval <= 0 ||
 			sourceCfg.DefaultMaxStaleAge <= 0 {
 			problems = append(problems, errors.New("source intelligence limits are invalid"))

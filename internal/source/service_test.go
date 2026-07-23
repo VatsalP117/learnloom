@@ -170,12 +170,15 @@ func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 type fakeSearcher struct {
+	mu      sync.Mutex
 	calls   int
 	results []SearchCandidate
 	err     error
 }
 
 func (searcher *fakeSearcher) Search(context.Context, SearchRequest) ([]SearchCandidate, error) {
+	searcher.mu.Lock()
+	defer searcher.mu.Unlock()
 	searcher.calls++
 	if searcher.err != nil {
 		return nil, searcher.err

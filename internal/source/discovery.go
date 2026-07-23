@@ -63,20 +63,27 @@ func (svc *Service) discover(
 		return nil, nil, fmt.Errorf("record discovery run: %w", err)
 	}
 
-	var raw []discoveryCandidate
+	searches := parallelMapOrdered(
+		ctx,
+		queries,
+		svc.cfg.MaxConcurrency,
+		func(ctx context.Context, query string) ([]SearchCandidate, error) {
+			return svc.searcher.Search(ctx, SearchRequest{
+				Query: query, Language: "all", Category: "general", Page: 1,
+			})
+		},
+	)
+	raw := make([]discoveryCandidate, 0, svc.cfg.DiscoveryMaxCandidates)
 	var warnings []string
-	for _, query := range queries {
-		results, err := svc.searcher.Search(ctx, SearchRequest{
-			Query: query, Language: "all", Category: "general", Page: 1,
-		})
-		if err != nil {
-			warnings = append(warnings, safeError(err))
+	for index, outcome := range searches {
+		if outcome.err != nil {
+			warnings = append(warnings, safeError(outcome.err))
 			continue
 		}
-		for _, result := range results {
+		for _, result := range outcome.value {
 			raw = append(raw, discoveryCandidate{
 				SearchCandidate: result,
-				Query:           query,
+				Query:           queries[index],
 			})
 			if len(raw) >= svc.cfg.DiscoveryMaxCandidates {
 				break

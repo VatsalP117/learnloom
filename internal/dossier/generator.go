@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"golang.org/x/sync/errgroup"
 )
 
 type SourceAcquirer interface {
@@ -199,20 +200,18 @@ func (g *Generator) Generate(
 	if err != nil {
 		return GenerateResult{}, err
 	}
-	practice, err := g.runStage(ctx, "examiner", fitSections(
+	practiceInput := fitSections(
 		g.cfg.MaxIntermediateCharacters,
 		[]weightedSection{
 			{"Learner context", learnerContext, 1},
 			{"Learning blueprint", blueprintText, 2},
 			{"Source-grounded lesson", lesson, 6},
 		},
-	), request.OnStage)
-	if err != nil {
-		return GenerateResult{}, err
-	}
+	)
+	var practice string
 	var exploration *string
 	if request.Newsletter.AIExplorationEnabled {
-		value, err := g.runStage(ctx, "exploration", fitSections(
+		explorationInput := fitSections(
 			g.cfg.MaxIntermediateCharacters,
 			[]weightedSection{
 				{"Learner context", learnerContext, 1},
@@ -220,11 +219,38 @@ func (g *Generator) Generate(
 				{"Source-grounded lesson", lesson, 5},
 				{"Skeptical review", critique, 2},
 			},
-		), request.OnStage)
+		)
+		group, groupContext := errgroup.WithContext(ctx)
+		group.Go(func() error {
+			var stageErr error
+			practice, stageErr = g.runStage(
+				groupContext,
+				"examiner",
+				practiceInput,
+				request.OnStage,
+			)
+			return stageErr
+		})
+		group.Go(func() error {
+			value, stageErr := g.runStage(
+				groupContext,
+				"exploration",
+				explorationInput,
+				request.OnStage,
+			)
+			if stageErr == nil {
+				exploration = &value
+			}
+			return stageErr
+		})
+		if err := group.Wait(); err != nil {
+			return GenerateResult{}, err
+		}
+	} else {
+		practice, err = g.runStage(ctx, "examiner", practiceInput, request.OnStage)
 		if err != nil {
 			return GenerateResult{}, err
 		}
-		exploration = &value
 	}
 
 	editorial, err := runStructured(

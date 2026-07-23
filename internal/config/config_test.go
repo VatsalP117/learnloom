@@ -133,7 +133,7 @@ func validWorkerConfig() Config {
 		SourceIntelligence: SourceIntelligence{
 			MinUsableItems: 4, TargetUsableItems: 8,
 			DiscoveryMaxQueries: 4, DiscoveryMaxCandidates: 30,
-			DiscoveryMaxActive: 8,
+			DiscoveryMaxActive: 8, MaxConcurrency: 4,
 			RefreshInterval:    12 * time.Hour,
 			DefaultMaxStaleAge: 30 * 24 * time.Hour,
 		},

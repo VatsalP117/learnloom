@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
@@ -23,6 +22,7 @@ type Config struct {
 	MaxArticleCharacters int
 	MaxRedirects         int
 	MinimumArticleChars  int
+	MaxConcurrency       int
 }
 
 type Acquisition struct {
@@ -52,6 +52,9 @@ func New(cfg Config) *Acquisition {
 	if cfg.MinimumArticleChars == 0 {
 		cfg.MinimumArticleChars = 400
 	}
+	if cfg.MaxConcurrency < 1 {
+		cfg.MaxConcurrency = 4
+	}
 	return &Acquisition{
 		Cfg: cfg,
 		Client: &http.Client{
@@ -69,28 +72,14 @@ func (a *Acquisition) Fetch(
 	if len(definitions) == 0 {
 		return nil, nil, errors.New("at least one source definition is required")
 	}
-	type outcome struct {
-		index int
-		items []domain.SourceItem
-		err   error
-	}
-	results := make(chan outcome, len(definitions))
-	var wg sync.WaitGroup
-	for index, definition := range definitions {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			items, err := a.fetchFeed(ctx, definition)
-			results <- outcome{index: index, items: items, err: err}
-		}()
-	}
-	wg.Wait()
-	close(results)
-
-	ordered := make([]outcome, len(definitions))
-	for result := range results {
-		ordered[result.index] = result
-	}
+	ordered := parallelMapOrdered(
+		ctx,
+		definitions,
+		a.Cfg.MaxConcurrency,
+		func(ctx context.Context, definition domain.SourceDefinition) ([]domain.SourceItem, error) {
+			return a.fetchFeed(ctx, definition)
+		},
+	)
 	var items []domain.SourceItem
 	var warnings []string
 	for index, result := range ordered {
@@ -98,7 +87,7 @@ func (a *Acquisition) Fetch(
 			warnings = append(warnings, fmt.Sprintf("%s: %v", definitions[index].Name, result.err))
 			continue
 		}
-		items = append(items, result.items...)
+		items = append(items, result.value...)
 	}
 	if len(items) == 0 {
 		return nil, warnings, fmt.Errorf("no Source Items could be loaded: %s", strings.Join(warnings, "; "))
@@ -129,13 +118,11 @@ func (a *Acquisition) Enrich(
 	if len(items) == 0 {
 		return nil, errors.New("Source Item enrichment requires at least one item")
 	}
-	enriched := make([]domain.SourceItem, len(items))
-	var wg sync.WaitGroup
-	for index := range items {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			item := items[index]
+	outcomes := parallelMapOrdered(
+		ctx,
+		items,
+		a.Cfg.MaxConcurrency,
+		func(ctx context.Context, item domain.SourceItem) (domain.SourceItem, error) {
 			article, err := a.fetchArticle(ctx, item.URL)
 			if err != nil || len([]rune(article.Text)) < a.Cfg.MinimumArticleChars {
 				item.ContentSource = "feed-summary"
@@ -145,18 +132,20 @@ func (a *Acquisition) Enrich(
 				} else {
 					item.EnrichmentError = "article text was too short"
 				}
-				enriched[index] = item
-				return
+				return item, nil
 			}
 			item.Summary = article.Text
 			item.ContentSource = "article"
 			item.CanonicalURL = article.CanonicalURL
 			item.Author = article.Author
 			item.EnrichmentError = ""
-			enriched[index] = item
-		}()
+			return item, nil
+		},
+	)
+	enriched := make([]domain.SourceItem, len(outcomes))
+	for index, outcome := range outcomes {
+		enriched[index] = outcome.value
 	}
-	wg.Wait()
 	return enriched, nil
 }
 

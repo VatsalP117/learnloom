@@ -155,6 +155,7 @@ func runWorker(
 		MaxFeedBytes:         cfg.Limits.MaxFeedBytes,
 		MaxArticleBytes:      cfg.Limits.MaxArticleBytes,
 		MaxArticleCharacters: cfg.Limits.MaxArticleCharacters,
+		MaxConcurrency:       cfg.SourceIntelligence.MaxConcurrency,
 	})
 	producer, err := dossier.NewGenerator(
 		acquisition,
@@ -184,6 +185,7 @@ func runWorker(
 			MaxItemCharacters:      cfg.Limits.MaxItemCharacters,
 			RefreshInterval:        cfg.SourceIntelligence.RefreshInterval,
 			DefaultMaxStaleAge:     cfg.SourceIntelligence.DefaultMaxStaleAge,
+			MaxConcurrency:         cfg.SourceIntelligence.MaxConcurrency,
 		},
 	)
 	if cfg.SourceIntelligence.DiscoveryEnabled {
