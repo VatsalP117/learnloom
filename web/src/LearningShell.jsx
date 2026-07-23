@@ -7,7 +7,6 @@ import {
   LibraryBig,
   Menu,
   Plus,
-  Search,
   Settings2,
   Sparkles,
   X,
@@ -25,9 +24,6 @@ const navigation = [
 export default function LearningShell({
   active,
   children,
-  search,
-  onSearch,
-  searchPlaceholder = "Search your learning",
   immersive = false,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -94,23 +90,6 @@ export default function LearningShell({
             <Menu size={19} />
           </button>
           <a className="atelier-mobile-brand" href="/">Learnloom</a>
-          {onSearch ? (
-            <label className="atelier-search">
-              <Search size={15} />
-              <span className="sr-only">{searchPlaceholder}</span>
-              <input
-                type="search"
-                placeholder={searchPlaceholder}
-                value={search ?? ""}
-                onChange={(event) => onSearch(event.target.value)}
-              />
-            </label>
-          ) : (
-            <a className="atelier-search atelier-search-link" href="/library">
-              <Search size={15} />
-              <span>{searchPlaceholder}</span>
-            </a>
-          )}
           <div className="atelier-top-actions">
             <a href="/library" aria-label="Open library"><BookOpen size={16} /></a>
           </div>

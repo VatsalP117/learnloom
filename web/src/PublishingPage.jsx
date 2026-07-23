@@ -113,7 +113,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
   }
 
   return (
-    <LearningShell active="publishing" searchPlaceholder="Search your archive">
+    <LearningShell active="publishing">
       <section className="atelier-page publishing-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Share deliberately</p>

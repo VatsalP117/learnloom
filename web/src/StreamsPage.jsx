@@ -30,12 +30,7 @@ export default function StreamsPage() {
   );
 
   return (
-    <LearningShell
-      active="streams"
-      search={query}
-      onSearch={setQuery}
-      searchPlaceholder="Search learning streams"
-    >
+    <LearningShell active="streams">
       <section className="atelier-page streams-page">
         <header className="atelier-page-heading with-actions">
           <div>
@@ -48,17 +43,29 @@ export default function StreamsPage() {
           </a>
         </header>
 
-        <div className="atelier-filter-row" role="group" aria-label="Filter streams">
-          {["all", "active", "paused"].map((value) => (
-            <button
-              className={filter === value ? "current" : ""}
-              type="button"
-              onClick={() => setFilter(value)}
-              key={value}
-            >
-              {value[0].toUpperCase() + value.slice(1)}
-            </button>
-          ))}
+        <div className="contextual-toolbar">
+          <div className="atelier-filter-row" role="group" aria-label="Filter streams">
+            {["all", "active", "paused"].map((value) => (
+              <button
+                className={filter === value ? "current" : ""}
+                type="button"
+                onClick={() => setFilter(value)}
+                key={value}
+              >
+                {value[0].toUpperCase() + value.slice(1)}
+              </button>
+            ))}
+          </div>
+          <label className="contextual-search">
+            <Search size={15} />
+            <span className="sr-only">Search learning streams</span>
+            <input
+              type="search"
+              placeholder="Search learning streams"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
         </div>
 
         {workspace.loading ? <AtelierLoading /> : null}

@@ -43,12 +43,7 @@ export default function LibraryPage() {
   );
 
   return (
-    <LearningShell
-      active="library"
-      search={query}
-      onSearch={setQuery}
-      searchPlaceholder="Search lessons and topics"
-    >
+    <LearningShell active="library">
       <section className="atelier-page library-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Your lasting archive</p>
@@ -56,22 +51,34 @@ export default function LibraryPage() {
           <p>Find a lesson again by title, stream, or subject.</p>
         </header>
 
-        <div className="atelier-filter-row" role="group" aria-label="Filter lessons">
-          {[
-            ["all", "All lessons"],
-            ["unread", "Unread"],
-            ["in-progress", "In progress"],
-            ["completed", "Completed"],
-          ].map(([value, label]) => (
-            <button
-              className={filter === value ? "current" : ""}
-              type="button"
-              onClick={() => setFilter(value)}
-              key={value}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="contextual-toolbar">
+          <div className="atelier-filter-row" role="group" aria-label="Filter lessons">
+            {[
+              ["all", "All lessons"],
+              ["unread", "Unread"],
+              ["in-progress", "In progress"],
+              ["completed", "Completed"],
+            ].map(([value, label]) => (
+              <button
+                className={filter === value ? "current" : ""}
+                type="button"
+                onClick={() => setFilter(value)}
+                key={value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="contextual-search">
+            <Search size={15} />
+            <span className="sr-only">Search lessons and topics</span>
+            <input
+              type="search"
+              placeholder="Search lessons and topics"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
         </div>
 
         {workspace.loading ? <AtelierLoading label="Opening your library…" /> : null}
@@ -119,4 +126,3 @@ export default function LibraryPage() {
     </LearningShell>
   );
 }
-

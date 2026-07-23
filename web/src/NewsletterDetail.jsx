@@ -70,7 +70,7 @@ export default function NewsletterDetail({ newsletterId }) {
   const preparing = issues.find((issue) => ["queued", "generating"].includes(issue.status));
 
   return (
-    <LearningShell active="streams" searchPlaceholder="Search this learning stream">
+    <LearningShell active="streams">
       <section className="atelier-page stream-overview-page">
         {error ? <AtelierError message={error} onRetry={load} /> : null}
         {newsletter ? (
