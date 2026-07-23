@@ -1,10 +1,13 @@
 package httpapp
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/VatsalP117/learnloom/internal/store"
 )
@@ -19,6 +22,60 @@ func writeJSON(response http.ResponseWriter, status int, value any) {
 	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(status)
 	_ = json.NewEncoder(response).Encode(value)
+}
+
+func writePrivateCacheableJSON(
+	response http.ResponseWriter,
+	request *http.Request,
+	status int,
+	value any,
+	cacheControl string,
+) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		writeProblem(response, http.StatusInternalServerError, "internal_error", "The response could not be encoded.")
+		return
+	}
+	body = append(body, '\n')
+	checksum := sha256.Sum256(body)
+	writePrivateJSONWithETag(
+		response,
+		request,
+		status,
+		body,
+		fmt.Sprintf(`"%x"`, checksum),
+		cacheControl,
+	)
+}
+
+func writePrivateJSONWithETag(
+	response http.ResponseWriter,
+	request *http.Request,
+	status int,
+	body []byte,
+	etag string,
+	cacheControl string,
+) {
+	response.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response.Header().Set("Cache-Control", cacheControl)
+	response.Header().Set("ETag", etag)
+	response.Header().Set("Vary", "Authorization")
+	if requestETagMatches(request, etag) {
+		response.WriteHeader(http.StatusNotModified)
+		return
+	}
+	response.WriteHeader(status)
+	_, _ = response.Write(body)
+}
+
+func requestETagMatches(request *http.Request, etag string) bool {
+	for value := range strings.SplitSeq(request.Header.Get("If-None-Match"), ",") {
+		candidate := strings.TrimSpace(value)
+		if candidate == "*" || candidate == etag || strings.TrimPrefix(candidate, "W/") == etag {
+			return true
+		}
+	}
+	return false
 }
 
 func writeProblem(

@@ -30,11 +30,13 @@ type Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	UsePathStyle    bool
+	CacheBytes      int64
 }
 
 type Store struct {
 	bucket string
 	client *s3.Client
+	cache  *artifactCache
 }
 
 func New(ctx context.Context, cfg Config) (*Store, error) {
@@ -43,6 +45,9 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	}
 	if cfg.Region == "" {
 		cfg.Region = "us-east-1"
+	}
+	if cfg.CacheBytes == 0 {
+		cfg.CacheBytes = 64 << 20
 	}
 	options := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(cfg.Region),
@@ -69,7 +74,11 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 			options.BaseEndpoint = aws.String(strings.TrimRight(cfg.Endpoint, "/"))
 		}
 	})
-	return &Store{bucket: cfg.Bucket, client: client}, nil
+	return &Store{
+		bucket: cfg.Bucket,
+		client: client,
+		cache:  newArtifactCache(cfg.CacheBytes),
+	}, nil
 }
 
 type PutInput struct {
@@ -115,7 +124,7 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 		Body:           bytes.NewReader(body),
 		ContentLength:  aws.Int64(int64(len(body))),
 		ContentType:    aws.String("application/json"),
-		CacheControl:   aws.String("private, no-store"),
+		CacheControl:   aws.String("private, max-age=31536000, immutable"),
 		ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
 		Metadata: map[string]string{
 			"sha256": hex.EncodeToString(checksum[:]),
@@ -124,6 +133,7 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 	if err != nil {
 		return PutResult{}, fmt.Errorf("store Dossier Artifact: %w", err)
 	}
+	s.cache.put(key, input.Artifact, int64(len(body)))
 	return PutResult{
 		Key: key, Checksum: hex.EncodeToString(checksum[:]), Bytes: len(body),
 	}, nil
@@ -132,6 +142,9 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 func (s *Store) Get(ctx context.Context, key string) (domain.DossierArtifact, error) {
 	if !safeKey(key) {
 		return domain.DossierArtifact{}, errors.New("Dossier Artifact key is invalid")
+	}
+	if artifact, ok := s.cache.get(key); ok {
+		return artifact, nil
 	}
 	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -160,6 +173,7 @@ func (s *Store) Get(ctx context.Context, key string) (domain.DossierArtifact, er
 	if artifact.Dossier.Version < 1 || artifact.Markdown == "" || artifact.HTML == "" {
 		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact is incomplete")
 	}
+	s.cache.put(key, artifact, int64(len(body)))
 	return artifact, nil
 }
 
@@ -167,6 +181,7 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	if !safeKey(key) {
 		return errors.New("Dossier Artifact key is invalid")
 	}
+	s.cache.remove(key)
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),

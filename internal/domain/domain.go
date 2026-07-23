@@ -246,6 +246,8 @@ type Issue struct {
 	Title              string           `json:"title,omitempty"`
 	GenerationID       string           `json:"generationId,omitempty"`
 	ArtifactKey        string           `json:"-"`
+	ArtifactSHA256     string           `json:"-"`
+	ArtifactBytes      int              `json:"-"`
 	Error              string           `json:"error,omitempty"`
 	PublicID           string           `json:"publicId,omitempty"`
 	PublicSlug         string           `json:"publicSlug,omitempty"`

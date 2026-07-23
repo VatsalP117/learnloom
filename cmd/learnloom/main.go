@@ -270,6 +270,7 @@ func openArtifacts(ctx context.Context, cfg config.Config) (*artifact.Store, err
 		Endpoint: cfg.ObjectStore.Endpoint, AccessKeyID: cfg.ObjectStore.AccessKeyID,
 		SecretAccessKey: cfg.ObjectStore.SecretAccessKey,
 		UsePathStyle:    cfg.ObjectStore.UsePathStyle,
+		CacheBytes:      cfg.ObjectStore.CacheBytes,
 	})
 }
 

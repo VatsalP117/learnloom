@@ -64,6 +64,7 @@ type ObjectStore struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	UsePathStyle    bool
+	CacheBytes      int64
 }
 
 type Model struct {
@@ -142,6 +143,7 @@ func Load() (Config, error) {
 			AccessKeyID:     os.Getenv("S3_ACCESS_KEY_ID"),
 			SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"),
 			UsePathStyle:    envBool("S3_USE_PATH_STYLE", false),
+			CacheBytes:      envInt64("ARTIFACT_CACHE_BYTES", 64<<20),
 		},
 		Model: Model{
 			BaseURL:        env("MODEL_BASE_URL", "https://api.deepseek.com"),

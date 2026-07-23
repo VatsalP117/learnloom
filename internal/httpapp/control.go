@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -232,7 +233,7 @@ func (s *Server) workspaceSnapshot(
 		}
 		generated += record.GeneratedCount
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"summary": map[string]int{
 			"newsletters": len(records), "active": active, "generated": generated,
 		},
@@ -240,7 +241,14 @@ func (s *Server) workspaceSnapshot(
 		"issues":          workspaceIssuePayloads(issues),
 		"nextIssueCursor": encodeIssueCursor(next),
 		"reviews":         reviews,
-	})
+	}
+	writePrivateCacheableJSON(
+		response,
+		request,
+		http.StatusOK,
+		payload,
+		"private, max-age=0, must-revalidate",
+	)
 }
 
 func (s *Server) listWorkspaceIssues(
@@ -700,6 +708,14 @@ func (s *Server) issueDetail(
 		writeProblem(response, http.StatusConflict, "issue_not_generated", "The Issue has no generated Dossier.")
 		return
 	}
+	etag := issueDetailETag(issue)
+	if requestETagMatches(request, etag) {
+		response.Header().Set("Cache-Control", "private, max-age=300, stale-while-revalidate=3600")
+		response.Header().Set("ETag", etag)
+		response.Header().Set("Vary", "Authorization")
+		response.WriteHeader(http.StatusNotModified)
+		return
+	}
 	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
 	if err != nil {
 		s.internalError(response, request, err)
@@ -716,12 +732,40 @@ func (s *Server) issueDetail(
 			"url":  sourceURL,
 		})
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"issue":      issue,
 		"newsletter": issue.Newsletter,
 		"dossier":    artifactValue.Dossier,
 		"sources":    sources,
-	})
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	writePrivateJSONWithETag(
+		response,
+		request,
+		http.StatusOK,
+		append(body, '\n'),
+		etag,
+		"private, max-age=300, stale-while-revalidate=3600",
+	)
+}
+
+func issueDetailETag(issue domain.Issue) string {
+	checksum := issue.ArtifactSHA256
+	if checksum == "" {
+		checksum = issue.ArtifactKey
+	}
+	value := strings.Join([]string{
+		checksum,
+		string(issue.PublicationState),
+		issue.Title,
+		issue.Newsletter.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf(`"%x"`, sum)
 }
 
 func (s *Server) decodeNewsletterInput(
