@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { AtelierError, AtelierLoading } from "./LearningShell.jsx";
 import { apiJSON } from "./api.js";
+import { normalizeDossier } from "./dossierView.js";
 import { lessonState, updateLessonState } from "./learningState.js";
 
 export default function IssueDetail({ issueId }) {
@@ -70,6 +71,7 @@ export default function IssueDetail({ issueId }) {
   return (
     <LessonReader
       {...snapshot}
+      dossier={normalizeDossier(snapshot.dossier, snapshot.newsletter)}
       progress={progress}
       onComplete={() => {
         latestProgress.current = 100;

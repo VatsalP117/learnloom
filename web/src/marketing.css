@@ -18,6 +18,7 @@
   overflow: hidden;
   color: var(--ll-ink);
   background: var(--ll-paper);
+  font-family: "Manrope", sans-serif;
 }
 
 .ll-page *, .ll-page *::before, .ll-page *::after { box-sizing: border-box; }

@@ -176,6 +176,36 @@ export const demoSite = {
 export function demoResponse(path, options = {}) {
   const method = (options.method ?? "GET").toUpperCase();
 
+  if (path === "/api/workspace" && method === "GET") {
+    const issues = newsletters.flatMap((newsletter) =>
+      (issuesByNewsletter[newsletter.id] ?? []).map((issue) => ({
+        ...issue,
+        newsletter,
+      })),
+    );
+    const reviews = issues
+      .filter((issue) => issue.status === "generated")
+      .slice(0, 8)
+      .map((issue) => {
+        const dossier = dossierByIssue[issue.id] ?? dossierByIssue["urban-systems-issue-1"];
+        return {
+          issueId: issue.id,
+          objective: dossier.objective,
+          questions: dossier.retrieval,
+        };
+      });
+    return {
+      summary: {
+        newsletters: newsletters.length,
+        active: newsletters.filter((item) => item.active).length,
+        generated: newsletters.reduce((total, item) => total + item.generatedCount, 0),
+      },
+      newsletters,
+      issues,
+      reviews,
+    };
+  }
+
   if (path === "/api/newsletters" && method === "GET") {
     return {
       summary: {

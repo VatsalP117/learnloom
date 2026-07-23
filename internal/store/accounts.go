@@ -30,19 +30,31 @@ func (s *Store) EnsureAccount(
 	if clerkUserID == "" || len(clerkUserID) > 200 {
 		return domain.Account{}, errors.New("Clerk user ID is invalid")
 	}
+	account, err := s.accountByClerkUserID(ctx, clerkUserID)
+	if err == nil {
+		if account.Status != domain.AccountActive {
+			return domain.Account{}, ErrForbidden
+		}
+		return account, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.Account{}, fmt.Errorf("load Account: %w", err)
+	}
+
 	now := time.Now().UTC()
-	id := uuid.New()
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO accounts (
 			id, clerk_user_id, status, created_at, updated_at
 		)
 		VALUES ($1, $2, 'active', $3, $3)
-		ON CONFLICT (clerk_user_id) DO UPDATE
-		SET updated_at = accounts.updated_at
+		ON CONFLICT (clerk_user_id) DO NOTHING
 		RETURNING id::text, clerk_user_id, COALESCE(primary_email, ''),
 		          status, created_at, updated_at, deleted_at
-	`, id, clerkUserID, now)
-	account, err := scanAccount(row)
+	`, uuid.New(), clerkUserID, now)
+	account, err = scanAccount(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		account, err = s.accountByClerkUserID(ctx, clerkUserID)
+	}
 	if err != nil {
 		return domain.Account{}, fmt.Errorf("ensure Account: %w", err)
 	}
@@ -50,6 +62,18 @@ func (s *Store) EnsureAccount(
 		return domain.Account{}, ErrForbidden
 	}
 	return account, nil
+}
+
+func (s *Store) accountByClerkUserID(
+	ctx context.Context,
+	clerkUserID string,
+) (domain.Account, error) {
+	return scanAccount(s.pool.QueryRow(ctx, `
+		SELECT id::text, clerk_user_id, COALESCE(primary_email, ''),
+		       status, created_at, updated_at, deleted_at
+		FROM accounts
+		WHERE clerk_user_id = $1
+	`, clerkUserID))
 }
 
 func (s *Store) SyncAccountIdentity(

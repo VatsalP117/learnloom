@@ -10,6 +10,7 @@ import (
 
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"golang.org/x/sync/errgroup"
 )
 
 func (s *Server) handleControl(
@@ -122,6 +123,14 @@ func (s *Server) handleControl(
 		}
 		return
 	}
+	if request.URL.Path == "/api/workspace" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(response, http.MethodGet)
+			return
+		}
+		s.workspaceSnapshot(response, request, current)
+		return
+	}
 	if len(route) >= 3 && route[0] == "api" && route[1] == "newsletters" {
 		newsletterID := route[2]
 		if len(route) == 3 {
@@ -146,15 +155,74 @@ func (s *Server) handleControl(
 			return
 		}
 	}
-	if len(route) == 4 && route[0] == "api" && route[1] == "issues" {
-		s.issueAction(response, request, current, route[2], route[3])
-		return
+	if len(route) >= 3 && route[0] == "api" && route[1] == "issues" {
+		if len(route) == 3 {
+			if request.Method != http.MethodGet {
+				methodNotAllowed(response, http.MethodGet)
+				return
+			}
+			s.issueDetail(response, request, current, route[2])
+			return
+		}
+		if len(route) == 4 {
+			s.issueAction(response, request, current, route[2], route[3])
+			return
+		}
 	}
 	if len(route) == 2 && route[0] == "issues" && request.Method == http.MethodGet {
 		s.issuePreview(response, request, current, route[1])
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+func (s *Server) workspaceSnapshot(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+) {
+	var (
+		records []store.NewsletterRecord
+		issues  []domain.Issue
+		reviews []store.WorkspaceReview
+	)
+	group, context := errgroup.WithContext(request.Context())
+	group.Go(func() error {
+		var err error
+		records, err = s.store.ListNewsletters(context, current.Account.ID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		issues, err = s.store.ListWorkspaceIssues(context, current.Account.ID, 500)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		reviews, err = s.store.ListWorkspaceReviews(context, current.Account.ID, 8)
+		return err
+	})
+	if err := group.Wait(); err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(records))
+	active, generated := 0, 0
+	for _, record := range records {
+		items = append(items, newsletterPayload(record, current.Account.PrimaryEmail))
+		if record.Active {
+			active++
+		}
+		generated += record.GeneratedCount
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		"summary": map[string]int{
+			"newsletters": len(records), "active": active, "generated": generated,
+		},
+		"newsletters": items,
+		"issues":      issues,
+		"reviews":     reviews,
+	})
 }
 
 func (s *Server) listNewsletters(
@@ -497,6 +565,45 @@ func (s *Server) issuePreview(
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "private, no-store")
 	_, _ = response.Write([]byte(artifactValue.HTML))
+}
+
+func (s *Server) issueDetail(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+	issueID string,
+) {
+	issue, err := s.store.GetIssue(request.Context(), current.Account.ID, issueID)
+	if err != nil {
+		writeStoreError(response, err)
+		return
+	}
+	if issue.Status != domain.IssueGenerated || issue.ArtifactKey == "" {
+		writeProblem(response, http.StatusConflict, "issue_not_generated", "The Issue has no generated Dossier.")
+		return
+	}
+	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	sources := make([]map[string]string, 0, len(artifactValue.Dossier.Sources))
+	for _, source := range artifactValue.Dossier.Sources {
+		sourceURL := source.CanonicalURL
+		if sourceURL == "" {
+			sourceURL = source.URL
+		}
+		sources = append(sources, map[string]string{
+			"name": source.Source,
+			"url":  sourceURL,
+		})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		"issue":      issue,
+		"newsletter": issue.Newsletter,
+		"dossier":    artifactValue.Dossier,
+		"sources":    sources,
+	})
 }
 
 func (s *Server) decodeNewsletterInput(

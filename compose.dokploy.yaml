@@ -116,6 +116,7 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
       - "traefik.http.services.learnloom-web.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.learnloom-compress.compress=true"
       - "traefik.http.routers.learnloom-apex-web.rule=Host(`learnloom.blog`)"
       - "traefik.http.routers.learnloom-apex-web.entrypoints=web"
       - "traefik.http.routers.learnloom-apex-web.middlewares=redirect-to-https@file"
@@ -123,6 +124,7 @@ services:
       - "traefik.http.routers.learnloom-apex-websecure.entrypoints=websecure"
       - "traefik.http.routers.learnloom-apex-websecure.tls=true"
       - "traefik.http.routers.learnloom-apex-websecure.service=learnloom-web"
+      - "traefik.http.routers.learnloom-apex-websecure.middlewares=learnloom-compress"
       - "traefik.http.routers.learnloom-www-web.rule=Host(`www.learnloom.blog`)"
       - "traefik.http.routers.learnloom-www-web.entrypoints=web"
       - "traefik.http.routers.learnloom-www-web.middlewares=redirect-to-https@file"
@@ -130,6 +132,7 @@ services:
       - "traefik.http.routers.learnloom-www-websecure.entrypoints=websecure"
       - "traefik.http.routers.learnloom-www-websecure.tls=true"
       - "traefik.http.routers.learnloom-www-websecure.service=learnloom-web"
+      - "traefik.http.routers.learnloom-www-websecure.middlewares=learnloom-compress"
       - "traefik.http.routers.learnloom-app-web.rule=Host(`app.learnloom.blog`)"
       - "traefik.http.routers.learnloom-app-web.entrypoints=web"
       - "traefik.http.routers.learnloom-app-web.middlewares=redirect-to-https@file"
@@ -137,6 +140,7 @@ services:
       - "traefik.http.routers.learnloom-app-websecure.entrypoints=websecure"
       - "traefik.http.routers.learnloom-app-websecure.tls=true"
       - "traefik.http.routers.learnloom-app-websecure.service=learnloom-web"
+      - "traefik.http.routers.learnloom-app-websecure.middlewares=learnloom-compress"
       - 'traefik.http.routers.learnloom-personal-sites-web.rule=HostRegexp(`[a-z][a-z0-9-]{2,29}\.learnloom\.blog`)'
       - "traefik.http.routers.learnloom-personal-sites-web.entrypoints=web"
       - "traefik.http.routers.learnloom-personal-sites-web.middlewares=redirect-to-https@file"
@@ -144,6 +148,7 @@ services:
       - "traefik.http.routers.learnloom-personal-sites-websecure.entrypoints=websecure"
       - "traefik.http.routers.learnloom-personal-sites-websecure.tls=true"
       - "traefik.http.routers.learnloom-personal-sites-websecure.service=learnloom-web"
+      - "traefik.http.routers.learnloom-personal-sites-websecure.middlewares=learnloom-compress"
     deploy:
       labels: *web-traefik-labels
     networks:

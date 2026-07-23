@@ -1,13 +1,14 @@
 import { Menu, Plus, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
-import IssueDetail from "./IssueDetail.jsx";
-import LibraryPage from "./LibraryPage.jsx";
-import NewsletterCreate from "./NewsletterCreate.jsx";
-import NewsletterDetail from "./NewsletterDetail.jsx";
-import PublishingPage from "./PublishingPage.jsx";
-import ReviewPage from "./ReviewPage.jsx";
-import StreamsPage from "./StreamsPage.jsx";
-import TodayPage from "./TodayPage.jsx";
+import { lazy, Suspense, useEffect, useState } from "react";
+
+const IssueDetail = lazy(() => import("./IssueDetail.jsx"));
+const LibraryPage = lazy(() => import("./LibraryPage.jsx"));
+const NewsletterCreate = lazy(() => import("./NewsletterCreate.jsx"));
+const NewsletterDetail = lazy(() => import("./NewsletterDetail.jsx"));
+const PublishingPage = lazy(() => import("./PublishingPage.jsx"));
+const ReviewPage = lazy(() => import("./ReviewPage.jsx"));
+const StreamsPage = lazy(() => import("./StreamsPage.jsx"));
+const TodayPage = lazy(() => import("./TodayPage.jsx"));
 
 export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
   const [location, setLocation] = useState(
@@ -56,27 +57,37 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
   }, []);
 
   if (path === "/newsletters/new") {
-    return <NewsletterCreate sourceDiscovery={Boolean(capabilities.sourceDiscovery)} />;
+    return routePage(
+      <NewsletterCreate sourceDiscovery={Boolean(capabilities.sourceDiscovery)} />,
+    );
   }
 
   const detailMatch = /^\/newsletters\/([a-z0-9_-]+)$/.exec(path);
   if (detailMatch) {
-    return <NewsletterDetail newsletterId={detailMatch[1]} />;
+    return routePage(<NewsletterDetail newsletterId={detailMatch[1]} />);
   }
 
   const issueMatch = /^\/issues\/([a-z0-9_-]+)$/.exec(path);
   const demoIssue = new URLSearchParams(window.location.search).get("demoIssue");
   if (issueMatch || demoIssue) {
-    return <IssueDetail issueId={issueMatch?.[1] ?? demoIssue} />;
+    return routePage(<IssueDetail issueId={issueMatch?.[1] ?? demoIssue} />);
   }
 
-  if (path === "/streams") return <StreamsPage />;
-  if (path === "/library") return <LibraryPage />;
-  if (path === "/review") return <ReviewPage />;
+  if (path === "/streams") return routePage(<StreamsPage />);
+  if (path === "/library") return routePage(<LibraryPage />);
+  if (path === "/review") return routePage(<ReviewPage />);
   if (path === "/publishing") {
-    return <PublishingPage site={site} onSiteUpdate={onSiteUpdate} />;
+    return routePage(<PublishingPage site={site} onSiteUpdate={onSiteUpdate} />);
   }
-  return <TodayPage />;
+  return routePage(<TodayPage />);
+}
+
+function routePage(page) {
+  return (
+    <Suspense fallback={<main className="entry-loading">Preparing this space…</main>}>
+      {page}
+    </Suspense>
+  );
 }
 
 function Topbar({ onMenu }) {

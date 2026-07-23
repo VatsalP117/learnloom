@@ -33,6 +33,12 @@ type CompleteIssueInput struct {
 	CompletedAt  time.Time
 }
 
+type WorkspaceReview struct {
+	IssueID         string   `json:"issueId"`
+	Objective       string   `json:"objective"`
+	RecallQuestions []string `json:"questions"`
+}
+
 type DeliveryClaim struct {
 	Issue        domain.Issue
 	AccountID    string
@@ -556,6 +562,80 @@ func (s *Store) ListIssues(
 		}
 	}
 	return issues, nil
+}
+
+func (s *Store) ListWorkspaceIssues(
+	ctx context.Context,
+	accountID string,
+	limit int,
+) ([]domain.Issue, error) {
+	if limit < 1 || limit > 1000 {
+		limit = 500
+	}
+	rows, err := s.pool.Query(ctx, workerIssueSelect+`
+		WHERE n.owner_account_id = $1
+		ORDER BY i.created_at DESC
+		LIMIT $2
+	`, accountID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace Issues: %w", err)
+	}
+	defer rows.Close()
+	issues := make([]domain.Issue, 0)
+	for rows.Next() {
+		issue, _, _, err := scanWorkerIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return issues, nil
+}
+
+func (s *Store) ListWorkspaceReviews(
+	ctx context.Context,
+	accountID string,
+	limit int,
+) ([]WorkspaceReview, error) {
+	if limit < 1 || limit > 100 {
+		limit = 8
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT h.issue_id::text, h.entry
+		FROM learning_history h
+		JOIN newsletters n ON n.id = h.newsletter_id
+		WHERE n.owner_account_id = $1
+		ORDER BY h.created_at DESC
+		LIMIT $2
+	`, accountID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace reviews: %w", err)
+	}
+	defer rows.Close()
+	reviews := make([]WorkspaceReview, 0)
+	for rows.Next() {
+		var issueID string
+		var raw []byte
+		if err := rows.Scan(&issueID, &raw); err != nil {
+			return nil, err
+		}
+		var entry domain.LearningHistoryEntry
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			return nil, fmt.Errorf("decode workspace review: %w", err)
+		}
+		reviews = append(reviews, WorkspaceReview{
+			IssueID:         issueID,
+			Objective:       entry.LearningObjective,
+			RecallQuestions: entry.RecallQuestions,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return reviews, nil
 }
 
 func (s *Store) GetIssue(

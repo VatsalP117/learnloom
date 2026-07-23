@@ -15,7 +15,7 @@ import { personalSiteHost } from "./config.js";
 import { useWorkspace } from "./useWorkspace.js";
 
 export default function PublishingPage({ site, onSiteUpdate }) {
-  const workspace = useWorkspace({ includeDetails: false });
+  const workspace = useWorkspace();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState(site?.displayName ?? "");
   const [description, setDescription] = useState(site?.description ?? "");

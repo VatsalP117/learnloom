@@ -10,24 +10,25 @@ import { reviewState, updateReviewState } from "./learningState.js";
 import { useWorkspace } from "./useWorkspace.js";
 
 export default function ReviewPage() {
-  const workspace = useWorkspace({ includeDossiers: true });
+  const workspace = useWorkspace();
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextOpen, setContextOpen] = useState(false);
   const [, refreshState] = useState(0);
 
   const queue = useMemo(
     () =>
-      Object.entries(workspace.dossiers).flatMap(([issueId, snapshot]) =>
-        (snapshot.dossier?.retrieval ?? []).map((question, index) => ({
-          id: `${issueId}:${index}`,
-          issueId,
+      workspace.reviews.flatMap((review) => {
+        const lesson = workspace.lessons.find((item) => item.id === review.issueId);
+        return (review.questions ?? []).map((question, index) => ({
+          id: `${review.issueId}:${index}`,
+          issueId: review.issueId,
           question,
-          objective: snapshot.dossier.objective,
-          newsletter: snapshot.newsletter,
-          issue: snapshot.issue,
-        })),
-      ),
-    [workspace.dossiers],
+          objective: review.objective,
+          newsletter: lesson?.newsletter,
+          issue: lesson,
+        }));
+      }),
+    [workspace.lessons, workspace.reviews],
   );
   const due = queue.filter((item) => reviewState(item.id).status !== "mastered");
   const active = due[activeIndex % Math.max(due.length, 1)];
@@ -69,7 +70,7 @@ export default function ReviewPage() {
                 <span className="atelier-chip"><BrainCircuit size={13} /> Active recall</span>
                 <span>{due.length} prompt{due.length === 1 ? "" : "s"} due</span>
               </div>
-              <p className="atelier-eyebrow">{active.newsletter.name}</p>
+              <p className="atelier-eyebrow">{active.newsletter?.name ?? "Recent lesson"}</p>
               <h2>{active.question}</h2>
               <p className="review-instruction">
                 Explain it aloud or in your own notes. Then reveal the lesson context

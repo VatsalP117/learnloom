@@ -13,6 +13,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect } from "react";
+import "@fontsource/manrope/latin-400.css";
+import "@fontsource/manrope/latin-500.css";
+import "@fontsource/manrope/latin-600.css";
+import "@fontsource/manrope/latin-700.css";
 import { appOrigin, personalSiteHost } from "./config.js";
 import "./marketing.css";
 

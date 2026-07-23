@@ -12,7 +12,7 @@ import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell.jsx
 import { useWorkspace } from "./useWorkspace.js";
 
 export default function StreamsPage() {
-  const workspace = useWorkspace({ includeDetails: false });
+  const workspace = useWorkspace();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const visible = useMemo(

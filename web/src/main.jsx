@@ -1,22 +1,10 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { ClerkProvider } from "@clerk/react";
-import "@fontsource/manrope/latin-400.css";
-import "@fontsource/manrope/latin-500.css";
-import "@fontsource/manrope/latin-600.css";
-import "@fontsource/manrope/latin-700.css";
-import "@fontsource/bricolage-grotesque/latin-500.css";
-import "@fontsource/bricolage-grotesque/latin-600.css";
-import "@fontsource/bricolage-grotesque/latin-700.css";
-import HostedApp from "./HostedApp.jsx";
-import DemoHostedApp from "./DemoHostedApp.jsx";
-import MarketingLanding from "./MarketingLanding.jsx";
-import { demoMode } from "./api.js";
 import { rootDomain } from "./config.js";
-import "./styles.css";
-import "./redesign.css";
+import "./entry.css";
 
-const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const MarketingLanding = lazy(() => import("./MarketingLanding.jsx"));
+const ProductRoot = lazy(() => import("./ProductRoot.jsx"));
 const hostname = window.location.hostname.toLowerCase();
 const isMarketingPage =
   hostname === rootDomain ||
@@ -25,21 +13,8 @@ const isMarketingPage =
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    {isMarketingPage ? (
-      <MarketingLanding />
-    ) : demoMode ? (
-      <DemoHostedApp />
-    ) : clerkPublishableKey ? (
-      <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/sign-in">
-        <HostedApp />
-      </ClerkProvider>
-    ) : (
-      <main className="auth-shell">
-        <section className="claim-card">
-          <h1>Learnloom is not configured</h1>
-          <p>The hosted app requires a Clerk publishable key at build time.</p>
-        </section>
-      </main>
-    )}
+    <Suspense fallback={<main className="entry-loading">Opening Learnloom…</main>}>
+      {isMarketingPage ? <MarketingLanding /> : <ProductRoot />}
+    </Suspense>
   </StrictMode>,
 );
