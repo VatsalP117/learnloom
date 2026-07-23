@@ -64,6 +64,28 @@ func TestIssueCursorRejectsMalformedValues(t *testing.T) {
 	}
 }
 
+func TestValidWebVital(t *testing.T) {
+	t.Parallel()
+	if !validWebVital("LCP", 1234.5, "good", "navigate", "/library") {
+		t.Fatal("valid LCP metric was rejected")
+	}
+	for _, test := range []struct {
+		name   string
+		value  float64
+		rating string
+		page   string
+	}{
+		{name: "FID", value: 10, rating: "good", page: "/"},
+		{name: "CLS", value: -1, rating: "good", page: "/"},
+		{name: "INP", value: 10, rating: "unknown", page: "/"},
+		{name: "LCP", value: 10, rating: "good", page: "library"},
+	} {
+		if validWebVital(test.name, test.value, test.rating, "navigate", test.page) {
+			t.Fatalf("invalid metric was accepted: %#v", test)
+		}
+	}
+}
+
 func TestClerkSessionTokenSupportsAPIsAndPageNavigations(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

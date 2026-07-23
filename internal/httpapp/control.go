@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,6 +136,14 @@ func (s *Server) handleControl(
 		s.workspaceSnapshot(response, request, current)
 		return
 	}
+	if request.URL.Path == "/api/performance/vitals" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		s.recordWebVital(response, request)
+		return
+	}
 	if request.URL.Path == "/api/issues" {
 		if request.Method != http.MethodGet {
 			methodNotAllowed(response, http.MethodGet)
@@ -186,6 +195,52 @@ func (s *Server) handleControl(
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+func (s *Server) recordWebVital(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	var body struct {
+		Name           string  `json:"name"`
+		Value          float64 `json:"value"`
+		Rating         string  `json:"rating"`
+		NavigationType string  `json:"navigationType"`
+		Page           string  `json:"page"`
+	}
+	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+		return
+	}
+	if !validWebVital(body.Name, body.Value, body.Rating, body.NavigationType, body.Page) {
+		writeProblem(response, http.StatusBadRequest, "invalid_metric", "The browser performance metric is invalid.")
+		return
+	}
+	s.logger.InfoContext(
+		request.Context(),
+		"Browser performance metric",
+		"metric", body.Name,
+		"value", body.Value,
+		"rating", body.Rating,
+		"navigation_type", body.NavigationType,
+		"page", body.Page,
+	)
+	response.Header().Set("Cache-Control", "no-store")
+	response.WriteHeader(http.StatusNoContent)
+}
+
+func validWebVital(name string, value float64, rating, navigationType, page string) bool {
+	if name != "CLS" && name != "INP" && name != "LCP" {
+		return false
+	}
+	if value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return false
+	}
+	if rating != "good" && rating != "needs-improvement" && rating != "poor" {
+		return false
+	}
+	return len(navigationType) <= 40 &&
+		strings.HasPrefix(page, "/") &&
+		len(page) <= 80
 }
 
 func (s *Server) workspaceSnapshot(

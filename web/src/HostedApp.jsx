@@ -40,6 +40,9 @@ function OnboardingGate() {
       .then((body) => {
         setCSRFToken(body.csrfToken);
         setProfile(body);
+        import("./performance.js")
+          .then(({ startWebVitals }) => startWebVitals())
+          .catch(() => {});
       })
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);
