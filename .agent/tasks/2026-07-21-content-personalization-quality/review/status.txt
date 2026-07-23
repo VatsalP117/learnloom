@@ -1,0 +1,6 @@
+ M docs/architecture.md
+ M internal/dossier/generator.go
+ M internal/dossier/generator_test.go
+ M internal/dossier/quality.go
+ M internal/dossier/quality_test.go
+?? .agent/tasks/2026-07-21-content-personalization-quality/
