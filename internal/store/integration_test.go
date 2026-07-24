@@ -163,6 +163,10 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || len(history) != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
+	reviews, err := database.ListWorkspaceReviews(ctx, account.ID, 8)
+	if err != nil || len(reviews) != 1 || reviews[0].IssueID != issue.ID {
+		t.Fatalf("workspace reviews=%#v err=%v", reviews, err)
+	}
 	publicIssues, err := database.ListPublicIssues(ctx, site.Username, "", 10)
 	if err != nil || len(publicIssues) != 1 {
 		t.Fatalf("publicIssues=%#v err=%v", publicIssues, err)
@@ -184,6 +188,23 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		time.Now().UTC(),
 	); err != nil {
 		t.Fatal(err)
+	}
+	newerIssue, err := database.EnqueueManualIssue(
+		ctx,
+		account.ID,
+		newsletter.Newsletter.ID,
+		5,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, cursor, err := database.ListWorkspaceIssuesPage(ctx, account.ID, 1, nil)
+	if err != nil || len(page) != 1 || page[0].ID != newerIssue.ID || cursor == nil {
+		t.Fatalf("first workspace page=%#v cursor=%#v err=%v", page, cursor, err)
+	}
+	older, finalCursor, err := database.ListWorkspaceIssuesPage(ctx, account.ID, 1, cursor)
+	if err != nil || len(older) != 1 || older[0].ID != issue.ID || finalCursor != nil {
+		t.Fatalf("second workspace page=%#v cursor=%#v err=%v", older, finalCursor, err)
 	}
 
 	other, err := database.SyncAccountIdentity(

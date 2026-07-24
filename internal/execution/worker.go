@@ -226,15 +226,18 @@ func (w *Worker) processIssues(ctx context.Context) error {
 }
 
 func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) error {
+	issueStarted := time.Now()
 	ctx, cancel := context.WithCancel(ctx)
 	renewed := make(chan error, 1)
 	go w.renewIssueClaim(ctx, claim, cancel, renewed)
 	var err error
+	phaseStarted := time.Now()
 	history, err := w.lifecycle.LoadLearningHistory(
 		ctx,
 		claim.Issue.NewsletterID,
 		w.cfg.HistoryEntries,
 	)
+	w.logIssuePhase(ctx, claim.Issue.ID, "history", phaseStarted, err)
 	if err == nil {
 		if w.sourceSvc == nil {
 			err = errors.New("source intelligence service is unavailable")
@@ -242,38 +245,48 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 	}
 	if err == nil {
 		var prepared source.PrepareIssueResult
+		phaseStarted = time.Now()
 		prepared, err = w.sourceSvc.PrepareIssue(ctx, claim.Issue.Newsletter, claim.Issue.ID)
+		w.logIssuePhase(ctx, claim.Issue.ID, "source_intelligence", phaseStarted, err)
 		if err == nil {
 			var result dossier.GenerateResult
+			phaseStarted = time.Now()
 			result, err = w.producer.Generate(ctx, dossier.GenerateRequest{
 				Newsletter: claim.Issue.Newsletter,
 				History:    history,
 				Now:        w.now(),
-				OnStage: func(stage string) {
+				OnStage: func(stage string, duration time.Duration, stageErr error) {
 					w.logger.InfoContext(
 						ctx,
-						"Dossier stage",
+						"Dossier model stage completed",
 						"issue_id", claim.Issue.ID,
 						"stage", stage,
+						"duration_ms", duration.Milliseconds(),
+						"success", stageErr == nil,
 					)
 				},
 				PreparedItems: prepared.Items,
 			})
+			w.logIssuePhase(ctx, claim.Issue.ID, "dossier_generation", phaseStarted, err)
 			if err == nil {
 				generationID := uuid.NewString()
 				var saved artifact.PutResult
+				phaseStarted = time.Now()
 				saved, err = w.artifacts.Put(ctx, artifact.PutInput{
 					AccountID: claim.AccountID, NewsletterID: claim.Issue.NewsletterID,
 					IssueID: claim.Issue.ID, GenerationID: generationID,
 					Artifact: result.Artifact,
 				})
+				w.logIssuePhase(ctx, claim.Issue.ID, "artifact_storage", phaseStarted, err)
 				if err == nil {
+					phaseStarted = time.Now()
 					err = w.lifecycle.CompleteIssue(ctx, claim.Issue.ID, store.CompleteIssueInput{
 						ClaimToken: claim.Token, GenerationID: generationID,
 						ArtifactKey: saved.Key, Checksum: saved.Checksum, Bytes: saved.Bytes,
 						Title: result.Artifact.Dossier.Title, History: result.History,
 						HistoryLimit: w.cfg.HistoryEntries, CompletedAt: w.now(),
 					})
+					w.logIssuePhase(ctx, claim.Issue.ID, "completion_transaction", phaseStarted, err)
 					if err != nil {
 						_ = w.artifacts.Delete(context.Background(), saved.Key)
 					}
@@ -297,12 +310,30 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 			w.now(),
 		)
 		if failErr != nil && !errors.Is(failErr, store.ErrClaimLost) {
-			return errors.Join(err, failErr)
+			err = errors.Join(err, failErr)
 		}
+		w.logIssuePhase(ctx, claim.Issue.ID, "total", issueStarted, err)
 		return fmt.Errorf("generate Issue %s: %w", claim.Issue.ID, err)
 	}
 	w.metrics.generated.Add(1)
+	w.logIssuePhase(ctx, claim.Issue.ID, "total", issueStarted, nil)
 	return nil
+}
+
+func (w *Worker) logIssuePhase(
+	ctx context.Context,
+	issueID, phase string,
+	started time.Time,
+	err error,
+) {
+	w.logger.InfoContext(
+		ctx,
+		"Issue generation phase completed",
+		"issue_id", issueID,
+		"phase", phase,
+		"duration_ms", time.Since(started).Milliseconds(),
+		"success", err == nil,
+	)
 }
 
 func (w *Worker) renewIssueClaim(

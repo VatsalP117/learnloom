@@ -110,6 +110,8 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var observedMu sync.Mutex
+	observedStages := make(map[string]time.Duration)
 	result, err := generator.Generate(context.Background(), GenerateRequest{
 		Newsletter: domain.Newsletter{
 			ID: "newsletter-1", Topic: "learning science", LearnerLevel: "experienced",
@@ -127,6 +129,14 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			RecallQuestions:   []string{"Why can familiarity mislead a learner?"},
 		}},
 		Now: time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC),
+		OnStage: func(stage string, duration time.Duration, stageErr error) {
+			if stageErr != nil {
+				t.Errorf("stage %s failed: %v", stage, stageErr)
+			}
+			observedMu.Lock()
+			observedStages[stage] = duration
+			observedMu.Unlock()
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +152,14 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	}
 	if result.Artifact.Dossier.Exploration == nil || model.parallelPeak != 2 {
 		t.Fatalf("exploration=%v peak parallel stages=%d", result.Artifact.Dossier.Exploration, model.parallelPeak)
+	}
+	if len(observedStages) != 8 {
+		t.Fatalf("observed stages=%#v", observedStages)
+	}
+	for stage, duration := range observedStages {
+		if duration <= 0 {
+			t.Fatalf("stage %s has invalid duration %s", stage, duration)
+		}
 	}
 	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 450 ||
 		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1350 {

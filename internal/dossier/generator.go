@@ -39,9 +39,11 @@ type GenerateRequest struct {
 	Newsletter    domain.Newsletter
 	History       []domain.LearningHistoryEntry
 	Now           time.Time
-	OnStage       func(string)
+	OnStage       StageObserver
 	PreparedItems []domain.SourceItem
 }
+
+type StageObserver func(stage string, duration time.Duration, err error)
 
 type GenerateResult struct {
 	Artifact domain.DossierArtifact
@@ -346,11 +348,14 @@ func (g *Generator) Generate(
 func (g *Generator) runStage(
 	ctx context.Context,
 	stage, input string,
-	onStage func(string),
-) (string, error) {
-	if onStage != nil {
-		onStage(stage)
-	}
+	onStage StageObserver,
+) (result string, resultErr error) {
+	started := time.Now()
+	defer func() {
+		if onStage != nil {
+			onStage(stage, time.Since(started), resultErr)
+		}
+	}()
 	output, err := g.model.Complete(ctx, CompletionRequest{
 		Stage:       stage,
 		Instruction: stageInstructions()[stage],
@@ -369,9 +374,15 @@ func runStructured[T any](
 	ctx context.Context,
 	model Completer,
 	stage, instruction, input string,
-	onStage func(string),
+	onStage StageObserver,
 	validate func(T) error,
-) (T, error) {
+) (result T, resultErr error) {
+	started := time.Now()
+	defer func() {
+		if onStage != nil {
+			onStage(stage, time.Since(started), resultErr)
+		}
+	}()
 	var zero T
 	var repairReason string
 	for attempt := 0; attempt < 2; attempt++ {
@@ -380,9 +391,6 @@ func runStructured[T any](
 			stageInput += "\n\n# Contract repair\n\nYour previous response was rejected: " +
 				repairReason +
 				"\nReturn a corrected response in the exact requested format."
-		}
-		if onStage != nil {
-			onStage(stage)
 		}
 		output, err := model.Complete(ctx, CompletionRequest{
 			Stage: stage, Instruction: instruction, Input: stageInput,

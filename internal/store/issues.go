@@ -585,12 +585,21 @@ func (s *Store) ListWorkspaceIssuesPage(
 		cursorCreatedAt = cursor.CreatedAt
 		cursorIssueID = cursor.IssueID
 	}
-	rows, err := s.pool.Query(ctx, workerIssueSelect+`
+	rows, err := s.pool.Query(ctx, workerIssueColumns+`
+		FROM newsletters n
+		JOIN accounts a ON a.id = n.owner_account_id
+		CROSS JOIN LATERAL (
+			SELECT candidate.*
+			FROM issues candidate
+			WHERE candidate.newsletter_id = n.id
+			  AND (
+				NOT $2::boolean OR
+				(candidate.created_at, candidate.id) < ($3::timestamptz, $4::uuid)
+			  )
+			ORDER BY candidate.created_at DESC, candidate.id DESC
+			LIMIT $5
+		) i
 		WHERE n.owner_account_id = $1
-		  AND (
-			NOT $2::boolean OR
-			(i.created_at, i.id) < ($3::timestamptz, $4::uuid)
-		  )
 		ORDER BY i.created_at DESC, i.id DESC
 		LIMIT $5
 	`, accountID, hasCursor, cursorCreatedAt, cursorIssueID, limit+1)
@@ -628,8 +637,14 @@ func (s *Store) ListWorkspaceReviews(
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT h.issue_id::text, h.entry
-		FROM learning_history h
-		JOIN newsletters n ON n.id = h.newsletter_id
+		FROM newsletters n
+		CROSS JOIN LATERAL (
+			SELECT candidate.issue_id, candidate.entry, candidate.created_at
+			FROM learning_history candidate
+			WHERE candidate.newsletter_id = n.id
+			ORDER BY candidate.created_at DESC
+			LIMIT $2
+		) h
 		WHERE n.owner_account_id = $1
 		ORDER BY h.created_at DESC
 		LIMIT $2
@@ -760,7 +775,7 @@ func getWorkerIssue(
 	`, issueID))
 }
 
-const workerIssueSelect = `
+const workerIssueColumns = `
 	SELECT
 		i.id::text, i.newsletter_id::text, i.trigger,
 		i.scheduled_local_date::text, i.status, COALESCE(i.dossier_title, ''),
@@ -775,6 +790,9 @@ const workerIssueSelect = `
 		n.email_enabled, n.ai_exploration_enabled, n.public_slug,
 		n.site_visible, n.created_at, n.updated_at,
 		a.id::text, COALESCE(a.primary_email, '')
+`
+
+const workerIssueSelect = workerIssueColumns + `
 	FROM issues i
 	JOIN newsletters n ON n.id = i.newsletter_id
 	JOIN accounts a ON a.id = n.owner_account_id
