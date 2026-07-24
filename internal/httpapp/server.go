@@ -383,7 +383,8 @@ func (s *Server) applyAppCSP(response http.ResponseWriter) {
 		"default-src 'self'; script-src "+sources+
 			" https://challenges.cloudflare.com; connect-src "+sources+
 			"; img-src 'self' data: https://img.clerk.com; style-src 'self' 'unsafe-inline'; "+
-			"font-src 'self'; frame-src https://challenges.cloudflare.com; "+
+			"font-src 'self'; worker-src 'self' blob:; "+
+			"frame-src https://challenges.cloudflare.com; "+
 			"base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
 	)
 }

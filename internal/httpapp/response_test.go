@@ -3,8 +3,24 @@ package httpapp
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func TestAppCSPAllowsClerkRuntimeWorkers(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{
+		ClerkFrontendOrigin: "https://clerk.learnloom.blog",
+	}}
+	response := httptest.NewRecorder()
+
+	server.applyAppCSP(response)
+
+	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "worker-src 'self' blob:") {
+		t.Fatalf("CSP does not allow Clerk runtime workers: %q", policy)
+	}
+}
 
 func TestPrivateCacheableJSONSupportsConditionalRequests(t *testing.T) {
 	t.Parallel()

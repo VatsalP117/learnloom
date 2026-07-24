@@ -39,7 +39,12 @@ function clerkError(error) {
   );
 }
 
-export default function AuthPage({ mode = "sign-in", status = "" }) {
+export default function AuthPage({
+  mode = "sign-in",
+  status = "",
+  statusDetail = "This will only take a moment.",
+  statusKind = "loading",
+}) {
   const copy = AUTH_COPY[mode] ?? AUTH_COPY["sign-in"];
 
   return (
@@ -67,7 +72,7 @@ export default function AuthPage({ mode = "sign-in", status = "" }) {
         </a>
         <div className="auth-panel-inner">
           {status ? (
-            <AuthStatus message={status} />
+            <AuthStatus message={status} detail={statusDetail} kind={statusKind} />
           ) : mode === "sign-up" ? (
             <SignUpFlow />
           ) : (
@@ -93,12 +98,12 @@ export default function AuthPage({ mode = "sign-in", status = "" }) {
   );
 }
 
-function AuthStatus({ message }) {
+function AuthStatus({ message, detail, kind }) {
   return (
-    <div className="auth-status" role="status">
-      <LoaderCircle className="auth-spin" size={24} />
+    <div className={`auth-status auth-status-${kind}`} role={kind === "error" ? "alert" : "status"}>
+      {kind === "loading" && <LoaderCircle className="auth-spin" size={24} />}
       <strong>{message}</strong>
-      <p>This will only take a moment.</p>
+      <p>{detail}</p>
     </div>
   );
 }

@@ -5,6 +5,8 @@
   "scripts": {
     "studio": "remotion studio src/index.jsx LearnloomLaunch",
     "render": "remotion render src/index.jsx LearnloomLaunch ../output/learnloom-launch-remotion.mp4",
+    "render:v2": "remotion render src/index.jsx LearnloomLaunchV2 ../output/learnloom-launch-v2.mp4",
+    "sfx": "node scripts/generate-launch-sfx.mjs && ffmpeg -y -hide_banner -loglevel error -i public/launch-sfx-v1.wav -c:a aac -b:a 192k public/launch-sfx-v1.m4a && node -e \"require('node:fs').unlinkSync('public/launch-sfx-v1.wav')\"",
     "still": "remotion still src/index.jsx LearnloomLaunch ../output/remotion-preview.png"
   },
   "dependencies": {

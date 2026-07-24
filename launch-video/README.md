@@ -39,7 +39,14 @@ cd launch-video/remotion
 npm install
 npm run studio
 npm run render
+npm run render:v2
 ```
 
-It exports `output/learnloom-launch-remotion.mp4` and uses the captured
-Learnloom lesson state in `screenshots/11-demo-lesson.jpg`.
+It exports a 45-second `output/learnloom-launch-remotion.mp4`. The current cut
+uses a continuous animated product workspace, with the captured product states
+in `remotion/public/captures/` retained as visual references. Every scene stays
+within the same white, warm-paper, black-type visual language.
+
+The separate `LearnloomLaunchV2` composition is a 27-second cut with compressed
+typing, a nearly double-speed continuous workspace, and a kinetic closing
+statement. It exports `output/learnloom-launch-v2.mp4`.
