@@ -1,16 +1,23 @@
 import { Menu, Plus, Sparkles } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import type { Site } from "./types";
 
-const IssueDetail = lazy(() => import("./IssueDetail.jsx"));
-const LibraryPage = lazy(() => import("./LibraryPage.jsx"));
-const NewsletterCreate = lazy(() => import("./NewsletterCreate.jsx"));
-const NewsletterDetail = lazy(() => import("./NewsletterDetail.jsx"));
-const PublishingPage = lazy(() => import("./PublishingPage.jsx"));
-const ReviewPage = lazy(() => import("./ReviewPage.jsx"));
-const StreamsPage = lazy(() => import("./StreamsPage.jsx"));
-const TodayPage = lazy(() => import("./TodayPage.jsx"));
+const IssueDetail = lazy(() => import("./IssueDetail"));
+const LibraryPage = lazy(() => import("./LibraryPage"));
+const NewsletterCreate = lazy(() => import("./NewsletterCreate"));
+const NewsletterDetail = lazy(() => import("./NewsletterDetail"));
+const PublishingPage = lazy(() => import("./PublishingPage"));
+const ReviewPage = lazy(() => import("./ReviewPage"));
+const StreamsPage = lazy(() => import("./StreamsPage"));
+const TodayPage = lazy(() => import("./TodayPage"));
 
-export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
+interface AppProps {
+  capabilities?: { sourceDiscovery?: boolean };
+  site?: Site | null;
+  onSiteUpdate?: (site: Site) => void;
+}
+
+export default function App({ capabilities = {}, site = null, onSiteUpdate }: AppProps) {
   const [location, setLocation] = useState(
     () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
   );
@@ -20,7 +27,7 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
     const updateLocation = () => {
       setLocation(`${window.location.pathname}${window.location.search}${window.location.hash}`);
     };
-    const navigate = (event) => {
+    const navigate = (event: globalThis.MouseEvent) => {
       if (
         event.defaultPrevented ||
         event.button !== 0 ||
@@ -30,7 +37,7 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
         event.altKey
       ) return;
 
-      const anchor = event.target.closest("a");
+      const anchor = (event.target as Element | null)?.closest("a");
       if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
 
       const next = new URL(anchor.href, window.location.href);
@@ -82,7 +89,7 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }) {
   return routePage(<TodayPage />);
 }
 
-function routePage(page) {
+function routePage(page: ReactNode) {
   return (
     <Suspense fallback={<main className="entry-loading">Preparing this space…</main>}>
       {page}
@@ -90,7 +97,7 @@ function routePage(page) {
   );
 }
 
-function Topbar({ onMenu }) {
+function Topbar({ onMenu }: { onMenu: (event: MouseEvent<HTMLButtonElement>) => void }) {
   return (
     <header className="create-topbar">
       <button className="create-menu-button" type="button" onClick={onMenu} aria-label="Open navigation">
@@ -111,7 +118,7 @@ function Topbar({ onMenu }) {
   );
 }
 
-function ErrorState({ message }) {
+function ErrorState({ message }: { message: string }) {
   return (
     <section className="error-state" role="alert">
       <strong>We couldn’t complete that request.</strong>

@@ -11,7 +11,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 const navigation = [
   { href: "/", label: "Today", icon: CalendarDays, key: "today" },
@@ -25,6 +25,10 @@ export default function LearningShell({
   active,
   children,
   immersive = false,
+}: {
+  active: string;
+  children: ReactNode;
+  immersive?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -100,7 +104,7 @@ export default function LearningShell({
   );
 }
 
-export function AtelierLoading({ label = "Preparing your learning home…" }) {
+export function AtelierLoading({ label = "Preparing your learning home…" }: { label?: string }) {
   return (
     <div className="atelier-state-card" aria-live="polite">
       <span className="atelier-spinner" />
@@ -109,7 +113,13 @@ export function AtelierLoading({ label = "Preparing your learning home…" }) {
   );
 }
 
-export function AtelierError({ message, onRetry }) {
+export function AtelierError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void | Promise<void>;
+}) {
   return (
     <div className="atelier-state-card error" role="alert">
       <strong>We couldn’t load this part of your learning home.</strong>
@@ -119,7 +129,7 @@ export function AtelierError({ message, onRetry }) {
   );
 }
 
-export function formatShortDate(value) {
+export function formatShortDate(value?: string | null) {
   if (!value) return "Recently";
   return new Intl.DateTimeFormat("en", {
     month: "short",

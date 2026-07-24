@@ -17,7 +17,7 @@ import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
-import { appOrigin, personalSiteHost } from "./config.js";
+import { appOrigin, personalSiteHost } from "./config";
 import "./marketing.css";
 
 export default function MarketingLanding() {

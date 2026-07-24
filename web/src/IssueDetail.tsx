@@ -11,10 +11,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { AtelierError, AtelierLoading } from "./LearningShell.jsx";
-import { apiJSON } from "./api.js";
-import { normalizeDossier } from "./dossierView.js";
-import { lessonState, updateLessonState } from "./learningState.js";
+import { AtelierError, AtelierLoading } from "./LearningShell";
+import { apiJSON } from "./api";
+import { normalizeDossier } from "./dossierView";
+import { lessonState, updateLessonState } from "./learningState";
 
 export default function IssueDetail({ issueId }) {
   const [snapshot, setSnapshot] = useState(null);

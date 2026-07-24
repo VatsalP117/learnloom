@@ -11,9 +11,9 @@ import LearningShell, {
   AtelierError,
   AtelierLoading,
   formatShortDate,
-} from "./LearningShell.jsx";
-import { lessonState } from "./learningState.js";
-import { useWorkspace } from "./useWorkspace.js";
+} from "./LearningShell";
+import { lessonState } from "./learningState";
+import { useWorkspace } from "./useWorkspace";
 
 export default function TodayPage() {
   const workspace = useWorkspace();

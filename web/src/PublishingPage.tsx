@@ -9,10 +9,10 @@ import {
   Save,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell.jsx";
-import { apiJSON } from "./api.js";
-import { personalSiteHost } from "./config.js";
-import { useWorkspace } from "./useWorkspace.js";
+import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
+import { apiJSON } from "./api";
+import { personalSiteHost } from "./config";
+import { useWorkspace } from "./useWorkspace";
 
 export default function PublishingPage({ site, onSiteUpdate }) {
   const workspace = useWorkspace();
@@ -146,8 +146,8 @@ export default function PublishingPage({ site, onSiteUpdate }) {
                 <span>Address</span>
                 <input
                   required
-                  minLength="3"
-                  maxLength="30"
+                  minLength={3}
+                  maxLength={30}
                   pattern="[a-zA-Z][a-zA-Z0-9-]{1,28}[a-zA-Z0-9]"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
@@ -162,7 +162,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
                 <span>Display name</span>
                 <input
                   required
-                  maxLength="80"
+                  maxLength={80}
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                   placeholder="Your learning archive"
@@ -190,7 +190,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
                 <span>Display name</span>
                 <input
                   required
-                  maxLength="80"
+                  maxLength={80}
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
@@ -198,8 +198,8 @@ export default function PublishingPage({ site, onSiteUpdate }) {
               <label>
                 <span>Bio or description</span>
                 <textarea
-                  maxLength="400"
-                  rows="6"
+                  maxLength={400}
+                  rows={6}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                 />

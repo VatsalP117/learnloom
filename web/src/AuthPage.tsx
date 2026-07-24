@@ -39,7 +39,7 @@ function clerkError(error) {
   );
 }
 
-export default function AuthPage({ mode = "sign-in", status }) {
+export default function AuthPage({ mode = "sign-in", status = "" }) {
   const copy = AUTH_COPY[mode] ?? AUTH_COPY["sign-in"];
 
   return (
@@ -104,7 +104,8 @@ function AuthStatus({ message }) {
 }
 
 function SignInFlow() {
-  const { isLoaded, signIn, setActive } = useSignIn();
+  // Clerk's compatibility flow is broader than the signal-based hook declaration.
+  const { isLoaded, signIn, setActive } = useSignIn() as any;
   const [step, setStep] = useState("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -350,7 +351,7 @@ function SignInFlow() {
 }
 
 function SignUpFlow() {
-  const { isLoaded, signUp, setActive } = useSignUp();
+  const { isLoaded, signUp, setActive } = useSignUp() as any;
   const [step, setStep] = useState("details");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -502,7 +503,14 @@ function TextField({ label, value, onChange, code = false, ...inputProps }) {
   );
 }
 
-function PasswordField({ label, value, onChange, action, hint, autoComplete }) {
+function PasswordField({
+  label,
+  value,
+  onChange,
+  action = null,
+  hint = "",
+  autoComplete,
+}) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="auth-field">

@@ -15,10 +15,10 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import LearningShell, { AtelierError, AtelierLoading, formatShortDate } from "./LearningShell.jsx";
-import { apiJSON, demoMode } from "./api.js";
-import { lessonState } from "./learningState.js";
-import { invalidateWorkspaceCache } from "./useWorkspace.js";
+import LearningShell, { AtelierError, AtelierLoading, formatShortDate } from "./LearningShell";
+import { apiJSON, demoMode } from "./api";
+import { lessonState } from "./learningState";
+import { invalidateWorkspaceCache } from "./useWorkspace";
 
 export default function NewsletterDetail({ newsletterId }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -26,7 +26,7 @@ export default function NewsletterDetail({ newsletterId }) {
   const [notice, setNotice] = useState(noticeFromLocation());
   const [busy, setBusy] = useState("");
 
-  const load = useCallback(async ({ signal } = {}) => {
+  const load = useCallback(async ({ signal }: { signal?: AbortSignal } = {}) => {
     setError("");
     try {
       setSnapshot(

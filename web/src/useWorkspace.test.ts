@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hydrateWorkspace, mergeIssuePage } from "./useWorkspace.js";
+import { hydrateWorkspace, mergeIssuePage } from "./useWorkspace";
 
 const newsletter = {
   id: "stream-1",

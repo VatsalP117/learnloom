@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiJSON } from "./api.js";
+import { apiJSON } from "./api";
+import { errorMessage, type WorkspaceSnapshot } from "./types";
 
-let cachedSnapshot = null;
-let snapshotRequest = null;
-let issuePageRequest = null;
+let cachedSnapshot: WorkspaceSnapshot | null = null;
+let snapshotRequest: Promise<WorkspaceSnapshot> | null = null;
+let issuePageRequest: Promise<WorkspaceSnapshot | null> | null = null;
 
-export function invalidateWorkspaceCache() {
+export function invalidateWorkspaceCache(_newsletterId?: string) {
   cachedSnapshot = null;
 }
 
-async function loadSnapshot(force) {
+async function loadSnapshot(force: boolean) {
   if (cachedSnapshot && !force) return cachedSnapshot;
   if (!snapshotRequest || force) {
-    snapshotRequest = apiJSON("/api/workspace")
+    snapshotRequest = apiJSON<WorkspaceSnapshot>("/api/workspace")
       .then((workspace) => {
         cachedSnapshot = hydrateWorkspace(workspace);
         return cachedSnapshot;
@@ -24,7 +25,7 @@ async function loadSnapshot(force) {
   return snapshotRequest;
 }
 
-export function hydrateWorkspace(workspace) {
+export function hydrateWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
   const newslettersByID = new Map(
     (workspace.newsletters ?? []).map((newsletter) => [newsletter.id, newsletter]),
   );
@@ -37,7 +38,10 @@ export function hydrateWorkspace(workspace) {
   };
 }
 
-export function mergeIssuePage(snapshot, page) {
+export function mergeIssuePage(
+  snapshot: WorkspaceSnapshot,
+  page: Pick<WorkspaceSnapshot, "issues" | "nextIssueCursor">,
+): WorkspaceSnapshot {
   const hydrated = hydrateWorkspace({
     newsletters: snapshot.newsletters,
     issues: page.issues,
@@ -57,11 +61,11 @@ async function loadNextIssuePage() {
   const cursor = cachedSnapshot?.nextIssueCursor;
   if (!cursor) return cachedSnapshot;
   if (!issuePageRequest) {
-    issuePageRequest = apiJSON(
+    issuePageRequest = apiJSON<Pick<WorkspaceSnapshot, "issues" | "nextIssueCursor">>(
       `/api/issues?limit=40&cursor=${encodeURIComponent(cursor)}`,
     )
       .then((page) => {
-        cachedSnapshot = mergeIssuePage(cachedSnapshot, page);
+          if (cachedSnapshot) cachedSnapshot = mergeIssuePage(cachedSnapshot, page);
         return cachedSnapshot;
       })
       .finally(() => {
@@ -83,7 +87,7 @@ export function useWorkspace() {
     try {
       setSnapshot(await loadSnapshot(force));
     } catch (requestError) {
-      setError(requestError.message);
+      setError(errorMessage(requestError));
     } finally {
       setLoading(false);
     }
@@ -95,7 +99,9 @@ export function useWorkspace() {
 
   const lessons = useMemo(
     () => [...(snapshot?.issues ?? [])]
-      .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt)),
+      .sort((left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      ),
     [snapshot?.issues],
   );
   const reload = useCallback(() => load(true), [load]);
@@ -105,7 +111,7 @@ export function useWorkspace() {
     try {
       setSnapshot(await loadNextIssuePage());
     } catch (requestError) {
-      setError(requestError.message);
+      setError(errorMessage(requestError));
     } finally {
       setLoadingMore(false);
     }

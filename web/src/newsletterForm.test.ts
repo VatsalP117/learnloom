@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNewsletterPayload,
   canSubmitNewsletter,
-} from "./newsletterForm.js";
+} from "./newsletterForm";
 
 const defaults = {
   name: "",

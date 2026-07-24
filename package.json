@@ -14,11 +14,12 @@
     "url": "https://github.com/VatsalP117/learnloom/issues"
   },
   "scripts": {
-    "build": "vite build --config web/vite.config.js",
-    "dev": "vite --config web/vite.config.js",
-    "demo": "VITE_DEMO_MODE=true vite --config web/vite.config.js",
-    "check": "eslint web/src && npm run build",
-    "test": "vitest run --config web/vite.config.js"
+    "build": "vite build --config web/vite.config.ts",
+    "dev": "vite --config web/vite.config.ts",
+    "demo": "VITE_DEMO_MODE=true vite --config web/vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "eslint web/src && npm run typecheck && npm run build",
+    "test": "vitest run --config web/vite.config.ts"
   },
   "engines": {
     "node": ">=24"
@@ -34,11 +35,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "eslint": "^9.39.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
     "vitest": "^4.1.0"
   }

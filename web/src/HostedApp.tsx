@@ -6,9 +6,10 @@ import {
   useAuth,
 } from "@clerk/react";
 import { useEffect, useState } from "react";
-import App from "./App.jsx";
-import AuthPage from "./AuthPage.jsx";
-import { apiJSON, configureAPI, setCSRFToken } from "./api.js";
+import App from "./App";
+import AuthPage from "./AuthPage";
+import { apiJSON, configureAPI, setCSRFToken } from "./api";
+import type { Profile } from "./types";
 
 export default function HostedApp() {
   const path = window.location.pathname;
@@ -30,17 +31,17 @@ export default function HostedApp() {
 
 function OnboardingGate() {
   const { getToken } = useAuth();
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     configureAPI(getToken);
     const controller = new AbortController();
-    apiJSON("/api/me", { signal: controller.signal })
+    apiJSON<Profile>("/api/me", { signal: controller.signal })
       .then((body) => {
         setCSRFToken(body.csrfToken);
         setProfile(body);
-        import("./performance.js")
+        import("./performance")
           .then(({ startWebVitals }) => startWebVitals())
           .catch(() => {});
       })

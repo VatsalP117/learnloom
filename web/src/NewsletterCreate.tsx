@@ -11,13 +11,13 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import LearningShell from "./LearningShell.jsx";
-import { apiJSON } from "./api.js";
+import LearningShell from "./LearningShell";
+import { apiJSON } from "./api";
 import {
   buildNewsletterPayload,
   canSubmitNewsletter,
   usableSources,
-} from "./newsletterForm.js";
+} from "./newsletterForm";
 
 const defaultSource = () => ({ name: "", url: "", limit: 8 });
 const topicIdeas = [
@@ -170,8 +170,8 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                   <textarea
                     name="topic"
                     required
-                    maxLength="400"
-                    rows="4"
+                    maxLength={400}
+                    rows={4}
                     autoFocus
                     placeholder="What do you want to understand over time?"
                     value={topic}
@@ -198,8 +198,8 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                     <span>What would progress feel like? <em>Optional</em></span>
                     <textarea
                       name="learnerGoal"
-                      maxLength="500"
-                      rows="3"
+                      maxLength={500}
+                      rows={3}
                       placeholder="e.g. I want to explain the trade-offs clearly and make better decisions."
                       value={learnerGoal}
                       onChange={(event) => setLearnerGoal(event.target.value)}
@@ -252,7 +252,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                         <div className="source-row guided-source-row" key={index}>
                           <span className="source-number">{index + 1}</span>
                           <label><span>Source URL</span><input aria-label={`Source ${index + 1} URL`} required type="url" placeholder="https://publication.com or feed.xml" value={source.url} onChange={(event) => updateSource(index, "url", event.target.value)} /></label>
-                          <label><span>Label <em>Optional</em></span><input aria-label={`Source ${index + 1} name`} maxLength="120" placeholder="Publication name" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} /></label>
+                          <label><span>Label <em>Optional</em></span><input aria-label={`Source ${index + 1} name`} maxLength={120} placeholder="Publication name" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} /></label>
                           <button className="remove-source" type="button" aria-label={`Remove source ${index + 1}`} disabled={busy || sources.length === 1} onClick={() => removeSource(index)}><Trash2 size={16} /></button>
                         </div>
                       ))}
@@ -298,7 +298,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                   </button>
                   {showAdvanced ? (
                     <div className="optional-settings">
-                      <label><span>Stream name <em>Optional</em></span><input name="name" maxLength="120" placeholder="We’ll generate one from your topic" value={name} onChange={(event) => setName(event.target.value)} /></label>
+                      <label><span>Stream name <em>Optional</em></span><input name="name" maxLength={120} placeholder="We’ll generate one from your topic" value={name} onChange={(event) => setName(event.target.value)} /></label>
                       <label><span>Time zone</span><input name="timeZone" value={timeZone} onChange={(event) => setTimeZone(event.target.value)} /></label>
                       <label className="switch-row"><span><strong>Active schedule</strong><small>Prepare future lessons automatically.</small></span><input name="active" type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
                       <label className="switch-row"><span><strong>AI exploration</strong><small>Allow clearly marked ideas beyond sourced claims.</small></span><input name="aiExplorationEnabled" type="checkbox" checked={aiExplorationEnabled} onChange={(event) => setAIExplorationEnabled(event.target.checked)} /></label>

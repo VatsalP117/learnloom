@@ -5,9 +5,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell.jsx";
-import { reviewState, updateReviewState } from "./learningState.js";
-import { useWorkspace } from "./useWorkspace.js";
+import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
+import { reviewState, updateReviewState } from "./learningState";
+import { useWorkspace } from "./useWorkspace";
 
 export default function ReviewPage() {
   const workspace = useWorkspace();

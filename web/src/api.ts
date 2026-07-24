@@ -1,18 +1,24 @@
-let tokenGetter = null;
+type TokenGetter = () => Promise<string | null>;
+
+export type APIRequestOptions = Omit<RequestInit, "body"> & {
+  body?: unknown;
+};
+
+let tokenGetter: TokenGetter | null = null;
 let csrfToken = "";
 
 export const demoMode =
   import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true";
 
-export function configureAPI(getToken) {
+export function configureAPI(getToken: TokenGetter) {
   tokenGetter = getToken;
 }
 
-export function setCSRFToken(token) {
+export function setCSRFToken(token?: string | null) {
   csrfToken = token ?? "";
 }
 
-export async function apiFetch(path, options = {}) {
+export async function apiFetch(path: string, options: APIRequestOptions = {}) {
   if (!tokenGetter) {
     throw new Error("Authentication is not ready.");
   }
@@ -34,15 +40,25 @@ export async function apiFetch(path, options = {}) {
     if (body !== undefined && typeof body !== "string") {
       body = JSON.stringify(body);
     }
+  } else {
+    body = options.body;
   }
 
-  return fetch(path, { ...options, method, headers, body });
+  return fetch(path, {
+    ...options,
+    method,
+    headers,
+    body: body as BodyInit | null | undefined,
+  });
 }
 
-export async function apiJSON(path, options) {
+export async function apiJSON<T = any>(
+  path: string,
+  options: APIRequestOptions = {},
+): Promise<T> {
   if (demoMode) {
-    const { demoResponse } = await import("./demoData.js");
-    return demoResponse(path, options);
+    const { demoResponse } = await import("./demoData");
+    return demoResponse(path, options) as T;
   }
   const response = await apiFetch(path, options);
   const body = await response.json().catch(() => null);

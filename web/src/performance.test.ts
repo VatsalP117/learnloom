@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { performancePage } from "./performance.js";
+import { performancePage } from "./performance";
 
 describe("performancePage", () => {
   it("removes resource identifiers from metric dimensions", () => {
