@@ -527,11 +527,11 @@ Use this as the working prompt:
 ## Evidence reviewed
 
 - Product positioning and principles: `launch-video/PRODUCT-BRIEF.md`
-- Marketing journey: `web/src/MarketingLanding.jsx`
-- Authentication and personal-site setup: `web/src/HostedApp.jsx`
-- Dashboard and navigation: `web/src/App.jsx`
-- Stream creation: `web/src/NewsletterCreate.jsx`
-- Stream overview and archive: `web/src/NewsletterDetail.jsx`
-- Lesson reader: `web/src/IssueDetail.jsx`
+- Marketing journey: `web/src/MarketingLanding.tsx`
+- Authentication and personal-site setup: `web/src/HostedApp.tsx`
+- Dashboard and navigation: `web/src/App.tsx`
+- Stream creation: `web/src/NewsletterCreate.tsx`
+- Stream overview and archive: `web/src/NewsletterDetail.tsx`
+- Lesson reader: `web/src/IssueDetail.tsx`
 - Public archive: `internal/httpapp/reading.go`
 - Current UI captures: `screenshots/current-ui-2026-07-23/`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDossier } from "./dossierView.js";
+import { normalizeDossier } from "./dossierView";
 
 describe("normalizeDossier", () => {
   it("projects a stored Dossier into the lesson reader shape", () => {

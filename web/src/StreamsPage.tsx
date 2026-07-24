@@ -8,8 +8,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell.jsx";
-import { useWorkspace } from "./useWorkspace.js";
+import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
+import { useWorkspace } from "./useWorkspace";
 
 export default function StreamsPage() {
   const workspace = useWorkspace();

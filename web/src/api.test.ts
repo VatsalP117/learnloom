@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiJSON, configureAPI, setCSRFToken } from "./api.js";
+import { apiJSON, configureAPI, setCSRFToken } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();

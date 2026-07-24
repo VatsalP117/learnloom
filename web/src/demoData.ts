@@ -1,4 +1,6 @@
-const createdAt = (daysAgo, hour = 8) => {
+import type { APIRequestOptions } from "./api";
+
+const createdAt = (daysAgo: number, hour = 8) => {
   const value = new Date();
   value.setDate(value.getDate() - daysAgo);
   value.setHours(hour, 12, 0, 0);
@@ -120,7 +122,19 @@ const issuesByNewsletter = Object.fromEntries(
   ]),
 );
 
-const dossierByIssue = {
+const dossierByIssue: Record<string, {
+  readTime: number;
+  deck: string;
+  objective: string;
+  sections: Array<{
+    label: string;
+    heading: string;
+    paragraphs: string[];
+    callout?: string;
+  }>;
+  retrieval: string[];
+  application: string;
+}> = {
   "urban-systems-issue-1": {
     readTime: 18,
     deck:
@@ -173,8 +187,9 @@ export const demoSite = {
   url: "https://maya.learnloom.blog",
 };
 
-export function demoResponse(path, options = {}) {
+export function demoResponse(path: string, options: APIRequestOptions = {}) {
   const method = (options.method ?? "GET").toUpperCase();
+  const requestBody = options.body as Record<string, any> | undefined;
 
   if (path === "/api/workspace" && method === "GET") {
     const issues = newsletters.flatMap((newsletter) =>
@@ -275,8 +290,8 @@ export function demoResponse(path, options = {}) {
     return {
       site: {
         ...demoSite,
-        username: options.body?.username ?? demoSite.username,
-        displayName: options.body?.displayName ?? demoSite.displayName,
+        username: requestBody?.username ?? demoSite.username,
+        displayName: requestBody?.displayName ?? demoSite.displayName,
         visibility: "private",
       },
     };
@@ -286,9 +301,9 @@ export function demoResponse(path, options = {}) {
     return {
       site: {
         ...demoSite,
-        visibility: options.body?.visibility ?? demoSite.visibility,
-        displayName: options.body?.displayName ?? demoSite.displayName,
-        description: options.body?.description ?? demoSite.description,
+        visibility: requestBody?.visibility ?? demoSite.visibility,
+        displayName: requestBody?.displayName ?? demoSite.displayName,
+        description: requestBody?.description ?? demoSite.description,
       },
     };
   }

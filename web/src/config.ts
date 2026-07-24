@@ -4,6 +4,6 @@ export const rootDomain =
 
 export const appOrigin = `https://app.${rootDomain}`;
 
-export function personalSiteHost(username) {
+export function personalSiteHost(username: string) {
   return `${username}.${rootDomain}`;
 }
