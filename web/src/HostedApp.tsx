@@ -62,8 +62,24 @@ function AuthRoute({ mode }: { mode: "sign-in" | "sign-up" }) {
           statusKind="error"
         />
       </ClerkFailed>
-      <ClerkLoaded><AuthPage mode={mode} /></ClerkLoaded>
+      <ClerkLoaded>
+        <Show when="signed-out"><AuthPage mode={mode} /></Show>
+        <Show when="signed-in"><AuthenticatedRedirect /></Show>
+      </ClerkLoaded>
     </>
+  );
+}
+
+function AuthenticatedRedirect() {
+  useEffect(() => {
+    window.location.replace("/");
+  }, []);
+
+  return (
+    <AuthPage
+      status="You’re already signed in."
+      statusDetail="Opening your learning workspace…"
+    />
   );
 }
 
