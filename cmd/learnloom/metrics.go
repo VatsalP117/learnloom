@@ -21,6 +21,11 @@ func workerMetricsServer(
 		_, _ = response.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("GET /readyz", func(response http.ResponseWriter, request *http.Request) {
+		if worker.Snapshot().Draining {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = response.Write([]byte(`{"status":"draining"}`))
+			return
+		}
 		ctx, cancel := context.WithTimeout(request.Context(), 3*time.Second)
 		defer cancel()
 		for _, dependency := range readiness {
@@ -44,6 +49,11 @@ func workerMetricsServer(
 				"# TYPE learnloom_deliveries_total counter\nlearnloom_deliveries_total %d\n"+
 				"# TYPE learnloom_delivery_failures_total counter\nlearnloom_delivery_failures_total %d\n"+
 				"# TYPE learnloom_account_deletions_total counter\nlearnloom_account_deletions_total %d\n"+
+				"# TYPE learnloom_claims_recovered_total counter\nlearnloom_claims_recovered_total %d\n"+
+				"# TYPE learnloom_claim_renewal_failures_total counter\nlearnloom_claim_renewal_failures_total %d\n"+
+				"# TYPE learnloom_claims_released_total counter\nlearnloom_claims_released_total %d\n"+
+				"# TYPE learnloom_active_issues gauge\nlearnloom_active_issues %d\n"+
+				"# TYPE learnloom_worker_draining gauge\nlearnloom_worker_draining %d\n"+
 				"# TYPE learnloom_worker_last_cycle_timestamp_seconds gauge\nlearnloom_worker_last_cycle_timestamp_seconds %d\n",
 			snapshot.Cycles,
 			snapshot.Generated,
@@ -51,6 +61,11 @@ func workerMetricsServer(
 			snapshot.Delivered,
 			snapshot.DeliveryFailed,
 			snapshot.Deletions,
+			snapshot.RecoveredClaims,
+			snapshot.RenewalFailures,
+			snapshot.ReleasedClaims,
+			snapshot.ActiveIssues,
+			boolMetric(snapshot.Draining),
 			snapshot.LastCycleAt.Unix(),
 		)
 	})
@@ -59,4 +74,11 @@ func workerMetricsServer(
 		ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second,
 		IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
 	}
+}
+
+func boolMetric(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

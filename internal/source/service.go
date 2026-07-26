@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/google/uuid"
 )
 
@@ -303,10 +304,17 @@ func (svc *Service) validateSufficiency(
 	if len(selected) == 0 {
 		return svc.noEvidenceError(mode, warnings)
 	}
-	return fmt.Errorf(
-		"insufficient evidence: %d usable items found, minimum is %d or one substantial exact page",
-		len(selected),
-		svc.cfg.MinUsableItems,
+	return failure.New(
+		"insufficient_source_evidence",
+		failure.CategoryInsufficientEvidence,
+		"source_intelligence",
+		false,
+		failure.PublicSources,
+		fmt.Errorf(
+			"insufficient evidence: %d usable items found, minimum is %d or one substantial exact page",
+			len(selected),
+			svc.cfg.MinUsableItems,
+		),
 	)
 }
 
@@ -652,19 +660,29 @@ func snapshotsToSourceItems(snapshots []domain.SourceSnapshot) []domain.SourceIt
 }
 
 func (svc *Service) noEvidenceError(mode domain.SourceMode, warnings []string) error {
+	var cause error
 	switch mode {
 	case domain.SourceModeProvided:
-		return fmt.Errorf("the supplied sources could not provide enough readable evidence: %s", warningsToErr(warnings))
+		cause = fmt.Errorf("the supplied sources could not provide enough readable evidence: %s", warningsToErr(warnings))
 	case domain.SourceModeHybrid:
-		return fmt.Errorf("provided and discovered sources could not provide enough readable evidence: %s", warningsToErr(warnings))
+		cause = fmt.Errorf("provided and discovered sources could not provide enough readable evidence: %s", warningsToErr(warnings))
 	case domain.SourceModeDiscovered:
 		if !svc.cfg.DiscoveryEnabled {
-			return errors.New("source discovery is disabled; cannot generate without grounded evidence")
+			cause = errors.New("source discovery is disabled; cannot generate without grounded evidence")
+			break
 		}
-		return fmt.Errorf("source discovery could not provide enough readable evidence: %s", warningsToErr(warnings))
+		cause = fmt.Errorf("source discovery could not provide enough readable evidence: %s", warningsToErr(warnings))
 	default:
-		return fmt.Errorf("no usable sources found: %s", warningsToErr(warnings))
+		cause = fmt.Errorf("no usable sources found: %s", warningsToErr(warnings))
 	}
+	return failure.New(
+		"insufficient_source_evidence",
+		failure.CategoryInsufficientEvidence,
+		"source_intelligence",
+		false,
+		failure.PublicSources,
+		cause,
+	)
 }
 
 func sourceName(spec domain.SourceSpec) string {

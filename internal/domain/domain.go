@@ -185,7 +185,7 @@ type SourceCatalogItem struct {
 	DiscoveryReason  string       `json:"discoveryReason,omitempty"`
 	LastCheckedAt    *time.Time   `json:"lastCheckedAt,omitempty"`
 	LastSuccessfulAt *time.Time   `json:"lastSuccessfulAt,omitempty"`
-	Error            string       `json:"error,omitempty"`
+	Error            string       `json:"-"`
 }
 
 type Newsletter struct {
@@ -248,7 +248,12 @@ type Issue struct {
 	ArtifactKey        string           `json:"-"`
 	ArtifactSHA256     string           `json:"-"`
 	ArtifactBytes      int              `json:"-"`
-	Error              string           `json:"error,omitempty"`
+	Error              string           `json:"-"`
+	FailureCode        string           `json:"-"`
+	FailureCategory    string           `json:"-"`
+	FailureStage       string           `json:"-"`
+	FailureRetryable   bool             `json:"-"`
+	IncidentID         string           `json:"-"`
 	PublicID           string           `json:"publicId,omitempty"`
 	PublicSlug         string           `json:"publicSlug,omitempty"`
 	PublicationState   PublicationState `json:"publicationState"`
@@ -274,7 +279,7 @@ type DeliveryReceipt struct {
 	Status       DeliveryStatus `json:"status"`
 	AttemptCount int            `json:"attemptCount"`
 	ExternalID   string         `json:"externalId,omitempty"`
-	Error        string         `json:"error,omitempty"`
+	Error        string         `json:"-"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	StartedAt    *time.Time     `json:"startedAt,omitempty"`
 	CompletedAt  *time.Time     `json:"completedAt,omitempty"`

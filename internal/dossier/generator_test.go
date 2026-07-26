@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -112,6 +113,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	}
 	var observedMu sync.Mutex
 	observedStages := make(map[string]time.Duration)
+	checkpoints := make(map[string]string)
 	result, err := generator.Generate(context.Background(), GenerateRequest{
 		Newsletter: domain.Newsletter{
 			ID: "newsletter-1", Topic: "learning science", LearnerLevel: "experienced",
@@ -137,6 +139,9 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			observedStages[stage] = duration
 			observedMu.Unlock()
 		},
+		OnCheckpoint: func(stage, output string) {
+			checkpoints[stage] = output
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,6 +160,11 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	}
 	if len(observedStages) != 8 {
 		t.Fatalf("observed stages=%#v", observedStages)
+	}
+	for _, stage := range []string{"curator", "blueprint", "researcher", "skeptic", "teacher"} {
+		if strings.TrimSpace(checkpoints[stage]) == "" {
+			t.Fatalf("missing validated checkpoint for %s: %#v", stage, checkpoints)
+		}
 	}
 	for stage, duration := range observedStages {
 		if duration <= 0 {
@@ -183,6 +193,58 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		if !strings.Contains(editorInput, wanted) {
 			t.Fatalf("editor input is missing %q:\n%s", wanted, editorInput)
 		}
+	}
+}
+
+func TestGenerationFingerprintInvalidatesChangedLearningContext(t *testing.T) {
+	t.Parallel()
+	request := GenerateRequest{
+		Newsletter: domain.Newsletter{
+			ID: "newsletter-1", LearnerGoal: "understand inference",
+		},
+		PreparedItems: []domain.SourceItem{{
+			SourceID: "S1", CanonicalURL: "https://example.com/a", Summary: "Evidence",
+		}},
+	}
+	first, err := GenerationFingerprint(request, "model-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Newsletter.LearnerGoal = "operate inference systems"
+	second, err := GenerationFingerprint(request, "model-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := GenerationFingerprint(request, "model-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || second == third || first == third {
+		t.Fatalf("fingerprints did not invalidate: %s %s %s", first, second, third)
+	}
+}
+
+func TestStructuredCheckpointMustStillSatisfyCurrentContract(t *testing.T) {
+	t.Parallel()
+	valid, restored := restoreStructuredCheckpoint(
+		map[string]string{
+			"curator": `{"theme":"One theme","rationale":"Useful","selectedSourceIds":["S1"]}`,
+		},
+		"curator",
+		func(value domain.Curation) error { return validateCuration(value, 1) },
+	)
+	if !restored || valid.Theme != "One theme" {
+		t.Fatalf("valid checkpoint was rejected: %#v %v", valid, restored)
+	}
+	_, restored = restoreStructuredCheckpoint(
+		map[string]string{
+			"curator": `{"theme":"Stale","rationale":"Bad","selectedSourceIds":["S2"]}`,
+		},
+		"curator",
+		func(value domain.Curation) error { return validateCuration(value, 1) },
+	)
+	if restored {
+		t.Fatal("stale invalid checkpoint was restored")
 	}
 }
 
@@ -234,6 +296,61 @@ func TestEditorReceivesActionableTimeFitRepair(t *testing.T) {
 		!strings.Contains(model.requests[1].Input, "Contract repair") ||
 		!strings.Contains(model.requests[1].Input, "must contain 450 to 1350 words") {
 		t.Fatalf("missing actionable repair request: %#v", model.requests)
+	}
+}
+
+func TestGeneratorPreservesExaminerPracticeWhenEditorDamagesAnswerKey(t *testing.T) {
+	t.Parallel()
+	lesson := completeLesson()
+	practice := completePractice()
+	damagedPractice := strings.Replace(
+		practice,
+		"3. Familiarity rises during rereading even when independent recall remains weak and unreliable.\n",
+		"",
+		1,
+	)
+	editor, err := json.Marshal(editorialOutput{
+		Lesson: lesson, Critique: "Evidence remains bounded [S1].",
+		Practice: damagedPractice,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := fakeModel{responses: map[string]string{
+		"curator":    `{"theme":"Retrieval and feedback","rationale":"Complementary evidence.","selectedSourceIds":["S1","S2","S3"]}`,
+		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Retrieval plus feedback","workedExample":"Recall and correction","misconception":"Rereading is equivalent","practicalExperiment":"Compare both methods","continuityBridge":"Build on prior learning"}`,
+		"researcher": "Research grounded in [S1] and [S2].",
+		"skeptic":    "The evidence remains bounded [S1].",
+		"teacher":    lesson,
+		"examiner":   practice,
+		"editor":     string(editor),
+	}}
+	generator, err := NewGenerator(fakeSources{}, &model, GenerationConfig{
+		ModelName: "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := generator.Generate(context.Background(), GenerateRequest{
+		Newsletter: domain.Newsletter{
+			ID: "newsletter-1", Topic: "learning science",
+			LearnerLevel: "experienced", LearnerGoal: "retain knowledge",
+			LessonMinutes: 15, TimeZone: "UTC",
+			Sources: []domain.SourceDefinition{{
+				Name: "Example", URL: "https://example.com/feed", Limit: 3,
+			}},
+		},
+		Now: time.Date(2026, 7, 27, 1, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Artifact.Dossier.Practice != practice ||
+		!slices.Contains(
+			result.Artifact.Dossier.Quality.EditorNotes,
+			"Preserved validated examiner practice after editor contract drift.",
+		) {
+		t.Fatalf("editor practice was not preserved: %#v", result.Artifact.Dossier)
 	}
 }
 

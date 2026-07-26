@@ -293,7 +293,7 @@ func (s *Server) workspaceSnapshot(
 			"newsletters": len(records), "active": active, "generated": generated,
 		},
 		"newsletters":     items,
-		"issues":          workspaceIssuePayloads(issues),
+		"issues":          issuePayloads(issues),
 		"nextIssueCursor": encodeIssueCursor(next),
 		"reviews":         reviews,
 	}
@@ -336,31 +336,71 @@ func (s *Server) listWorkspaceIssues(
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{
-		"issues":          workspaceIssuePayloads(issues),
+		"issues":          issuePayloads(issues),
 		"nextIssueCursor": encodeIssueCursor(next),
 	})
 }
 
-func workspaceIssuePayloads(issues []domain.Issue) []map[string]any {
+func issuePayloads(issues []domain.Issue) []map[string]any {
 	items := make([]map[string]any, 0, len(issues))
 	for _, issue := range issues {
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"id":                 issue.ID,
 			"newsletterId":       issue.NewsletterID,
 			"trigger":            issue.Trigger,
 			"scheduledLocalDate": issue.ScheduledLocalDate,
 			"status":             issue.Status,
 			"title":              issue.Title,
-			"error":              issue.Error,
 			"publicId":           issue.PublicID,
 			"publicSlug":         issue.PublicSlug,
 			"publicationState":   issue.PublicationState,
 			"createdAt":          issue.CreatedAt,
 			"startedAt":          issue.StartedAt,
 			"completedAt":        issue.CompletedAt,
-		})
+		}
+		if issue.Status == domain.IssueFailed && issue.Error != "" {
+			item["error"] = issue.Error
+			item["failureCode"] = issue.FailureCode
+			item["failureCategory"] = issue.FailureCategory
+			item["failureStage"] = issue.FailureStage
+			item["failureRetryable"] = issue.FailureRetryable
+			item["incidentId"] = issue.IncidentID
+		}
+		if issue.Delivery != nil {
+			item["delivery"] = map[string]any{
+				"status":        issue.Delivery.Status,
+				"attemptCount":  issue.Delivery.AttemptCount,
+				"completedAt":   issue.Delivery.CompletedAt,
+				"nextAttemptAt": issue.Delivery.NextAttempt,
+			}
+		}
+		items = append(items, item)
 	}
 	return items
+}
+
+func sourceCatalogPayloads(items []domain.SourceCatalogItem) []map[string]any {
+	payloads := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		payload := map[string]any{
+			"id":               item.ID,
+			"displayName":      item.DisplayName,
+			"canonicalUrl":     item.CanonicalURL,
+			"origin":           item.Origin,
+			"scope":            item.Scope,
+			"kind":             item.Kind,
+			"state":            item.State,
+			"health":           item.Health,
+			"discoveryReason":  item.DiscoveryReason,
+			"lastCheckedAt":    item.LastCheckedAt,
+			"lastSuccessfulAt": item.LastSuccessfulAt,
+		}
+		if item.Error != "" {
+			payload["error"] = "This source could not be refreshed."
+		}
+		payloads = append(payloads, payload)
+	}
+	return payloads
 }
 
 type issueCursorToken struct {
@@ -498,7 +538,7 @@ func (s *Server) updateNewsletter(
 	writeJSON(response, http.StatusOK, map[string]any{
 		"newsletter":    newsletterPayload(record, current.Account.PrimaryEmail),
 		"sourceSummary": summary,
-		"sourceCatalog": catalog,
+		"sourceCatalog": sourceCatalogPayloads(catalog),
 	})
 }
 
@@ -554,8 +594,8 @@ func (s *Server) newsletterDetail(
 		"resendConfigured": s.cfg.ResendConfigured,
 		"newsletter":       newsletterPayload(record, current.Account.PrimaryEmail),
 		"sourceSummary":    summary,
-		"sourceCatalog":    catalog,
-		"issues":           issues,
+		"sourceCatalog":    sourceCatalogPayloads(catalog),
+		"issues":           issuePayloads(issues),
 		"newsletters":      sidebar,
 	})
 }

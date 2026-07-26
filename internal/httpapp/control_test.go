@@ -2,6 +2,7 @@ package httpapp
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -156,5 +157,32 @@ func TestDecodeNewsletterInputKeepsBackwardCompatibleProvidedMode(t *testing.T) 
 	if input.SourceMode != domain.SourceModeProvided ||
 		input.ScheduleHour != 9 || input.ScheduleMinute != 30 || input.Active {
 		t.Fatalf("input=%#v", input)
+	}
+}
+
+func TestIssuePayloadsNeverExposeInternalFailureDetails(t *testing.T) {
+	t.Parallel()
+	issues := []domain.Issue{{
+		ID: "issue-1", Status: domain.IssueFailed,
+		Error:            "We couldn’t prepare this lesson. We’ve been notified, and you can retry now.",
+		FailureCode:      "model_contract_unsatisfied",
+		FailureCategory:  "content_quality",
+		FailureStage:     "editor",
+		FailureRetryable: true,
+		IncidentID:       "incident-1",
+		Delivery: &domain.DeliveryReceipt{
+			Status: domain.DeliveryFailed,
+			Error:  "secret provider delivery diagnostic",
+		},
+	}}
+	payload, err := json.Marshal(issuePayloads(issues))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(payload)
+	if strings.Contains(body, "secret provider delivery diagnostic") ||
+		!strings.Contains(body, "model_contract_unsatisfied") ||
+		!strings.Contains(body, "We couldn’t prepare this lesson") {
+		t.Fatalf("unsafe Issue payload: %s", body)
 	}
 }

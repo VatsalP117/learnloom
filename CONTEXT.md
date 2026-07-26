@@ -63,3 +63,19 @@ _Avoid_: Output file, blob, generated file
 **Issue Claim**:
 A time-bounded right held by one worker to advance an Issue or Delivery Receipt.
 _Avoid_: Lock, reservation, ownership
+
+**Issue Attempt**:
+One durable record of a worker advancing an Issue under an Issue Claim,
+including renewals, Dossier stages, completion, and a classified failure.
+_Avoid_: Retry count, log entry, execution
+
+**Issue Failure**:
+A classified Issue outcome with a stable code, category, stage, retryability,
+internal detail, safe learner message, and incident identifier.
+_Avoid_: Error string, exception message, failure blob
+
+**Dossier Checkpoint**:
+A validated intermediate Dossier stage output reusable only when its fingerprint
+matches the pipeline version, model, Newsletter settings, Learning History, and
+frozen Issue evidence.
+_Avoid_: Cache entry, draft file, partial artifact

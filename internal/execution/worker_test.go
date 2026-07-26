@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,6 +54,92 @@ func TestAcceptedDeliveryWithReceiptFailureBecomesUnknown(t *testing.T) {
 	default:
 		t.Fatal("delivery was not moved to unknown")
 	}
+}
+
+func TestInterruptedDeliveryBecomesUnknown(t *testing.T) {
+	t.Parallel()
+	lifecycle := &deliveryLifecycle{unknown: make(chan error, 1)}
+	worker, err := New(
+		lifecycle,
+		unusedProducer{},
+		staticArtifacts{},
+		cancelledMailer{},
+		nil,
+		validConfig(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim := &store.DeliveryClaim{
+		Token: "claim-token", PrimaryEmail: "learner@example.com",
+		ExpiresAt: time.Now().Add(time.Minute),
+		Issue: domain.Issue{
+			ID: "issue-1", GenerationID: "generation-1",
+			ArtifactKey: "accounts/a/issues/i/g.json", Title: "A Dossier",
+		},
+	}
+	if err := worker.processDelivery(context.Background(), claim); err == nil {
+		t.Fatal("expected interrupted delivery to remain observable")
+	}
+	select {
+	case marked := <-lifecycle.unknown:
+		if !errors.Is(marked, context.Canceled) {
+			t.Fatalf("unexpected transition cause: %v", marked)
+		}
+	default:
+		t.Fatal("interrupted delivery was not moved to unknown")
+	}
+}
+
+func TestIssueClaimRenewalToleratesTransientDatabaseFailure(t *testing.T) {
+	t.Parallel()
+	lifecycle := &renewalLifecycle{}
+	worker := &Worker{
+		lifecycle: lifecycle,
+		cfg:       Config{ClaimDuration: 30 * time.Millisecond},
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		now:       func() time.Time { return time.Now().UTC() },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	claim := &store.IssueClaim{
+		Issue: domain.Issue{ID: "issue-1"},
+		Token: "claim-token", ExpiresAt: time.Now().Add(time.Second),
+	}
+	go worker.renewIssueClaim(ctx, claim, cancel, result)
+	deadline := time.After(time.Second)
+	for lifecycle.calls.Load() < 2 {
+		select {
+		case <-deadline:
+			t.Fatal("Claim renewal was not retried")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("renew result=%v", err)
+	}
+	if worker.metrics.renewalFailures.Load() != 1 {
+		t.Fatalf("renewal failures=%d", worker.metrics.renewalFailures.Load())
+	}
+}
+
+type renewalLifecycle struct {
+	Lifecycle
+	calls atomic.Int32
+}
+
+func (l *renewalLifecycle) RenewIssueClaim(
+	context.Context,
+	string,
+	string,
+	time.Time,
+) error {
+	if l.calls.Add(1) == 1 {
+		return errors.New("temporary database interruption")
+	}
+	return nil
 }
 
 type deliveryLifecycle struct {
@@ -131,6 +218,12 @@ func (staticMailer) Deliver(
 	delivery.Message,
 ) (string, error) {
 	return "provider-email-id", nil
+}
+
+type cancelledMailer struct{}
+
+func (cancelledMailer) Deliver(context.Context, delivery.Message) (string, error) {
+	return "", context.Canceled
 }
 
 func validConfig() Config {

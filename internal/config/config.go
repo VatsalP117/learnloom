@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	Environment                  string
+	ReleaseVersion               string
 	LogLevel                     string
 	AllowInsecurePrivateServices bool
 	HTTP                         HTTP
@@ -68,13 +69,14 @@ type ObjectStore struct {
 }
 
 type Model struct {
-	BaseURL        string
-	APIKey         string
-	Name           string
-	Timeout        time.Duration
-	Retries        int
-	MaxTokens      int
-	MaxConcurrency int
+	BaseURL          string
+	APIKey           string
+	Name             string
+	StructuredOutput bool
+	Timeout          time.Duration
+	Retries          int
+	MaxTokens        int
+	MaxConcurrency   int
 }
 
 type Clerk struct {
@@ -98,6 +100,7 @@ type Worker struct {
 	MaxDeliveryAttempts int
 	AccountConcurrency  int
 	GlobalConcurrency   int
+	IssueTimeout        time.Duration
 	DailyAccountLimit   int
 	DailyGlobalLimit    int
 	MetricsAddress      string
@@ -117,8 +120,9 @@ type Limits struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		Environment: env("LEARNLOOM_ENV", "development"),
-		LogLevel:    env("LOG_LEVEL", "info"),
+		Environment:    env("LEARNLOOM_ENV", "development"),
+		ReleaseVersion: env("LEARNLOOM_RELEASE_VERSION", "unknown"),
+		LogLevel:       env("LOG_LEVEL", "info"),
 		AllowInsecurePrivateServices: envBool(
 			"ALLOW_INSECURE_PRIVATE_SERVICES",
 			false,
@@ -146,13 +150,14 @@ func Load() (Config, error) {
 			CacheBytes:      envInt64("ARTIFACT_CACHE_BYTES", 64<<20),
 		},
 		Model: Model{
-			BaseURL:        env("MODEL_BASE_URL", "https://api.deepseek.com"),
-			APIKey:         os.Getenv("MODEL_API_KEY"),
-			Name:           env("MODEL_NAME", "deepseek-chat"),
-			Timeout:        envDuration("MODEL_TIMEOUT", 10*time.Minute),
-			Retries:        envInt("MODEL_RETRIES", 2),
-			MaxTokens:      envInt("MODEL_MAX_TOKENS", 8192),
-			MaxConcurrency: envInt("MODEL_MAX_CONCURRENCY", 4),
+			BaseURL:          env("MODEL_BASE_URL", "https://api.deepseek.com"),
+			APIKey:           os.Getenv("MODEL_API_KEY"),
+			Name:             env("MODEL_NAME", "deepseek-chat"),
+			StructuredOutput: envBool("MODEL_STRUCTURED_OUTPUT", true),
+			Timeout:          envDuration("MODEL_TIMEOUT", 10*time.Minute),
+			Retries:          envInt("MODEL_RETRIES", 2),
+			MaxTokens:        envInt("MODEL_MAX_TOKENS", 8192),
+			MaxConcurrency:   envInt("MODEL_MAX_CONCURRENCY", 4),
 		},
 		Clerk: Clerk{
 			SecretKey:      os.Getenv("CLERK_SECRET_KEY"),
@@ -173,6 +178,7 @@ func Load() (Config, error) {
 			MaxDeliveryAttempts: envInt("WORKER_MAX_DELIVERY_ATTEMPTS", 6),
 			AccountConcurrency:  envInt("ACCOUNT_GENERATION_CONCURRENCY", 1),
 			GlobalConcurrency:   envInt("GLOBAL_GENERATION_CONCURRENCY", 4),
+			IssueTimeout:        envDuration("WORKER_ISSUE_TIMEOUT", 45*time.Minute),
 			DailyAccountLimit:   envInt("ACCOUNT_DAILY_GENERATION_LIMIT", 5),
 			DailyGlobalLimit:    envInt("GLOBAL_DAILY_GENERATION_LIMIT", 1000),
 			MetricsAddress:      env("WORKER_METRICS_ADDR", ":9090"),
@@ -321,7 +327,8 @@ func (c Config) ValidateFor(role string) error {
 		problems = append(problems, errors.New("model retry or token limits are invalid"))
 	}
 	if role == "worker" && (c.Worker.ClaimDuration < time.Minute || c.Worker.GlobalConcurrency < 1 ||
-		c.Worker.AccountConcurrency < 1) {
+		c.Worker.AccountConcurrency < 1 ||
+		(c.Worker.IssueTimeout != 0 && c.Worker.IssueTimeout < time.Minute)) {
 		problems = append(problems, errors.New("worker limits are invalid"))
 	}
 	if role == "worker" {

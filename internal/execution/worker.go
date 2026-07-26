@@ -21,8 +21,12 @@ import (
 type Lifecycle interface {
 	RecoverExpiredClaims(context.Context, time.Time, int, int) (int64, error)
 	DispatchDue(context.Context, time.Time, int) (int, error)
-	ClaimNextIssue(context.Context, time.Time, time.Duration, int, int, int) (*store.IssueClaim, error)
+	ClaimNextIssue(context.Context, time.Time, time.Duration, int, int, int, store.IssueAttemptContext) (*store.IssueClaim, error)
 	RenewIssueClaim(context.Context, string, string, time.Time) error
+	ReleaseIssueClaim(context.Context, string, string, error, time.Time) error
+	RecordIssueStage(context.Context, string, string, string, time.Duration, error, time.Time) error
+	LoadIssueCheckpoints(context.Context, string, string) (map[string]string, error)
+	SaveIssueCheckpoint(context.Context, string, string, string, string, string, string, time.Time) error
 	LoadLearningHistory(context.Context, string, int) ([]domain.LearningHistoryEntry, error)
 	CompleteIssue(context.Context, string, store.CompleteIssueInput) error
 	FailIssue(context.Context, string, string, error, int, time.Time) error
@@ -59,10 +63,12 @@ type Config struct {
 	MaxDeliveryAttempts int
 	AccountConcurrency  int
 	GlobalConcurrency   int
+	IssueTimeout        time.Duration
 	DailyAccountLimit   int
 	DailyGlobalLimit    int
 	HistoryEntries      int
 	RootDomain          string
+	AttemptContext      store.IssueAttemptContext
 }
 
 type Worker struct {
@@ -76,6 +82,7 @@ type Worker struct {
 	now         func() time.Time
 	lastCleanup time.Time
 	metrics     workerMetrics
+	draining    atomic.Bool
 }
 
 type workerMetrics struct {
@@ -85,6 +92,10 @@ type workerMetrics struct {
 	delivered         atomic.Uint64
 	deliveryFailed    atomic.Uint64
 	deletions         atomic.Uint64
+	recoveredClaims   atomic.Uint64
+	renewalFailures   atomic.Uint64
+	releasedClaims    atomic.Uint64
+	activeIssues      atomic.Int64
 	lastCycleUnixNano atomic.Int64
 }
 
@@ -95,6 +106,11 @@ type Snapshot struct {
 	Delivered        uint64    `json:"delivered"`
 	DeliveryFailed   uint64    `json:"deliveryFailed"`
 	Deletions        uint64    `json:"deletions"`
+	RecoveredClaims  uint64    `json:"recoveredClaims"`
+	RenewalFailures  uint64    `json:"renewalFailures"`
+	ReleasedClaims   uint64    `json:"releasedClaims"`
+	ActiveIssues     int64     `json:"activeIssues"`
+	Draining         bool      `json:"draining"`
 	LastCycleAt      time.Time `json:"lastCycleAt"`
 }
 
@@ -112,6 +128,9 @@ func New(
 	}
 	if cfg.PollInterval == 0 {
 		cfg.PollInterval = 2 * time.Second
+	}
+	if cfg.IssueTimeout == 0 {
+		cfg.IssueTimeout = 45 * time.Minute
 	}
 	if cfg.ClaimDuration < time.Minute {
 		return nil, errors.New("Issue Claim duration must be at least one minute")
@@ -135,8 +154,14 @@ func (w *Worker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.cfg.PollInterval)
 	defer ticker.Stop()
 	for {
+		if w.draining.Load() {
+			return nil
+		}
 		if err := w.Cycle(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			w.logger.ErrorContext(ctx, "worker cycle failed", "error", err)
+		}
+		if w.draining.Load() {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -144,6 +169,10 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (w *Worker) BeginDrain() {
+	w.draining.Store(true)
 }
 
 func (w *Worker) Cycle(ctx context.Context) error {
@@ -160,7 +189,11 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		return err
 	}
 	if recovered > 0 {
+		w.metrics.recoveredClaims.Add(uint64(recovered))
 		w.logger.WarnContext(ctx, "recovered expired claims", "count", recovered)
+	}
+	if w.draining.Load() {
+		return nil
 	}
 	dispatched, err := w.lifecycle.DispatchDue(ctx, now, 100)
 	if err != nil {
@@ -172,8 +205,14 @@ func (w *Worker) Cycle(ctx context.Context) error {
 	if err := w.processIssues(ctx); err != nil {
 		return err
 	}
+	if w.draining.Load() {
+		return nil
+	}
 	if err := w.processDeliveries(ctx); err != nil {
 		return err
+	}
+	if w.draining.Load() {
+		return nil
 	}
 	if err := w.processDeletion(ctx); err != nil {
 		return err
@@ -194,6 +233,9 @@ func (w *Worker) processIssues(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errorsChannel := make(chan error, w.cfg.GlobalConcurrency)
 	for count := 0; count < w.cfg.GlobalConcurrency; count++ {
+		if w.draining.Load() {
+			break
+		}
 		claim, err := w.lifecycle.ClaimNextIssue(
 			ctx,
 			w.now(),
@@ -201,6 +243,7 @@ func (w *Worker) processIssues(ctx context.Context) error {
 			w.cfg.AccountConcurrency,
 			w.cfg.DailyAccountLimit,
 			w.cfg.DailyGlobalLimit,
+			w.cfg.AttemptContext,
 		)
 		if errors.Is(err, store.ErrGenerationPaused) ||
 			errors.Is(err, store.ErrQuotaExceeded) {
@@ -215,6 +258,8 @@ func (w *Worker) processIssues(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			w.metrics.activeIssues.Add(1)
+			defer w.metrics.activeIssues.Add(-1)
 			if err := w.processIssue(ctx, claim); err != nil {
 				errorsChannel <- err
 			}
@@ -227,7 +272,7 @@ func (w *Worker) processIssues(ctx context.Context) error {
 
 func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) error {
 	issueStarted := time.Now()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, w.cfg.IssueTimeout)
 	renewed := make(chan error, 1)
 	go w.renewIssueClaim(ctx, claim, cancel, renewed)
 	var err error
@@ -249,13 +294,61 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 		prepared, err = w.sourceSvc.PrepareIssue(ctx, claim.Issue.Newsletter, claim.Issue.ID)
 		w.logIssuePhase(ctx, claim.Issue.ID, "source_intelligence", phaseStarted, err)
 		if err == nil {
+			generateRequest := dossier.GenerateRequest{
+				Newsletter:    claim.Issue.Newsletter,
+				History:       history,
+				Now:           w.now(),
+				PreparedItems: prepared.Items,
+				Warnings:      prepared.Warnings,
+			}
+			fingerprint, fingerprintErr := dossier.GenerationFingerprint(
+				generateRequest,
+				w.cfg.AttemptContext.ModelName,
+			)
+			if fingerprintErr != nil {
+				err = fingerprintErr
+			}
+			var checkpoints map[string]string
+			if err == nil {
+				checkpoints, err = w.lifecycle.LoadIssueCheckpoints(
+					ctx,
+					claim.Issue.ID,
+					fingerprint,
+				)
+			}
+			if err != nil {
+				w.logIssuePhase(ctx, claim.Issue.ID, "checkpoint_load", phaseStarted, err)
+			}
 			var result dossier.GenerateResult
 			phaseStarted = time.Now()
-			result, err = w.producer.Generate(ctx, dossier.GenerateRequest{
-				Newsletter: claim.Issue.Newsletter,
-				History:    history,
-				Now:        w.now(),
-				OnStage: func(stage string, duration time.Duration, stageErr error) {
+			if err == nil {
+				generateRequest.Checkpoints = checkpoints
+				generateRequest.OnCheckpoint = func(stage, output string) {
+					checkpointCtx, checkpointCancel := context.WithTimeout(
+						context.Background(),
+						3*time.Second,
+					)
+					defer checkpointCancel()
+					if checkpointErr := w.lifecycle.SaveIssueCheckpoint(
+						checkpointCtx,
+						claim.Issue.ID,
+						claim.Token,
+						fingerprint,
+						stage,
+						output,
+						dossier.PipelineVersion,
+						w.now(),
+					); checkpointErr != nil && !errors.Is(checkpointErr, store.ErrClaimLost) {
+						w.logger.WarnContext(
+							ctx,
+							"save Dossier checkpoint failed",
+							"issue_id", claim.Issue.ID,
+							"stage", stage,
+							"error", checkpointErr,
+						)
+					}
+				}
+				generateRequest.OnStage = func(stage string, duration time.Duration, stageErr error) {
 					w.logger.InfoContext(
 						ctx,
 						"Dossier model stage completed",
@@ -264,9 +357,31 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 						"duration_ms", duration.Milliseconds(),
 						"success", stageErr == nil,
 					)
-				},
-				PreparedItems: prepared.Items,
-			})
+					recordCtx, recordCancel := context.WithTimeout(
+						context.Background(),
+						3*time.Second,
+					)
+					defer recordCancel()
+					if recordErr := w.lifecycle.RecordIssueStage(
+						recordCtx,
+						claim.Issue.ID,
+						claim.Token,
+						stage,
+						duration,
+						stageErr,
+						w.now(),
+					); recordErr != nil && !errors.Is(recordErr, store.ErrClaimLost) {
+						w.logger.WarnContext(
+							ctx,
+							"record Dossier stage failed",
+							"issue_id", claim.Issue.ID,
+							"stage", stage,
+							"error", recordErr,
+						)
+					}
+				}
+				result, err = w.producer.Generate(ctx, generateRequest)
+			}
 			w.logIssuePhase(ctx, claim.Issue.ID, "dossier_generation", phaseStarted, err)
 			if err == nil {
 				generationID := uuid.NewString()
@@ -301,14 +416,28 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 	}
 	if err != nil {
 		w.metrics.generationFailed.Add(1)
-		failErr := w.lifecycle.FailIssue(
-			context.Background(),
-			claim.Issue.ID,
-			claim.Token,
-			err,
-			w.cfg.MaxIssueAttempts,
-			w.now(),
-		)
+		var failErr error
+		if w.draining.Load() && errors.Is(err, context.Canceled) {
+			failErr = w.lifecycle.ReleaseIssueClaim(
+				context.Background(),
+				claim.Issue.ID,
+				claim.Token,
+				err,
+				w.now(),
+			)
+			if failErr == nil {
+				w.metrics.releasedClaims.Add(1)
+			}
+		} else {
+			failErr = w.lifecycle.FailIssue(
+				context.Background(),
+				claim.Issue.ID,
+				claim.Token,
+				err,
+				w.cfg.MaxIssueAttempts,
+				w.now(),
+			)
+		}
 		if failErr != nil && !errors.Is(failErr, store.ErrClaimLost) {
 			err = errors.Join(err, failErr)
 		}
@@ -345,6 +474,7 @@ func (w *Worker) renewIssueClaim(
 	interval := min(w.cfg.ClaimDuration/3, 30*time.Second)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	currentExpiry := claim.ExpiresAt
 	for {
 		select {
 		case <-ctx.Done():
@@ -358,10 +488,22 @@ func (w *Worker) renewIssueClaim(
 				claim.Token,
 				expires,
 			); err != nil {
-				cancel()
-				result <- err
-				return
+				w.metrics.renewalFailures.Add(1)
+				if errors.Is(err, store.ErrClaimLost) ||
+					!w.now().Before(currentExpiry) {
+					cancel()
+					result <- err
+					return
+				}
+				w.logger.WarnContext(
+					ctx,
+					"renew Issue Claim failed; retrying before expiry",
+					"issue_id", claim.Issue.ID,
+					"error", err,
+				)
+				continue
 			}
+			currentExpiry = expires
 		}
 	}
 }
@@ -370,6 +512,9 @@ func (w *Worker) processDeliveries(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errorsChannel := make(chan error, w.cfg.GlobalConcurrency)
 	for count := 0; count < w.cfg.GlobalConcurrency; count++ {
+		if w.draining.Load() {
+			break
+		}
 		claim, err := w.lifecycle.ClaimNextDelivery(
 			ctx,
 			w.now(),
@@ -461,7 +606,9 @@ func (w *Worker) processDelivery(
 	w.metrics.deliveryFailed.Add(1)
 	var unknown *delivery.OutcomeUnknownError
 	var transitionErr error
-	if errors.As(err, &unknown) {
+	if errors.As(err, &unknown) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) {
 		transitionErr = w.lifecycle.MarkDeliveryUnknown(
 			context.Background(),
 			claim.Issue.ID,
@@ -494,6 +641,7 @@ func (w *Worker) renewDeliveryClaim(
 	interval := min(w.cfg.ClaimDuration/3, 30*time.Second)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	currentExpiry := claim.ExpiresAt
 	for {
 		select {
 		case <-ctx.Done():
@@ -507,10 +655,22 @@ func (w *Worker) renewDeliveryClaim(
 				w.now().Add(w.cfg.ClaimDuration),
 			)
 			if err != nil {
-				cancel()
-				result <- err
-				return
+				w.metrics.renewalFailures.Add(1)
+				if errors.Is(err, store.ErrClaimLost) ||
+					!w.now().Before(currentExpiry) {
+					cancel()
+					result <- err
+					return
+				}
+				w.logger.WarnContext(
+					ctx,
+					"renew Delivery Claim failed; retrying before expiry",
+					"issue_id", claim.Issue.ID,
+					"error", err,
+				)
+				continue
 			}
+			currentExpiry = w.now().Add(w.cfg.ClaimDuration)
 		}
 	}
 }
@@ -557,7 +717,13 @@ func (w *Worker) Snapshot() Snapshot {
 		GenerationFailed: w.metrics.generationFailed.Load(),
 		Delivered:        w.metrics.delivered.Load(),
 		DeliveryFailed:   w.metrics.deliveryFailed.Load(),
-		Deletions:        w.metrics.deletions.Load(), LastCycleAt: lastCycle,
+		Deletions:        w.metrics.deletions.Load(),
+		RecoveredClaims:  w.metrics.recoveredClaims.Load(),
+		RenewalFailures:  w.metrics.renewalFailures.Load(),
+		ReleasedClaims:   w.metrics.releasedClaims.Load(),
+		ActiveIssues:     w.metrics.activeIssues.Load(),
+		Draining:         w.draining.Load(),
+		LastCycleAt:      lastCycle,
 	}
 }
 

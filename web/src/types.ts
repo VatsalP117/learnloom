@@ -32,6 +32,12 @@ export interface Issue {
   status?: string;
   publicationState?: string;
   createdAt?: string;
+  error?: string;
+  failureCode?: string;
+  failureCategory?: string;
+  failureStage?: string;
+  failureRetryable?: boolean;
+  incidentId?: string;
   [key: string]: any;
 }
 

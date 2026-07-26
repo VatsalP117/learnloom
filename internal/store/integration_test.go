@@ -91,11 +91,81 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
 		t.Fatalf("claim=%#v err=%v", claim, err)
 	}
-	now := time.Now().UTC()
+	if err := database.SaveIssueCheckpoint(
+		ctx,
+		issue.ID,
+		claim.Token,
+		"fingerprint-1",
+		"blueprint",
+		`{"learningObjective":"test"}`,
+		"dossier-v3",
+		time.Now().UTC(),
+	); err != nil {
+		t.Fatalf("save Issue checkpoint: %v", err)
+	}
+	checkpoints, err := database.LoadIssueCheckpoints(ctx, issue.ID, "fingerprint-1")
+	if err != nil || checkpoints["blueprint"] == "" {
+		t.Fatalf("load Issue checkpoints: %#v err=%v", checkpoints, err)
+	}
+	expiredAt := claim.ExpiresAt.Add(time.Second)
+	recovered, err := database.RecoverExpiredClaims(ctx, expiredAt, 3, 6)
+	if err != nil || recovered != 1 {
+		t.Fatalf("recover expired claim: recovered=%d err=%v", recovered, err)
+	}
+	var issueStatus string
+	var issueAttempts, claimLosses int
+	var attemptStatus, attemptIncident, issueIncident, attemptWorker, attemptDeployment string
+	if err := database.pool.QueryRow(ctx, `
+		SELECT status, attempt_count, claim_loss_count, incident_id::text
+		FROM issues WHERE id = $1
+	`, issue.ID).Scan(
+		&issueStatus,
+		&issueAttempts,
+		&claimLosses,
+		&issueIncident,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.pool.QueryRow(ctx, `
+		SELECT status, incident_id::text, worker_id, deployment_version
+		FROM issue_attempts WHERE id = $1
+	`, claim.Token).Scan(
+		&attemptStatus,
+		&attemptIncident,
+		&attemptWorker,
+		&attemptDeployment,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if issueStatus != "queued" || issueAttempts != 0 || claimLosses != 1 ||
+		attemptStatus != "abandoned" || attemptIncident != issueIncident {
+		t.Fatalf(
+			"unexpected recovery: issue=%s attempts=%d losses=%d attempt=%s incidents=%s/%s",
+			issueStatus, issueAttempts, claimLosses, attemptStatus,
+			attemptIncident, issueIncident,
+		)
+	}
+	if attemptWorker != "test-worker" || attemptDeployment != "test" {
+		t.Fatalf("attempt identity=%s/%s", attemptWorker, attemptDeployment)
+	}
+	claim, err = database.ClaimNextIssue(
+		ctx,
+		expiredAt.Add(16*time.Second),
+		5*time.Minute,
+		1,
+		5,
+		100,
+		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
+	)
+	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
+		t.Fatalf("recovery claim=%#v err=%v", claim, err)
+	}
+	now := expiredAt.Add(17 * time.Second)
 	if err := database.FailIssue(
 		ctx,
 		issue.ID,
@@ -113,6 +183,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
 		t.Fatalf("retry claim=%#v err=%v", claim, err)
@@ -126,6 +197,16 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		now.Add(17*time.Second),
 	); err != nil {
 		t.Fatalf("exhaust Issue attempts: %v", err)
+	}
+	failedIssue, err := database.GetIssue(ctx, account.ID, issue.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failedIssue.Status != domain.IssueFailed ||
+		failedIssue.FailureCode != "internal_error" ||
+		failedIssue.Error == "" ||
+		strings.Contains(failedIssue.Error, "editor output contract failed") {
+		t.Fatalf("unsafe failed Issue projection: %#v", failedIssue)
 	}
 	if err := database.RetryIssue(
 		ctx,
@@ -142,9 +223,31 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
 		t.Fatalf("manual retry claim=%#v err=%v", claim, err)
+	}
+	if err := database.ReleaseIssueClaim(
+		ctx,
+		issue.ID,
+		claim.Token,
+		errors.New("worker draining"),
+		now.Add(20*time.Second),
+	); err != nil {
+		t.Fatalf("release Issue Claim: %v", err)
+	}
+	claim, err = database.ClaimNextIssue(
+		ctx,
+		now.Add(36*time.Second),
+		5*time.Minute,
+		1,
+		5,
+		100,
+		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
+	)
+	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
+		t.Fatalf("released retry claim=%#v err=%v", claim, err)
 	}
 	err = database.CompleteIssue(ctx, issue.ID, CompleteIssueInput{
 		ClaimToken: claim.Token, GenerationID: uuid.NewString(),
@@ -154,10 +257,14 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 			Date: "2026-07-19", GeneratedAt: now,
 			LessonSummary: "Summary", LearningObjective: "Objective",
 		},
-		HistoryLimit: 14, CompletedAt: now,
+		HistoryLimit: 14, CompletedAt: now.Add(37 * time.Second),
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	checkpoints, err = database.LoadIssueCheckpoints(ctx, issue.ID, "fingerprint-1")
+	if err != nil || len(checkpoints) != 0 {
+		t.Fatalf("completed Issue retained checkpoints: %#v err=%v", checkpoints, err)
 	}
 	history, err := database.LoadLearningHistory(ctx, newsletter.Newsletter.ID, 14)
 	if err != nil || len(history) != 1 {
@@ -173,7 +280,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	}
 	deliveryClaim, err := database.ClaimNextDelivery(
 		ctx,
-		time.Now().UTC(),
+		now.Add(38*time.Second),
 		5*time.Minute,
 		6,
 	)
@@ -185,7 +292,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		issue.ID,
 		deliveryClaim.Token,
 		"resend-test",
-		time.Now().UTC(),
+		now.Add(39*time.Second),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +304,30 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	expiredDeliveryToken := uuid.New()
+	expiredDeliveryAt := now.Add(40 * time.Second)
+	if _, err := database.pool.Exec(ctx, `
+		INSERT INTO delivery_receipts (
+			issue_id, status, attempt_count, available_at,
+			claim_token, claim_expires_at, created_at, updated_at
+		)
+		VALUES ($1, 'delivering', 1, $2, $3, $2, $2, $2)
+	`, newerIssue.ID, expiredDeliveryAt, expiredDeliveryToken); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err = database.RecoverExpiredClaims(
+		ctx,
+		expiredDeliveryAt.Add(time.Second),
+		3,
+		6,
+	)
+	if err != nil || recovered != 1 {
+		t.Fatalf("recover expired Delivery Claim: recovered=%d err=%v", recovered, err)
+	}
+	receipt, err := database.GetDelivery(ctx, account.ID, newerIssue.ID)
+	if err != nil || receipt == nil || receipt.Status != domain.DeliveryUnknown {
+		t.Fatalf("expired Delivery outcome=%#v err=%v", receipt, err)
 	}
 	page, cursor, err := database.ListWorkspaceIssuesPage(ctx, account.ID, 1, nil)
 	if err != nil || len(page) != 1 || page[0].ID != newerIssue.ID || cursor == nil {

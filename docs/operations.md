@@ -23,6 +23,11 @@ failure rate, worker Claim recovery, model latency/error rate, Postgres pool
 saturation, and S3 errors. Logs are JSON and include request IDs without model
 prompts, source bodies, tokens, or secrets.
 
+Worker metrics also expose active Issues, drain state, recovered Claims,
+renewal failures, and Claims explicitly released during shutdown. A draining
+worker returns `503` from its readiness endpoint so deployment traffic and new
+work move elsewhere while existing Claims continue.
+
 ## Backup and restore
 
 - Enable continuous Postgres backups and point-in-time recovery.
@@ -38,6 +43,12 @@ Use the durable generation control to stop new model Claims without
 redeploying. Scale workers to zero to pause scheduling and delivery if Claim
 churn or provider behavior is unsafe. Rotate a compromised provider credential,
 restart the affected role, and audit logs by request ID and Account ID.
+
+Issue Failure internal detail remains in Postgres and structured logs. Learner
+interfaces receive only the safe message, stable failure code/category/stage,
+retryability, and incident identifier. Investigate an incident through its
+Issue Attempt and stage rows; never copy internal detail into learner support
+messages.
 
 For an account deletion incident, verify the Account is inactive first, inspect
 its deletion queue row, and retry only the artifact deletion phase. Database

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -19,6 +20,13 @@ type IssueClaim struct {
 	PrimaryEmail string
 	Token        string
 	ExpiresAt    time.Time
+}
+
+type IssueAttemptContext struct {
+	WorkerID          string
+	DeploymentVersion string
+	ModelName         string
+	PipelineVersion   string
 }
 
 type CompleteIssueInput struct {
@@ -42,6 +50,58 @@ type WorkspaceReview struct {
 type WorkspaceIssueCursor struct {
 	CreatedAt time.Time
 	IssueID   string
+}
+
+func (s *Store) LoadIssueCheckpoints(
+	ctx context.Context,
+	issueID, fingerprint string,
+) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT stage, output
+		FROM issue_generation_checkpoints
+		WHERE issue_id = $1::uuid AND fingerprint = $2
+	`, issueID, fingerprint)
+	if err != nil {
+		return nil, fmt.Errorf("load Issue checkpoints: %w", err)
+	}
+	defer rows.Close()
+	checkpoints := map[string]string{}
+	for rows.Next() {
+		var stage, output string
+		if err := rows.Scan(&stage, &output); err != nil {
+			return nil, err
+		}
+		checkpoints[stage] = output
+	}
+	return checkpoints, rows.Err()
+}
+
+func (s *Store) SaveIssueCheckpoint(
+	ctx context.Context,
+	issueID, token, fingerprint, stage, output, pipelineVersion string,
+	now time.Time,
+) error {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO issue_generation_checkpoints (
+			issue_id, fingerprint, stage, output, pipeline_version,
+			created_at, updated_at
+		)
+		SELECT i.id, $3, $4, $5, $6, $7, $7
+		FROM issues i
+		WHERE i.id = $1::uuid AND i.claim_token = $2::uuid
+		  AND i.status = 'generating'
+		ON CONFLICT (issue_id, fingerprint, stage) DO UPDATE SET
+			output = EXCLUDED.output,
+			pipeline_version = EXCLUDED.pipeline_version,
+			updated_at = EXCLUDED.updated_at
+	`, issueID, token, fingerprint, stage, output, pipelineVersion, now)
+	if err != nil {
+		return fmt.Errorf("save Issue checkpoint: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrClaimLost
+	}
+	return nil
 }
 
 type DeliveryClaim struct {
@@ -206,48 +266,87 @@ func (s *Store) DispatchDue(
 func (s *Store) RecoverExpiredClaims(
 	ctx context.Context,
 	now time.Time,
-	maxIssueAttempts, maxDeliveryAttempts int,
+	maxIssueAttempts, _ int,
 ) (int64, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer rollback(tx)
-	issues, err := tx.Exec(ctx, `
-		UPDATE issues SET
-			status = CASE WHEN attempt_count >= $2 THEN 'failed' ELSE 'queued' END,
-			available_at = CASE
-				WHEN attempt_count >= $2 THEN available_at
-				ELSE $1 + make_interval(secs => LEAST(900, 15 * power(2, GREATEST(0, attempt_count - 1)))::int)
-			END,
-			claim_token = NULL,
-			claim_expires_at = NULL,
-			error = 'Worker claim expired before completion'
-		WHERE status = 'generating' AND claim_expires_at <= $1
-	`, now, maxIssueAttempts)
+	var issues int64
+	err = tx.QueryRow(ctx, `
+		WITH candidates AS MATERIALIZED (
+			SELECT id, claim_token, claim_loss_count, gen_random_uuid() AS incident_id
+			FROM issues
+			WHERE status = 'generating' AND claim_expires_at <= $1
+			FOR UPDATE
+		),
+		closed_attempts AS (
+			UPDATE issue_attempts a SET
+				status = 'abandoned',
+				completed_at = $1,
+				failure_code = 'worker_claim_expired',
+				failure_category = 'infrastructure',
+				failure_retryable = true,
+				internal_error = 'Worker claim expired before completion',
+				incident_id = c.incident_id
+			FROM candidates c
+			WHERE a.id = c.claim_token AND a.status = 'running'
+		),
+		recovered AS (
+			UPDATE issues i SET
+				status = CASE
+					WHEN c.claim_loss_count + 1 >= $2 * 2 THEN 'failed'
+					ELSE 'queued'
+				END,
+				attempt_count = GREATEST(0, i.attempt_count - 1),
+				claim_loss_count = c.claim_loss_count + 1,
+				available_at = $1 + make_interval(
+					secs => LEAST(900, 15 * power(2, GREATEST(0, c.claim_loss_count)))::int
+				),
+				claim_token = NULL,
+				claim_expires_at = NULL,
+				error = 'Worker claim expired before completion',
+				failure_code = 'worker_claim_expired',
+				failure_category = 'infrastructure',
+				failure_stage = NULL,
+				failure_retryable = true,
+				public_error = CASE
+					WHEN c.claim_loss_count + 1 >= $2 * 2
+					THEN 'We couldn’t prepare this lesson. We’ve been notified, and you can retry now.'
+					ELSE NULL
+				END,
+				incident_id = c.incident_id,
+				completed_at = CASE
+					WHEN c.claim_loss_count + 1 >= $2 * 2 THEN $1
+					ELSE NULL
+				END
+			FROM candidates c
+			WHERE i.id = c.id
+			RETURNING i.id
+		)
+		SELECT count(*) FROM recovered
+	`, now, maxIssueAttempts).Scan(&issues)
 	if err != nil {
 		return 0, fmt.Errorf("recover Issue Claims: %w", err)
 	}
 	deliveries, err := tx.Exec(ctx, `
 		UPDATE delivery_receipts SET
-			status = CASE WHEN attempt_count >= $2 THEN 'failed' ELSE 'failed' END,
-			available_at = CASE
-				WHEN attempt_count >= $2 THEN available_at
-				ELSE $1 + make_interval(secs => LEAST(3600, 30 * power(2, GREATEST(0, attempt_count - 1)))::int)
-			END,
+			status = 'unknown',
 			claim_token = NULL,
 			claim_expires_at = NULL,
 			error = 'Worker claim expired before completion',
+			completed_at = $1,
 			updated_at = $1
 		WHERE status = 'delivering' AND claim_expires_at <= $1
-	`, now, maxDeliveryAttempts)
+	`, now)
 	if err != nil {
 		return 0, fmt.Errorf("recover Delivery Receipt Claims: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return issues.RowsAffected() + deliveries.RowsAffected(), nil
+	return issues + deliveries.RowsAffected(), nil
 }
 
 func (s *Store) ClaimNextIssue(
@@ -255,6 +354,7 @@ func (s *Store) ClaimNextIssue(
 	now time.Time,
 	claimDuration time.Duration,
 	accountConcurrency, dailyAccountLimit, dailyGlobalLimit int,
+	attemptContext IssueAttemptContext,
 ) (*IssueClaim, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
@@ -324,21 +424,42 @@ func (s *Store) ClaimNextIssue(
 	}
 	token := uuid.New()
 	expires := now.Add(claimDuration)
-	tag, err := tx.Exec(ctx, `
+	var attemptNumber int
+	err = tx.QueryRow(ctx, `
 		UPDATE issues SET
 			status = 'generating',
 			attempt_count = attempt_count + 1,
 			claim_token = $2,
 			claim_expires_at = $3,
 			started_at = $1,
-			error = NULL
+			error = NULL,
+			failure_code = NULL,
+			failure_category = NULL,
+			failure_stage = NULL,
+			failure_retryable = NULL,
+			public_error = NULL,
+			incident_id = NULL
 		WHERE id = $4 AND status = 'queued'
-	`, now, token, expires, issueID)
+		RETURNING attempt_count
+	`, now, token, expires, issueID).Scan(&attemptNumber)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrClaimLost
+		}
 		return nil, err
 	}
-	if tag.RowsAffected() != 1 {
-		return nil, ErrClaimLost
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO issue_attempts (
+			id, issue_id, attempt_number, status, started_at, last_renewed_at,
+			worker_id, deployment_version, model_name, pipeline_version
+		)
+		VALUES ($1, $2, $3, 'running', $4, $4, $5, $6, $7, $8)
+	`, token, issueID, attemptNumber, now,
+		fallbackAttemptValue(attemptContext.WorkerID),
+		fallbackAttemptValue(attemptContext.DeploymentVersion),
+		fallbackAttemptValue(attemptContext.ModelName),
+		fallbackAttemptValue(attemptContext.PipelineVersion)); err != nil {
+		return nil, fmt.Errorf("record Issue attempt: %w", err)
 	}
 	issue, accountID, email, err := getWorkerIssue(ctx, tx, issueID)
 	if err != nil {
@@ -353,18 +474,78 @@ func (s *Store) ClaimNextIssue(
 	}, nil
 }
 
+func fallbackAttemptValue(value string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return truncateStore(value, 200)
+	}
+	return "unknown"
+}
+
 func (s *Store) RenewIssueClaim(
 	ctx context.Context,
 	issueID, token string,
 	expiresAt time.Time,
 ) error {
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE issues SET claim_expires_at = $3
-		WHERE id = $1 AND claim_token = $2 AND status = 'generating'
-		  AND claim_expires_at > now()
+		WITH renewed AS (
+			UPDATE issues SET claim_expires_at = $3
+			WHERE id = $1 AND claim_token = $2 AND status = 'generating'
+			  AND claim_expires_at > now()
+			RETURNING claim_token
+		)
+		UPDATE issue_attempts SET last_renewed_at = now()
+		WHERE id = (SELECT claim_token FROM renewed)
 	`, issueID, token, expiresAt)
 	if err != nil {
 		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrClaimLost
+	}
+	return nil
+}
+
+func (s *Store) ReleaseIssueClaim(
+	ctx context.Context,
+	issueID, token string,
+	cause error,
+	now time.Time,
+) error {
+	detail := failure.Describe(cause)
+	tag, err := s.pool.Exec(ctx, `
+		WITH released AS (
+			UPDATE issues SET
+				status = 'queued',
+				attempt_count = GREATEST(0, attempt_count - 1),
+				available_at = $3::timestamptz + interval '15 seconds',
+				claim_token = NULL,
+				claim_expires_at = NULL,
+				error = $4,
+				failure_code = $5,
+				failure_category = $6,
+				failure_stage = NULLIF($7, ''),
+				failure_retryable = true,
+				public_error = NULL,
+				incident_id = $8::uuid,
+				completed_at = NULL
+			WHERE id = $1::uuid AND claim_token = $2::uuid AND status = 'generating'
+			RETURNING id
+		)
+		UPDATE issue_attempts SET
+			status = 'abandoned',
+			completed_at = $3::timestamptz,
+			failure_code = $5,
+			failure_category = $6,
+			failure_stage = NULLIF($7, ''),
+			failure_retryable = true,
+			internal_error = $4,
+			incident_id = $8::uuid
+		WHERE id = $2::uuid AND issue_id = (SELECT id FROM released)
+		  AND status = 'running'
+	`, issueID, token, now, truncateStore(detail.Internal, 500),
+		detail.Code, detail.Category, detail.Stage, detail.IncidentID)
+	if err != nil {
+		return fmt.Errorf("release Issue Claim: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
 		return ErrClaimLost
@@ -457,11 +638,20 @@ func (s *Store) CompleteIssue(
 			status = 'generated', dossier_title = $3, generation_id = $4,
 			artifact_key = $5, artifact_sha256 = $6, artifact_bytes = $7,
 			public_slug = $8, completed_at = $9,
-			claim_token = NULL, claim_expires_at = NULL, error = NULL
+			claim_token = NULL, claim_expires_at = NULL, error = NULL,
+			failure_code = NULL, failure_category = NULL, failure_stage = NULL,
+			failure_retryable = NULL, public_error = NULL, incident_id = NULL
 		WHERE id = $1 AND claim_token = $2
 	`, issueID, input.ClaimToken, input.Title, input.GenerationID,
 		input.ArtifactKey, input.Checksum, input.Bytes, publicSlug, input.CompletedAt); err != nil {
 		return fmt.Errorf("complete Issue: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE issue_attempts SET
+			status = 'completed', completed_at = $3, last_renewed_at = $3
+		WHERE id = $2 AND issue_id = $1 AND status = 'running'
+	`, issueID, input.ClaimToken, input.CompletedAt); err != nil {
+		return fmt.Errorf("complete Issue attempt: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO learning_history (
@@ -483,6 +673,11 @@ func (s *Store) CompleteIssue(
 		`, newsletterID, input.HistoryLimit); err != nil {
 			return fmt.Errorf("trim Learning History: %w", err)
 		}
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM issue_generation_checkpoints WHERE issue_id = $1
+	`, issueID); err != nil {
+		return fmt.Errorf("delete completed Issue checkpoints: %w", err)
 	}
 	if emailEnabled && primaryEmail != nil && strings.TrimSpace(*primaryEmail) != "" {
 		if _, err := tx.Exec(ctx, `
@@ -506,24 +701,92 @@ func (s *Store) FailIssue(
 	maxAttempts int,
 	now time.Time,
 ) error {
-	message := safeStoreError(cause)
+	detail := failure.Describe(cause)
+	message := truncateStore(detail.Internal, 500)
 	var attempts int
 	if err := s.pool.QueryRow(ctx, `
+		WITH failed_attempt AS (
+			UPDATE issue_attempts SET
+				status = 'failed',
+				completed_at = $3::timestamptz,
+				failure_code = $5,
+				failure_category = $6,
+				failure_stage = NULLIF($7, ''),
+				failure_retryable = $8,
+				internal_error = $9,
+				incident_id = $10::uuid
+			WHERE id = $2::uuid AND issue_id = $1::uuid AND status = 'running'
+		)
 		UPDATE issues SET
-			status = CASE WHEN attempt_count >= $4 THEN 'failed' ELSE 'queued' END,
+			status = CASE
+				WHEN NOT $8 OR attempt_count >= $4 THEN 'failed'
+				ELSE 'queued'
+			END,
 			available_at = CASE
-				WHEN attempt_count >= $4 THEN available_at
+				WHEN NOT $8 OR attempt_count >= $4 THEN available_at
 				ELSE $3::timestamptz + make_interval(secs => LEAST(900, 15 * power(2, GREATEST(0, attempt_count - 1)))::int)
 			END,
-			claim_token = NULL, claim_expires_at = NULL, error = $5,
-			completed_at = CASE WHEN attempt_count >= $4 THEN $3::timestamptz ELSE NULL END
+			claim_token = NULL, claim_expires_at = NULL, error = $9,
+			failure_code = $5,
+			failure_category = $6,
+			failure_stage = NULLIF($7, ''),
+			failure_retryable = $8,
+			public_error = CASE
+				WHEN NOT $8 OR attempt_count >= $4 THEN $11
+				ELSE NULL
+			END,
+			incident_id = $10::uuid,
+			completed_at = CASE
+				WHEN NOT $8 OR attempt_count >= $4 THEN $3::timestamptz
+				ELSE NULL
+			END
 		WHERE id = $1 AND claim_token = $2 AND status = 'generating'
 		RETURNING attempt_count
-	`, issueID, token, now, maxAttempts, message).Scan(&attempts); err != nil {
+	`, issueID, token, now, maxAttempts, detail.Code, detail.Category,
+		detail.Stage, detail.Retryable, message, detail.IncidentID,
+		detail.PublicMessage).Scan(&attempts); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrClaimLost
 		}
 		return fmt.Errorf("fail Issue: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) RecordIssueStage(
+	ctx context.Context,
+	issueID, token, stage string,
+	duration time.Duration,
+	stageErr error,
+	now time.Time,
+) error {
+	status := "completed"
+	var detail failure.Detail
+	if stageErr != nil {
+		status = "failed"
+		detail = failure.Describe(stageErr)
+	}
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO issue_stage_attempts (
+			issue_attempt_id, stage, status, duration_ms,
+			failure_code, internal_error, recorded_at
+		)
+		SELECT a.id, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), $8
+		FROM issue_attempts a
+		WHERE a.id = $2::uuid AND a.issue_id = $1::uuid
+		ON CONFLICT (issue_attempt_id, stage) DO UPDATE SET
+			status = EXCLUDED.status,
+			duration_ms = EXCLUDED.duration_ms,
+			failure_code = EXCLUDED.failure_code,
+			internal_error = EXCLUDED.internal_error,
+			recorded_at = EXCLUDED.recorded_at
+	`, issueID, token, stage, status, max(0, duration.Milliseconds()),
+		detail.Code, truncateStore(detail.Internal, 500), now)
+	if err != nil {
+		return fmt.Errorf("record Issue stage: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrClaimLost
 	}
 	return nil
 }
@@ -705,6 +968,12 @@ func (s *Store) RetryIssue(
 			claim_token = NULL,
 			claim_expires_at = NULL,
 			error = NULL,
+			failure_code = NULL,
+			failure_category = NULL,
+			failure_stage = NULL,
+			failure_retryable = NULL,
+			public_error = NULL,
+			incident_id = NULL,
 			started_at = NULL,
 			completed_at = NULL
 		FROM newsletters n
@@ -781,7 +1050,10 @@ const workerIssueColumns = `
 		i.scheduled_local_date::text, i.status, COALESCE(i.dossier_title, ''),
 		COALESCE(i.generation_id::text, ''), COALESCE(i.artifact_key, ''),
 		COALESCE(i.artifact_sha256, ''), COALESCE(i.artifact_bytes, 0),
-		COALESCE(i.error, ''), 'dossier-' || i.public_id::text,
+		COALESCE(i.public_error, ''), COALESCE(i.failure_code, ''),
+		COALESCE(i.failure_category, ''), COALESCE(i.failure_stage, ''),
+		COALESCE(i.failure_retryable, false), COALESCE(i.incident_id::text, ''),
+		'dossier-' || i.public_id::text,
 		COALESCE(i.public_slug, ''), i.publication_state, i.created_at,
 		i.started_at, i.completed_at,
 		n.id::text, n.owner_account_id::text, n.name, n.topic, n.learner_level,
@@ -816,6 +1088,11 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 		&issue.ArtifactSHA256,
 		&issue.ArtifactBytes,
 		&issue.Error,
+		&issue.FailureCode,
+		&issue.FailureCategory,
+		&issue.FailureStage,
+		&issue.FailureRetryable,
+		&issue.IncidentID,
 		&issue.PublicID,
 		&issue.PublicSlug,
 		&issue.PublicationState,

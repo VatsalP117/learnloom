@@ -2,6 +2,7 @@ package dossier
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -40,10 +42,96 @@ type GenerateRequest struct {
 	History       []domain.LearningHistoryEntry
 	Now           time.Time
 	OnStage       StageObserver
+	OnCheckpoint  func(stage, output string)
 	PreparedItems []domain.SourceItem
+	Warnings      []string
+	Checkpoints   map[string]string
 }
 
 type StageObserver func(stage string, duration time.Duration, err error)
+
+const PipelineVersion = "dossier-v3"
+
+func GenerationFingerprint(request GenerateRequest, modelName string) (string, error) {
+	payload := struct {
+		PipelineVersion string `json:"pipelineVersion"`
+		ModelName       string `json:"modelName"`
+		Newsletter      struct {
+			ID                   string                    `json:"id"`
+			Topic                string                    `json:"topic"`
+			LearnerLevel         string                    `json:"learnerLevel"`
+			LearnerGoal          string                    `json:"learnerGoal"`
+			LessonMinutes        int                       `json:"lessonMinutes"`
+			SourceMode           domain.SourceMode         `json:"sourceMode"`
+			Sources              []domain.SourceDefinition `json:"sources"`
+			TimeZone             string                    `json:"timeZone"`
+			AIExplorationEnabled bool                      `json:"aiExplorationEnabled"`
+		} `json:"newsletter"`
+		History       []domain.LearningHistoryEntry `json:"history"`
+		PreparedItems []domain.SourceItem           `json:"preparedItems"`
+	}{
+		PipelineVersion: PipelineVersion,
+		ModelName:       modelName,
+		History:         request.History,
+		PreparedItems:   request.PreparedItems,
+	}
+	payload.Newsletter.ID = request.Newsletter.ID
+	payload.Newsletter.Topic = request.Newsletter.Topic
+	payload.Newsletter.LearnerLevel = request.Newsletter.LearnerLevel
+	payload.Newsletter.LearnerGoal = request.Newsletter.LearnerGoal
+	payload.Newsletter.LessonMinutes = request.Newsletter.LessonMinutes
+	payload.Newsletter.SourceMode = request.Newsletter.SourceMode
+	payload.Newsletter.Sources = request.Newsletter.Sources
+	payload.Newsletter.TimeZone = request.Newsletter.TimeZone
+	payload.Newsletter.AIExplorationEnabled = request.Newsletter.AIExplorationEnabled
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode generation fingerprint: %w", err)
+	}
+	checksum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", checksum[:]), nil
+}
+
+func restoreStructuredCheckpoint[T any](
+	checkpoints map[string]string,
+	stage string,
+	validate func(T) error,
+) (T, bool) {
+	var zero T
+	raw := strings.TrimSpace(checkpoints[stage])
+	if raw == "" {
+		return zero, false
+	}
+	var value T
+	if err := decodeStructured(raw, &value); err != nil {
+		return zero, false
+	}
+	if err := validate(value); err != nil {
+		return zero, false
+	}
+	return value, true
+}
+
+func restoreTextCheckpoint(checkpoints map[string]string, stage string) (string, bool) {
+	value := strings.TrimSpace(checkpoints[stage])
+	return value, value != ""
+}
+
+func saveStructuredCheckpoint[T any](request GenerateRequest, stage string, value T) {
+	if request.OnCheckpoint == nil {
+		return
+	}
+	encoded, err := json.Marshal(value)
+	if err == nil {
+		request.OnCheckpoint(stage, string(encoded))
+	}
+}
+
+func saveTextCheckpoint(request GenerateRequest, stage, value string) {
+	if request.OnCheckpoint != nil && strings.TrimSpace(value) != "" {
+		request.OnCheckpoint(stage, value)
+	}
+}
 
 type GenerateResult struct {
 	Artifact domain.DossierArtifact
@@ -90,7 +178,7 @@ func (g *Generator) Generate(
 	}
 
 	var items []domain.SourceItem
-	var warnings []string
+	warnings := slices.Clone(request.Warnings)
 	var err error
 
 	if len(request.PreparedItems) > 0 {
@@ -116,15 +204,25 @@ func (g *Generator) Generate(
 	))
 	candidateBundle := formatSourceBundle(items, candidateCharacters)
 
-	curation, err := runStructured(
-		ctx,
-		g.model,
+	curation, restored := restoreStructuredCheckpoint(
+		request.Checkpoints,
 		"curator",
-		stageInstructions()["curator"],
-		learnerContext+"\n\n# Candidate sources\n\n"+candidateBundle,
-		request.OnStage,
 		func(value domain.Curation) error { return validateCuration(value, len(items)) },
 	)
+	if !restored {
+		curation, err = runStructured(
+			ctx,
+			g.model,
+			"curator",
+			stageInstructions()["curator"],
+			learnerContext+"\n\n# Candidate sources\n\n"+candidateBundle,
+			request.OnStage,
+			func(value domain.Curation) error { return validateCuration(value, len(items)) },
+		)
+		if err == nil {
+			saveStructuredCheckpoint(request, "curator", curation)
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -150,55 +248,83 @@ func (g *Generator) Generate(
 	))
 	sourceBundle := formatSourceBundle(enriched, sourceCharacters)
 
-	blueprint, err := runStructured(
-		ctx,
-		g.model,
+	blueprint, restored := restoreStructuredCheckpoint(
+		request.Checkpoints,
 		"blueprint",
-		stageInstructions()["blueprint"],
-		fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
-			{"Learner context", learnerContext, 2},
-			{"Curated theme", prettyJSON(curation), 1},
-			{"Enriched sources", sourceBundle, 5},
-		}),
-		request.OnStage,
 		validateBlueprint,
 	)
+	if !restored {
+		blueprint, err = runStructured(
+			ctx,
+			g.model,
+			"blueprint",
+			stageInstructions()["blueprint"],
+			fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
+				{"Learner context", learnerContext, 2},
+				{"Curated theme", prettyJSON(curation), 1},
+				{"Enriched sources", sourceBundle, 5},
+			}),
+			request.OnStage,
+			validateBlueprint,
+		)
+		if err == nil {
+			saveStructuredCheckpoint(request, "blueprint", blueprint)
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
 	blueprintText := prettyJSON(blueprint)
-	research, err := g.runStage(ctx, "researcher", fitSections(
-		g.cfg.MaxIntermediateCharacters,
-		[]weightedSection{
-			{"Learner context", learnerContext, 1},
-			{"Learning blueprint", blueprintText, 2},
-			{"Enriched sources", sourceBundle, 6},
-		},
-	), request.OnStage)
+	research, restored := restoreTextCheckpoint(request.Checkpoints, "researcher")
+	if !restored {
+		research, err = g.runStage(ctx, "researcher", fitSections(
+			g.cfg.MaxIntermediateCharacters,
+			[]weightedSection{
+				{"Learner context", learnerContext, 1},
+				{"Learning blueprint", blueprintText, 2},
+				{"Enriched sources", sourceBundle, 6},
+			},
+		), request.OnStage)
+		if err == nil {
+			saveTextCheckpoint(request, "researcher", research)
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
-	critique, err := g.runStage(ctx, "skeptic", fitSections(
-		g.cfg.MaxIntermediateCharacters,
-		[]weightedSection{
-			{"Learning blueprint", blueprintText, 1},
-			{"Enriched sources", sourceBundle, 5},
-			{"Research brief", research, 3},
-		},
-	), request.OnStage)
+	critique, restored := restoreTextCheckpoint(request.Checkpoints, "skeptic")
+	if !restored {
+		critique, err = g.runStage(ctx, "skeptic", fitSections(
+			g.cfg.MaxIntermediateCharacters,
+			[]weightedSection{
+				{"Learning blueprint", blueprintText, 1},
+				{"Enriched sources", sourceBundle, 5},
+				{"Research brief", research, 3},
+			},
+		), request.OnStage)
+		if err == nil {
+			saveTextCheckpoint(request, "skeptic", critique)
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
-	lesson, err := g.runStage(ctx, "teacher", fitSections(
-		g.cfg.MaxIntermediateCharacters,
-		[]weightedSection{
-			{"Learner context", learnerContext, 1},
-			{"Learning blueprint", blueprintText, 2},
-			{"Enriched sources", sourceBundle, 3},
-			{"Research brief", research, 3},
-			{"Skeptical review", critique, 2},
-		},
-	), request.OnStage)
+	lesson, restored := restoreTextCheckpoint(request.Checkpoints, "teacher")
+	if !restored {
+		lesson, err = g.runStage(ctx, "teacher", fitSections(
+			g.cfg.MaxIntermediateCharacters,
+			[]weightedSection{
+				{"Learner context", learnerContext, 1},
+				{"Learning blueprint", blueprintText, 2},
+				{"Enriched sources", sourceBundle, 3},
+				{"Research brief", research, 3},
+				{"Skeptical review", critique, 2},
+			},
+		), request.OnStage)
+		if err == nil {
+			saveTextCheckpoint(request, "teacher", lesson)
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -260,20 +386,23 @@ func (g *Generator) Generate(
 		g.model,
 		"editor",
 		stageInstructions()["editor"],
-		fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
-			{"Learner context and time-fit contract", learnerContext, 2},
-			{"Learning blueprint", blueprintText, 2},
-			{"Enriched sources", sourceBundle, 3},
-			{"Draft lesson", lesson, 5},
-			{"Skeptical review", critique, 2},
-			{"Draft practice", practice, 3},
-		}),
+		fitSectionsWithRequired(
+			g.cfg.MaxIntermediateCharacters,
+			[]weightedSection{
+				{"Learner context and time-fit contract", learnerContext, 2},
+				{"Learning blueprint", blueprintText, 2},
+				{"Enriched sources", sourceBundle, 3},
+				{"Draft lesson", lesson, 5},
+				{"Skeptical review", critique, 2},
+			},
+			weightedSection{"Draft practice", practice, 3},
+		),
 		request.OnStage,
 		func(value editorialOutput) error {
 			if err := value.validate(); err != nil {
 				return err
 			}
-			_, err := evaluateQuality(
+			_, candidateErr := evaluateQuality(
 				value.Lesson,
 				value.Critique,
 				value.Practice,
@@ -283,22 +412,63 @@ func (g *Generator) Generate(
 				len(request.History),
 				wordBudget,
 			)
-			return err
+			if candidateErr == nil {
+				return nil
+			}
+			// The examiner's practice is already a distinct stage output. If
+			// the editor damages only that practice contract, preserve the
+			// original rather than rejecting an otherwise valid lesson.
+			_, preservedErr := evaluateQuality(
+				value.Lesson,
+				value.Critique,
+				practice,
+				nil,
+				enriched,
+				blueprint,
+				len(request.History),
+				wordBudget,
+			)
+			if preservedErr == nil {
+				return nil
+			}
+			return candidateErr
 		},
 	)
 	if err != nil {
 		return GenerateResult{}, err
 	}
+	finalPractice := editorial.Practice
 	quality, err := evaluateQuality(
 		editorial.Lesson,
 		editorial.Critique,
-		editorial.Practice,
+		finalPractice,
 		exploration,
 		enriched,
 		blueprint,
 		len(request.History),
 		wordBudget,
 	)
+	if err != nil {
+		preservedQuality, preservedErr := evaluateQuality(
+			editorial.Lesson,
+			editorial.Critique,
+			practice,
+			exploration,
+			enriched,
+			blueprint,
+			len(request.History),
+			wordBudget,
+		)
+		if preservedErr == nil {
+			finalPractice = practice
+			quality = preservedQuality
+			editorial.QualityNotes = append(
+				editorial.QualityNotes,
+				"Preserved validated examiner practice after editor contract drift.",
+			)
+			err = nil
+		}
+	}
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -318,7 +488,7 @@ func (g *Generator) Generate(
 		Blueprint:   blueprint,
 		Lesson:      editorial.Lesson,
 		Critique:    editorial.Critique,
-		Practice:    editorial.Practice,
+		Practice:    finalPractice,
 		Exploration: exploration,
 		Quality:     quality,
 		Sources:     enriched,
@@ -330,7 +500,7 @@ func (g *Generator) Generate(
 		GeneratedAt:       now.UTC(),
 		SourceTitles:      mapSourceTitles(enriched),
 		LessonSummary:     truncate(stripMarkdown(editorial.Lesson), 800),
-		RecallQuestions:   extractQuestions(editorial.Practice),
+		RecallQuestions:   extractQuestions(finalPractice),
 		LearningObjective: blueprint.LearningObjective,
 		Concepts:          blueprintConcepts(blueprint),
 	}
@@ -362,7 +532,7 @@ func (g *Generator) runStage(
 		Input:       input,
 	})
 	if err != nil {
-		return "", fmt.Errorf("%s stage: %w", stage, err)
+		return "", stageExecutionFailure(stage, err)
 	}
 	if strings.TrimSpace(output) == "" {
 		return "", fmt.Errorf("%s stage returned empty output", stage)
@@ -393,10 +563,10 @@ func runStructured[T any](
 				"\nReturn a corrected response in the exact requested format."
 		}
 		output, err := model.Complete(ctx, CompletionRequest{
-			Stage: stage, Instruction: instruction, Input: stageInput,
+			Stage: stage, Instruction: instruction, Input: stageInput, Structured: true,
 		})
 		if err != nil {
-			return zero, fmt.Errorf("%s stage: %w", stage, err)
+			return zero, stageExecutionFailure(stage, err)
 		}
 		var value T
 		if err := decodeStructured(output, &value); err == nil {
@@ -410,7 +580,45 @@ func runStructured[T any](
 			repairReason = safeRepairReason(err)
 		}
 	}
-	return zero, fmt.Errorf("%s stage could not satisfy its output contract: %s", stage, repairReason)
+	return zero, failure.New(
+		"model_contract_unsatisfied",
+		failure.CategoryContentQuality,
+		stage,
+		true,
+		failure.PublicInternal,
+		fmt.Errorf("could not satisfy its output contract: %s", repairReason),
+	)
+}
+
+func stageExecutionFailure(stage string, err error) error {
+	category := failure.CategoryProvider
+	code := "model_provider_failure"
+	if errors.Is(err, ErrOutputTruncated) {
+		category = failure.CategoryContentQuality
+		code = "model_output_truncated"
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		category = failure.CategoryInfrastructure
+		code = "generation_interrupted"
+	}
+	return failure.New(code, category, stage, true, failure.PublicInternal, err)
+}
+
+func fitSectionsWithRequired(
+	maximum int,
+	optional []weightedSection,
+	required weightedSection,
+) string {
+	requiredText := "# " + required.heading + "\n\n" + required.content
+	remaining := maximum - len([]rune(requiredText)) - 2
+	if remaining < 1000 {
+		remaining = 1000
+	}
+	optionalText := fitSections(remaining, optional)
+	if optionalText == "" {
+		return requiredText
+	}
+	return optionalText + "\n\n" + requiredText
 }
 
 func decodeStructured(output string, value any) error {

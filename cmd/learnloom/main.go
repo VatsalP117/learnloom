@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -144,8 +145,9 @@ func runWorker(
 	}
 	model, err := dossier.NewOpenAIModel(dossier.ModelConfig{
 		BaseURL: cfg.Model.BaseURL, APIKey: cfg.Model.APIKey,
-		Model: cfg.Model.Name, MaxTokens: cfg.Model.MaxTokens,
-		Timeout: cfg.Model.Timeout, Retries: cfg.Model.Retries,
+		Model: cfg.Model.Name, StructuredOutput: cfg.Model.StructuredOutput,
+		MaxTokens: cfg.Model.MaxTokens,
+		Timeout:   cfg.Model.Timeout, Retries: cfg.Model.Retries,
 		MaxConcurrency: cfg.Model.MaxConcurrency,
 	})
 	if err != nil {
@@ -218,10 +220,17 @@ func runWorker(
 			MaxDeliveryAttempts: cfg.Worker.MaxDeliveryAttempts,
 			AccountConcurrency:  cfg.Worker.AccountConcurrency,
 			GlobalConcurrency:   cfg.Worker.GlobalConcurrency,
+			IssueTimeout:        cfg.Worker.IssueTimeout,
 			DailyAccountLimit:   cfg.Worker.DailyAccountLimit,
 			DailyGlobalLimit:    cfg.Worker.DailyGlobalLimit,
 			HistoryEntries:      cfg.Limits.HistoryEntries,
 			RootDomain:          cfg.HTTP.RootDomain,
+			AttemptContext: store.IssueAttemptContext{
+				WorkerID:          workerIdentity(),
+				DeploymentVersion: cfg.ReleaseVersion,
+				ModelName:         cfg.Model.Name,
+				PipelineVersion:   dossier.PipelineVersion,
+			},
 		},
 		logger,
 	)
@@ -239,9 +248,32 @@ func runWorker(
 		metricsErrors <- metrics.ListenAndServe()
 	}()
 	workerErrors := make(chan error, 1)
-	go func() { workerErrors <- worker.Run(ctx) }()
+	executionCtx, cancelExecution := context.WithCancel(context.Background())
+	defer cancelExecution()
+	go func() { workerErrors <- worker.Run(executionCtx) }()
 	select {
 	case <-ctx.Done():
+		logger.Info("worker draining active Claims")
+		worker.BeginDrain()
+		drainTimer := time.NewTimer(cfg.Worker.ClaimDuration + time.Minute)
+		select {
+		case err := <-workerErrors:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return err
+			}
+		case <-drainTimer.C:
+			logger.Warn("worker drain deadline reached; releasing active Claims")
+			cancelExecution()
+			if err := <-workerErrors; err != nil && !errors.Is(err, context.Canceled) {
+				return err
+			}
+		}
+		if !drainTimer.Stop() {
+			select {
+			case <-drainTimer.C:
+			default:
+			}
+		}
 	case err := <-workerErrors:
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return err
@@ -251,9 +283,18 @@ func runWorker(
 			return err
 		}
 	}
+	cancelExecution()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return metrics.Shutdown(shutdownCtx)
+}
+
+func workerIdentity() string {
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		return "unknown"
+	}
+	return hostname
 }
 
 func openDatabase(ctx context.Context, cfg config.Config) (*store.Store, error) {

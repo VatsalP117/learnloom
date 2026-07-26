@@ -2,6 +2,8 @@ package dossier
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,5 +66,58 @@ func TestOpenAIModelRedactsCredential(t *testing.T) {
 	_, err = model.Complete(context.Background(), CompletionRequest{Stage: "test"})
 	if err == nil || strings.Contains(err.Error(), "secret-value") {
 		t.Fatalf("credential was not redacted: %v", err)
+	}
+}
+
+func TestOpenAIModelRequestsConfiguredStructuredOutput(t *testing.T) {
+	t.Parallel()
+	var responseFormat string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var body struct {
+			ResponseFormat struct {
+				Type string `json:"type"`
+			} `json:"response_format"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		responseFormat = body.ResponseFormat.Type
+		_, _ = response.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{}"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+	model, err := NewOpenAIModel(ModelConfig{
+		BaseURL: server.URL, APIKey: "secret-value", Model: "test",
+		StructuredOutput: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.client = server.Client()
+	if _, err := model.Complete(context.Background(), CompletionRequest{
+		Stage: "editor", Structured: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if responseFormat != "json_object" {
+		t.Fatalf("response_format=%q", responseFormat)
+	}
+}
+
+func TestOpenAIModelClassifiesTokenTruncation(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"partial"},"finish_reason":"length"}]}`))
+	}))
+	defer server.Close()
+	model, err := NewOpenAIModel(ModelConfig{
+		BaseURL: server.URL, APIKey: "secret-value", Model: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.client = server.Client()
+	_, err = model.Complete(context.Background(), CompletionRequest{Stage: "editor"})
+	if !errors.Is(err, ErrOutputTruncated) {
+		t.Fatalf("err=%v", err)
 	}
 }

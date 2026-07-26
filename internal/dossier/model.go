@@ -19,20 +19,24 @@ type CompletionRequest struct {
 	Stage       string
 	Instruction string
 	Input       string
+	Structured  bool
 }
+
+var ErrOutputTruncated = errors.New("model output was truncated by its token limit")
 
 type Completer interface {
 	Complete(context.Context, CompletionRequest) (string, error)
 }
 
 type ModelConfig struct {
-	BaseURL        string
-	APIKey         string
-	Model          string
-	MaxTokens      int
-	Timeout        time.Duration
-	Retries        int
-	MaxConcurrency int
+	BaseURL          string
+	APIKey           string
+	Model            string
+	StructuredOutput bool
+	MaxTokens        int
+	Timeout          time.Duration
+	Retries          int
+	MaxConcurrency   int
 }
 
 type OpenAIModel struct {
@@ -79,9 +83,10 @@ func (m *OpenAIModel) Complete(ctx context.Context, request CompletionRequest) (
 		return "", ctx.Err()
 	}
 	payload := struct {
-		Model     string        `json:"model"`
-		Messages  []chatMessage `json:"messages"`
-		MaxTokens int           `json:"max_tokens"`
+		Model          string          `json:"model"`
+		Messages       []chatMessage   `json:"messages"`
+		MaxTokens      int             `json:"max_tokens"`
+		ResponseFormat *responseFormat `json:"response_format,omitempty"`
 	}{
 		Model: m.cfg.Model,
 		Messages: []chatMessage{{
@@ -89,6 +94,9 @@ func (m *OpenAIModel) Complete(ctx context.Context, request CompletionRequest) (
 			Content: buildStagePrompt(request),
 		}},
 		MaxTokens: m.cfg.MaxTokens,
+	}
+	if request.Structured && m.cfg.StructuredOutput {
+		payload.ResponseFormat = &responseFormat{Type: "json_object"}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -158,7 +166,8 @@ func (m *OpenAIModel) completeOnce(
 	}
 	var result struct {
 		Choices []struct {
-			Message chatMessage `json:"message"`
+			Message      chatMessage `json:"message"`
+			FinishReason string      `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 4<<20))
@@ -167,6 +176,9 @@ func (m *OpenAIModel) completeOnce(
 	}
 	if len(result.Choices) == 0 {
 		return "", 0, false, errors.New("model response contained no choices")
+	}
+	if result.Choices[0].FinishReason == "length" {
+		return "", 0, false, ErrOutputTruncated
 	}
 	return result.Choices[0].Message.Content, 0, false, nil
 }
@@ -210,6 +222,10 @@ func (m *OpenAIModel) Ready(ctx context.Context) error {
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+type responseFormat struct {
+	Type string `json:"type"`
 }
 
 func buildStagePrompt(request CompletionRequest) string {

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 var (
 	ErrNotFound         = errors.New("not found")

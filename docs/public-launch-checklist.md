@@ -10,6 +10,10 @@ release.
 - [x] Owner-scoped Postgres queries enforce Account isolation.
 - [x] Issue generation uses fair, expiring Claims with recovery and bounded
   attempts.
+- [x] Issue failures use classified internal detail and learner-safe
+  projections; Issue Attempts and Dossier stages remain durably inspectable.
+- [x] Worker shutdown drains active Claims and forced release does not consume
+  a content-generation attempt.
 - [x] Generation, artifact persistence, and delivery are separate durable
   phases; delivery uses stable idempotency keys and records unknown outcomes.
 - [x] Clerk bearer authentication, signed lifecycle webhooks, exact-host

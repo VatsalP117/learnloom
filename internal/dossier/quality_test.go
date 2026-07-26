@@ -81,3 +81,20 @@ func TestEvaluateQualityRejectsExplorationCitation(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestNumberedAnswersAcceptReasonableMarkdownFormatting(t *testing.T) {
+	t.Parallel()
+	answers := numberedAnswers(`**1.** First substantive answer.
+
+2) Second answer starts here
+and continues on another line.
+
+3.
+Third substantive answer follows the marker.`)
+	if len(answers) != 3 ||
+		answers[1] != "First substantive answer." ||
+		!strings.Contains(answers[2], "continues on another line") ||
+		!strings.Contains(answers[3], "follows the marker") {
+		t.Fatalf("answers=%#v", answers)
+	}
+}

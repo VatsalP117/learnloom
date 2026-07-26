@@ -27,8 +27,8 @@ var requiredLessonSections = []string{
 var (
 	headingPattern  = regexp.MustCompile(`^(#{1,4})\s+(.+?)\s*$`)
 	citationPattern = regexp.MustCompile(`\[S([1-9][0-9]*)\]`)
-	questionPattern = regexp.MustCompile(`^\s*([0-9]+)\.\s+(.+\?)\s*$`)
-	answerPattern   = regexp.MustCompile(`^\s*([0-9]+)\.\s+(.+?)\s*$`)
+	questionPattern = regexp.MustCompile(`^\s*(?:\*\*)?([0-9]+)[.)](?:\*\*)?\s+(.+\?)\s*$`)
+	answerPattern   = regexp.MustCompile(`^\s*(?:\*\*)?([0-9]+)[.)](?:\*\*)?\s*(.*?)\s*$`)
 	htmlTagPattern  = regexp.MustCompile(`<[^>]+>`)
 	markupPattern   = regexp.MustCompile("[`*_>#-]")
 	spacePattern    = regexp.MustCompile(`\s+`)
@@ -162,15 +162,7 @@ func evaluateQuality(
 			"editorial practice is missing a collapsed answer key",
 		)
 	}
-	answers := map[int]string{}
-	for _, line := range strings.Split(answerKey, "\n") {
-		match := answerPattern.FindStringSubmatch(line)
-		if len(match) == 0 {
-			continue
-		}
-		number, _ := strconv.Atoi(match[1])
-		answers[number] = match[2]
-	}
+	answers := numberedAnswers(answerKey)
 	if len(answers) != len(questions) {
 		return domain.QualityReport{}, errors.New(
 			"answer key must answer every retrieval question",
@@ -240,6 +232,28 @@ func evaluateQuality(
 			"answeredQuestions":  len(answers),
 		},
 	}, nil
+}
+
+func numberedAnswers(markdown string) map[int]string {
+	answers := map[int]string{}
+	current := 0
+	for _, line := range strings.Split(markdown, "\n") {
+		match := answerPattern.FindStringSubmatch(line)
+		if len(match) > 0 {
+			number, _ := strconv.Atoi(match[1])
+			current = number
+			answers[number] = strings.TrimSpace(match[2])
+			continue
+		}
+		continuation := strings.TrimSpace(line)
+		if current == 0 || continuation == "" ||
+			strings.HasPrefix(continuation, "<") ||
+			headingPattern.MatchString(continuation) {
+			continue
+		}
+		answers[current] = strings.TrimSpace(answers[current] + " " + continuation)
+	}
+	return answers
 }
 
 type lessonWordBudget struct {
