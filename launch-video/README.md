@@ -47,6 +47,16 @@ uses a continuous animated product workspace, with the captured product states
 in `remotion/public/captures/` retained as visual references. Every scene stays
 within the same white, warm-paper, black-type visual language.
 
+The V1.1 audio experiment keeps the original film and visuals intact while
+using a separate original electronic score with a faster 128 BPM pulse. It
+exports to `output/learnloom-launch-remotion-v1.1.mp4`:
+
+```sh
+cd launch-video/remotion
+npm run music:v1.1
+npm run render:v1.1
+```
+
 The separate `LearnloomLaunchV2` composition is a 27-second cut with compressed
 typing, a nearly double-speed continuous workspace, and a kinetic closing
 statement. It exports `output/learnloom-launch-v2.mp4`.

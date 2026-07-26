@@ -20,12 +20,18 @@ available as visual references.
 The soundtrack combines the original ambient bed with an original restrained
 beat track in `public/launch-beat.m4a`.
 
+The V1.1 experiment keeps the original composition and tactile SFX but swaps
+the music for `public/launch-music-v1-1.m4a`: an original, faster 128 BPM
+electronic score with crisp percussion, warm bass, and a restrained arpeggio.
+
 From this directory:
 
 ```sh
 npm install
 npm run studio
 npm run render
+npm run music:v1.1
+npm run render:v1.1
 npm run render:v2
 ```
 

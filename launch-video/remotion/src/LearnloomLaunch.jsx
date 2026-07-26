@@ -84,13 +84,18 @@ function typed(text, frame, start, duration) {
   return text.slice(0, count);
 }
 
-export function LearnloomLaunch({sound = true}) {
+export function LearnloomLaunch({sound = true, audioVersion = "original"}) {
+  const v11 = audioVersion === "v1.1";
   return (
     <AbsoluteFill style={{backgroundColor: palette.white, fontFamily: fontSans}}>
       {sound ? (
         <>
-          <Audio src={asset("soundtrack.m4a")} volume={0.07} />
-          <Audio src={asset("launch-beat.m4a")} volume={0.65} />
+          {v11 ? <Audio src={asset("launch-music-v1-1.m4a")} volume={0.78} /> : (
+            <>
+              <Audio src={asset("soundtrack.m4a")} volume={0.07} />
+              <Audio src={asset("launch-beat.m4a")} volume={0.65} />
+            </>
+          )}
           <Audio src={asset("launch-sfx-v1.m4a")} volume={0.60} />
         </>
       ) : null}
