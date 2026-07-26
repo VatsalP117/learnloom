@@ -234,7 +234,7 @@
 .today-heading h1 {
   margin: 5px 0 8px;
   font-family: var(--atelier-display);
-  font-size: clamp(38px, 4.5vw, 58px);
+  font-size: clamp(36px, 4.2vw, 52px);
   line-height: 1;
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -409,7 +409,7 @@
 .today-feature h2 {
   margin: 10px 0 13px;
   font-family: var(--atelier-display);
-  font-size: clamp(28px, 2.75vw, 40px);
+  font-size: clamp(26px, 2.5vw, 36px);
   line-height: 1.08;
   letter-spacing: -0.02em;
 }
@@ -608,7 +608,7 @@
 .stream-overview-header h1 {
   margin: 12px 0 9px;
   font-family: var(--atelier-display);
-  font-size: clamp(40px, 5vw, 64px);
+  font-size: clamp(36px, 4.4vw, 56px);
   line-height: 1.02;
 }
 .stream-overview-header p { margin: 0; color: #3f4853; font-size: 13px; line-height: 1.6; }
@@ -637,7 +637,7 @@
 .stream-overview-main { display: grid; align-content: start; gap: 22px; }
 .stream-overview-side { display: grid; align-content: start; gap: 12px; }
 .latest-lesson-card { min-height: 252px; display: flex; flex-direction: column; padding: 24px; }
-.latest-lesson-card h2 { max-width: 720px; margin: auto 0 12px; font-family: var(--atelier-display); font-size: clamp(30px, 4vw, 48px); line-height: 1.08; }
+.latest-lesson-card h2 { max-width: 720px; margin: auto 0 12px; font-family: var(--atelier-display); font-size: clamp(28px, 3.5vw, 42px); line-height: 1.08; }
 .latest-lesson-card > p { max-width: 580px; margin: 0; color: var(--atelier-muted); font-size: 12px; line-height: 1.6; }
 .latest-lesson-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 22px; color: var(--atelier-muted); font-size: 9px; }
 .section-heading-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
@@ -686,7 +686,7 @@
 .review-card { min-height: 390px; display: flex; flex-direction: column; align-items: center; padding: 24px; text-align: center; }
 .review-card-top { width: 100%; display: flex; align-items: center; justify-content: space-between; color: var(--atelier-muted); font-size: 9px; }
 .review-card > .atelier-eyebrow { margin-top: auto; }
-.review-card h2 { max-width: 680px; margin: 14px auto; font-family: var(--atelier-display); font-size: clamp(30px, 4vw, 46px); line-height: 1.12; }
+.review-card h2 { max-width: 680px; margin: 14px auto; font-family: var(--atelier-display); font-size: clamp(28px, 3.5vw, 40px); line-height: 1.12; }
 .review-instruction { max-width: 530px; margin: 0 auto 25px; color: var(--atelier-muted); font-size: 11px; line-height: 1.6; }
 .review-card > .atelier-primary { margin-bottom: auto; }
 .review-context { max-width: 620px; margin-bottom: auto; padding: 18px; border: 1px solid var(--atelier-line); text-align: left; background: var(--atelier-paper-soft); }
@@ -851,7 +851,7 @@
 .reader-meta { display: flex; align-items: center; justify-content: center; gap: 17px; margin-bottom: 28px; color: var(--atelier-muted); font-size: 9px; }
 .reader-meta span { display: flex; align-items: center; gap: 5px; }
 .reader-hero > .atelier-eyebrow { justify-content: center; }
-.reader-hero h1 { max-width: 900px; margin: 14px auto 15px; font-family: var(--atelier-display); font-size: clamp(40px, 5.5vw, 66px); line-height: 1.01; letter-spacing: -0.025em; }
+.reader-hero h1 { max-width: 900px; margin: 14px auto 15px; font-family: var(--atelier-display); font-size: clamp(38px, 5vw, 58px); line-height: 1.03; letter-spacing: -0.025em; }
 .reader-deck { max-width: 740px; margin: 0 auto; color: #4e555e; font-family: var(--atelier-display); font-size: 20px; line-height: 1.5; }
 .reader-grounding { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 18px; margin-top: 28px; color: var(--atelier-muted); font-size: 9px; }
 .reader-grounding span:first-child { display: flex; align-items: center; gap: 5px; color: #215c39; font-weight: 750; }
@@ -911,7 +911,7 @@
 .create-page .create-heading h1 {
   margin: 7px 0 10px;
   font-family: var(--atelier-display);
-  font-size: clamp(40px, 5vw, 58px);
+  font-size: clamp(36px, 4.5vw, 52px);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.045em;
@@ -1455,13 +1455,13 @@
   .stream-overview-header,
   .today-footer-row { align-items: flex-start; flex-direction: column; }
   .atelier-page-heading h1,
-  .today-heading h1 { font-size: 44px; }
+  .today-heading h1 { font-size: 42px; }
   .today-grid,
   .today-side,
   .stream-grid,
   .lesson-library-grid,
   .publishing-claim { grid-template-columns: 1fr; }
-  .create-page .create-heading h1 { font-size: 40px; }
+  .create-page .create-heading h1 { font-size: 38px; }
   .create-page .setup-steps button { min-height: 46px; gap: 5px; }
   .create-page .setup-steps strong { font-size: 8px; }
   .create-page .newsletter-form .setup-panel { padding: 20px 17px; }
@@ -1484,7 +1484,7 @@
   .contextual-toolbar { align-items: stretch; flex-direction: column-reverse; }
   .contextual-search { width: 100%; }
   .today-feature { min-height: 330px; padding: 21px; }
-  .today-feature h2 { font-size: 30px; }
+  .today-feature h2 { font-size: 28px; }
   .today-side { display: grid; }
   .atelier-filter-row { max-width: 100%; overflow-x: auto; }
   .atelier-filter-row button { white-space: nowrap; }
@@ -1495,7 +1495,7 @@
   .stream-lesson-row { grid-template-columns: 30px 1fr; }
   .stream-lesson-actions { grid-column: 2; justify-content: flex-start; }
   .review-card { min-height: 390px; padding: 20px; }
-  .review-card h2 { font-size: 32px; }
+  .review-card h2 { font-size: 30px; }
   .review-assessment { flex-direction: column; }
   .publishing-claim { gap: 30px; padding: 26px; }
   .visibility-level { grid-template-columns: auto 1fr; }
@@ -1506,7 +1506,7 @@
   .reader-toolbar { grid-template-columns: 1fr auto; }
   .reader-toolbar > span { display: none; }
   .reader-hero { padding: 50px 24px 38px; }
-  .reader-hero h1 { font-size: 42px; }
+  .reader-hero h1 { font-size: 40px; }
   .reader-deck { font-size: 17px; }
   .reader-meta { flex-wrap: wrap; }
   .reader-layout { gap: 30px; padding: 38px 22px 50px; }
@@ -2112,7 +2112,7 @@
 @media (max-width: 600px) {
   .atelier-page-heading h1,
   .today-heading h1 {
-    font-size: clamp(38px, 12vw, 46px);
+    font-size: clamp(36px, 11vw, 42px);
   }
 
   .glass-panel,
@@ -2133,7 +2133,7 @@
   }
 
   .reader-hero h1 {
-    font-size: clamp(36px, 11vw, 44px);
+    font-size: clamp(34px, 10vw, 40px);
   }
 }
 
@@ -2150,8 +2150,8 @@
 
 .atelier-nav a,
 .atelier-new-entry {
-  font-size: 13px;
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  letter-spacing: 0.015em;
 }
 
 .atelier-sidebar-bottom a,
@@ -2163,12 +2163,12 @@
 .atelier-page-heading p:last-child,
 .today-heading > p:last-child,
 .create-page .create-heading > p:last-child {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .atelier-eyebrow {
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   line-height: 1.35;
 }
@@ -2180,12 +2180,12 @@
 .stream-rhythm button,
 .stream-lesson-actions button,
 .visibility-level button {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .atelier-chip,
 .atelier-status {
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.06em;
 }
 
@@ -2205,7 +2205,7 @@
 .site-preview-paper p,
 .visibility-level p,
 .visibility-help {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -2248,7 +2248,7 @@
 .create-page .guided-source-row label > span,
 .create-page .setup-review dt,
 .create-page .setup-actions > span {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .stream-card dd,
@@ -2257,15 +2257,15 @@
 .review-assessment button,
 .review-complete a,
 .create-secondary {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .stream-lesson-row h3 {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .create-page .newsletter-form label:not(.switch-row) {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .publishing-identity input,
@@ -2274,8 +2274,8 @@
 .create-page .newsletter-form input:not([type="checkbox"], [type="radio"]),
 .create-page .newsletter-form textarea,
 .create-page .newsletter-form select {
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .create-page .newsletter-form label em,
@@ -2300,31 +2300,31 @@
 .create-page .more-options-toggle,
 .create-page .source-section-heading span,
 .create-page .setup-review dd {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .create-page .mode-body strong,
 .create-page .source-section-heading strong,
 .create-page .rhythm-intro strong {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .reader-toolbar a,
 .reader-toolbar > span,
 .reader-meta,
 .reader-grounding {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .reader-section > p:not(.atelier-eyebrow) {
   max-width: 68ch;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.75;
 }
 
 .reader-aside nav a,
 .reader-sources > a {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -2335,29 +2335,29 @@
 .reader-sources > p:last-child,
 .reader-retrieval > p:nth-of-type(2),
 .reader-complete > p {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
 .reader-retrieval article > p {
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .reader-retrieval article button,
 .reader-retrieval article small,
 .reader-complete > a {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 @media (max-width: 600px) {
   .atelier-page-heading p:last-child,
   .today-heading > p:last-child,
   .create-page .create-heading > p:last-child {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .reader-section > p:not(.atelier-eyebrow) {
-    font-size: 17px;
+    font-size: 16px;
     line-height: 1.7;
   }
 }
