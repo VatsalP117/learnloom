@@ -357,7 +357,7 @@
 
 .ll-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding: 75px max(32px, calc((100% - 1240px) / 2)) 30px; color: #dfe7df; background: #121b15; }
 .ll-footer-brand p { max-width: 340px; margin: 18px 0 0; color: #7f8c82; font-size: 12px; line-height: 1.65; }
-.ll-footer-links { display: flex; justify-content: flex-end; gap: 110px; }
+.ll-footer-links { display: flex; justify-content: flex-end; gap: clamp(40px, 6vw, 90px); }
 .ll-footer-links > div { display: grid; align-content: start; gap: 12px; }
 .ll-footer-links strong { margin-bottom: 5px; color: #eef3ed; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; }
 .ll-footer-links a { color: #8c988e; font-size: 11px; }
@@ -443,7 +443,7 @@
   .ll-final-cta { min-height: 620px; }
   .ll-final-content > p:not(.ll-eyebrow) { max-width: 310px; line-height: 1.6; }
   .ll-footer { grid-template-columns: 1fr; gap: 50px; padding: 60px 24px 28px; }
-  .ll-footer-links { justify-content: flex-start; gap: 70px; }
+  .ll-footer-links { justify-content: flex-start; flex-wrap: wrap; gap: 40px 60px; }
   .ll-footer-bottom { grid-column: 1; }
 }
 

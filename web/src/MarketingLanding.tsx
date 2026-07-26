@@ -235,6 +235,7 @@ export default function MarketingLanding() {
         <div className="ll-footer-links">
           <div><strong>Product</strong><a href="#product">Personal sites</a><a href="#dossiers">Dossiers</a><a href="#how-it-works">How it works</a></div>
           <div><strong>Account</strong><a href={`${appOrigin}/sign-in`}>Sign in</a><a href={`${appOrigin}/sign-up`}>Get started</a></div>
+          <div><strong>Legal</strong><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
         </div>
         <div className="ll-footer-bottom">
           <span>© 2026 Learnloom</span>

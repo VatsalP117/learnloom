@@ -228,11 +228,20 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
 		return
 	}
-	if request.URL.Path != "/" && request.URL.Path != "/marketing" {
+	if !isApexPage(request.URL.Path) {
 		writeProblem(response, http.StatusNotFound, "not_found", "Page not found.")
 		return
 	}
 	s.serveIndex(response, request)
+}
+
+func isApexPage(path string) bool {
+	switch path {
+	case "/", "/marketing", "/privacy", "/terms":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) {

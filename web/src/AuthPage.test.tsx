@@ -21,6 +21,7 @@ describe("AuthPage", () => {
     const markup = renderToStaticMarkup(<AuthPage mode="sign-in" />);
 
     expect(markup).toContain("Sign in");
+    expect(markup).toContain("Continue with Google");
     expect(markup).not.toContain("Just a moment");
     expect(markup).not.toContain('class="auth-submit" type="submit" disabled');
   });
@@ -29,6 +30,9 @@ describe("AuthPage", () => {
     const markup = renderToStaticMarkup(<AuthPage mode="sign-up" />);
 
     expect(markup).toContain("Create account");
+    expect(markup).toContain("Continue with Google");
+    expect(markup).toContain('href="/terms"');
+    expect(markup).toContain('href="/privacy"');
     expect(markup).not.toContain("Just a moment");
     expect(markup).not.toContain('class="auth-submit" type="submit" disabled');
   });

@@ -1,4 +1,5 @@
 import {
+  AuthenticateWithRedirectCallback,
   ClerkFailed,
   ClerkLoaded,
   ClerkLoading,
@@ -14,6 +15,9 @@ import type { Profile } from "./types";
 
 export default function HostedApp() {
   const path = window.location.pathname;
+  if (path === "/sso-callback") {
+    return <SSOCallbackRoute />;
+  }
   if (path.startsWith("/sign-in")) {
     return <AuthRoute mode="sign-in" />;
   }
@@ -26,6 +30,23 @@ export default function HostedApp() {
       <ClerkFailed><AuthPage status="Authentication could not be loaded." /></ClerkFailed>
       <Show when="signed-out"><RedirectToSignIn /></Show>
       <Show when="signed-in"><OnboardingGate /></Show>
+    </>
+  );
+}
+
+function SSOCallbackRoute() {
+  return (
+    <>
+      <AuthPage
+        status="Finishing your secure sign-in…"
+        statusDetail="Google has confirmed your identity. We’re opening your learning space."
+      />
+      <AuthenticateWithRedirectCallback
+        signInUrl="/sign-in"
+        signUpUrl="/sign-up"
+        signInFallbackRedirectUrl="/"
+        signUpFallbackRedirectUrl="/"
+      />
     </>
   );
 }
