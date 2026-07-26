@@ -2136,3 +2136,228 @@
     font-size: clamp(36px, 11vw, 44px);
   }
 }
+
+/* Typography calibration
+   Keep the expressive display scale, but make supporting UI readable at a
+   normal desktop distance and preserve a comfortable long-form measure. */
+.atelier-app,
+.focus-reader {
+  font-size: 16px;
+  line-height: 1.5;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+
+.atelier-nav a,
+.atelier-new-entry {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.atelier-sidebar-bottom a,
+.atelier-sidebar-bottom button {
+  font-size: 11px;
+  letter-spacing: 0.025em;
+}
+
+.atelier-page-heading p:last-child,
+.today-heading > p:last-child,
+.create-page .create-heading > p:last-child {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.atelier-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+}
+
+.atelier-primary,
+.atelier-filter-row button,
+.contextual-search input,
+.stream-header-actions button,
+.stream-rhythm button,
+.stream-lesson-actions button,
+.visibility-level button {
+  font-size: 13px;
+}
+
+.atelier-chip,
+.atelier-status {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.atelier-state-card p,
+.atelier-notice,
+.today-feature-copy > p:last-child,
+.today-synthesis > p:not(.atelier-eyebrow),
+.stream-card > p:not(.atelier-eyebrow),
+.stream-create-card span,
+.lesson-library-card > p,
+.stream-overview-header p,
+.stream-preparing div > p:last-child,
+.latest-lesson-card > p,
+.review-instruction,
+.review-context > p,
+.publishing-claim > div > p:last-child,
+.site-preview-paper p,
+.visibility-level p,
+.visibility-help {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.today-feature-top > span:last-child,
+.latest-lesson-heading > span:last-child,
+.today-progress > div,
+.today-review span,
+.today-footer-row span,
+.lesson-library-meta > span:last-child,
+.lesson-library-footer,
+.latest-lesson-footer,
+.section-heading-row > span,
+.stream-status-row,
+.stream-lesson-row > div:nth-child(2) > span,
+.stream-lesson-actions a,
+.stream-blueprint > p:last-child,
+.stream-sources a small,
+.source-warning,
+.stream-rhythm dt,
+.stream-rhythm dd,
+.review-card-top,
+.review-summary article > span,
+.publishing-identity label small,
+.publishing-claim label small,
+.site-preview-heading strong,
+.site-preview-heading a,
+.site-preview-paper > div span,
+.visibility-streams > span,
+.visibility-streams a,
+.visibility-streams a strong {
+  font-size: 12px;
+}
+
+.stream-card dt,
+.review-context > span,
+.publishing-identity label > span,
+.publishing-claim label > span,
+.site-preview-paper > span,
+.create-page .topic-ideas > span,
+.create-page .guided-source-row label > span,
+.create-page .setup-review dt,
+.create-page .setup-actions > span {
+  font-size: 11px;
+}
+
+.stream-card dd,
+.stream-sources a strong,
+.review-context > a,
+.review-assessment button,
+.review-complete a,
+.create-secondary {
+  font-size: 13px;
+}
+
+.stream-lesson-row h3 {
+  font-size: 18px;
+}
+
+.create-page .newsletter-form label:not(.switch-row) {
+  font-size: 13px;
+}
+
+.publishing-identity input,
+.publishing-identity textarea,
+.publishing-claim input,
+.create-page .newsletter-form input:not([type="checkbox"], [type="radio"]),
+.create-page .newsletter-form textarea,
+.create-page .newsletter-form select {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.create-page .newsletter-form label em,
+.create-page .mode-body small,
+.create-page .source-guidance span,
+.create-page .rhythm-intro p,
+.create-page .delivery-choice small,
+.create-page .setup-review > p:not(.atelier-eyebrow),
+.create-page .setup-review > small {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.create-page .setup-steps button > span {
+  font-size: 11px;
+}
+
+.create-page .setup-steps strong,
+.create-page .topic-ideas button,
+.create-page .add-source,
+.create-page .remove-source,
+.create-page .more-options-toggle,
+.create-page .source-section-heading span,
+.create-page .setup-review dd {
+  font-size: 12px;
+}
+
+.create-page .mode-body strong,
+.create-page .source-section-heading strong,
+.create-page .rhythm-intro strong {
+  font-size: 18px;
+}
+
+.reader-toolbar a,
+.reader-toolbar > span,
+.reader-meta,
+.reader-grounding {
+  font-size: 12px;
+}
+
+.reader-section > p:not(.atelier-eyebrow) {
+  max-width: 68ch;
+  font-size: 18px;
+  line-height: 1.75;
+}
+
+.reader-aside nav a,
+.reader-sources > a {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.reader-sources > a i {
+  font-size: 11px;
+}
+
+.reader-sources > p:last-child,
+.reader-retrieval > p:nth-of-type(2),
+.reader-complete > p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.reader-retrieval article > p {
+  font-size: 16px;
+}
+
+.reader-retrieval article button,
+.reader-retrieval article small,
+.reader-complete > a {
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .atelier-page-heading p:last-child,
+  .today-heading > p:last-child,
+  .create-page .create-heading > p:last-child {
+    font-size: 14px;
+  }
+
+  .reader-section > p:not(.atelier-eyebrow) {
+    font-size: 17px;
+    line-height: 1.7;
+  }
+}
