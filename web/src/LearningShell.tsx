@@ -19,6 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import CalmLoader from "./CalmLoader";
 
 const SessionActionsContext = createContext<(() => Promise<void>) | null>(null);
 
@@ -146,12 +147,7 @@ export function SessionActionsProvider({
 }
 
 export function AtelierLoading({ label = "Preparing your learning home…" }: { label?: string }) {
-  return (
-    <div className="atelier-state-card" aria-live="polite">
-      <span className="atelier-spinner" />
-      <strong>{label}</strong>
-    </div>
-  );
+  return <CalmLoader label={label} detail="" variant="inline" />;
 }
 
 export function AtelierError({

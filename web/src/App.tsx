@@ -1,5 +1,6 @@
 import { Menu, Plus, Sparkles } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import CalmLoader from "./CalmLoader";
 import type { Site } from "./types";
 
 const IssueDetail = lazy(() => import("./IssueDetail"));
@@ -91,7 +92,7 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }: Ap
 
 function routePage(page: ReactNode) {
   return (
-    <Suspense fallback={<main className="entry-loading">Preparing this space…</main>}>
+    <Suspense fallback={<CalmLoader label="Preparing this space…" />}>
       {page}
     </Suspense>
   );

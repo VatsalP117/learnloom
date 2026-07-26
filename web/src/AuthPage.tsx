@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
+import CalmLoader from "./CalmLoader";
 import "./auth.css";
 
 const AUTH_COPY = {
@@ -53,6 +54,10 @@ export default function AuthPage({
   statusDetail = "This will only take a moment.",
   statusKind = "loading",
 }) {
+  if (status && statusKind === "loading") {
+    return <CalmLoader label={status} detail={statusDetail} />;
+  }
+
   const copy = AUTH_COPY[mode] ?? AUTH_COPY["sign-in"];
 
   return (

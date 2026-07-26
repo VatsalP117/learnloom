@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import App from "./App";
 import AuthPage from "./AuthPage";
+import CalmLoader from "./CalmLoader";
 import { SessionActionsProvider } from "./LearningShell";
 import { apiJSON, configureAPI, setCSRFToken } from "./api";
 import type { Profile } from "./types";
@@ -28,7 +29,7 @@ export default function HostedApp() {
   }
   return (
     <>
-      <ClerkLoading><AuthPage status="Loading your workspace…" /></ClerkLoading>
+      <ClerkLoading><CalmLoader label="Returning to your learning space…" /></ClerkLoading>
       <ClerkFailed><AuthPage status="Authentication could not be loaded." /></ClerkFailed>
       <Show when="signed-out"><RedirectToSignIn /></Show>
       <Show when="signed-in"><OnboardingGate /></Show>
@@ -109,7 +110,14 @@ function OnboardingGate() {
   }, [getToken]);
 
   if (error) return <AuthPage status={error} />;
-  if (!profile) return <AuthPage status="Preparing your workspace…" />;
+  if (!profile) {
+    return (
+      <CalmLoader
+        label="Preparing your workspace…"
+        detail="Restoring your streams and recent lessons."
+      />
+    );
+  }
   return (
     <SessionActionsProvider onSignOut={() => clerk.signOut({ redirectUrl: "/sign-in" })}>
       <App

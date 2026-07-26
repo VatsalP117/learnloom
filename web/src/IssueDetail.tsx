@@ -11,7 +11,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { AtelierError, AtelierLoading } from "./LearningShell";
+import CalmLoader from "./CalmLoader";
+import { AtelierError } from "./LearningShell";
 import { apiJSON } from "./api";
 import { normalizeDossier } from "./dossierView";
 import { lessonState, updateLessonState } from "./learningState";
@@ -73,7 +74,7 @@ export default function IssueDetail({ issueId }) {
   }, [issueId]);
 
   if (!snapshot && !error) {
-    return <div className="reader-loading"><AtelierLoading label="Opening your lesson…" /></div>;
+    return <CalmLoader label="Opening your lesson…" detail="Bringing you back to the page." />;
   }
   if (error) {
     return <div className="reader-loading"><AtelierError message={error} /></div>;

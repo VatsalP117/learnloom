@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import productBackdropDesktop from "./assets/learning-landscape-1920.avif?url";
 import productBackdropMobile from "./assets/learning-landscape-960.avif?url";
+import CalmLoader from "./CalmLoader";
 import { rootDomain } from "./config";
 import "./entry.css";
 
@@ -31,7 +32,7 @@ if (!root) throw new Error("The application root element is missing.");
 
 createRoot(root).render(
   <StrictMode>
-    <Suspense fallback={<main className="entry-loading">Opening Learnloom…</main>}>
+    <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
       {isLegalPage ? <LegalPage /> : isMarketingPage ? <MarketingLanding /> : <ProductRoot />}
     </Suspense>
   </StrictMode>,
