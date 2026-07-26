@@ -84,6 +84,10 @@
   padding: 174px 24px 0;
   overflow: hidden;
   background-image: url("./assets/learnloom-hero-landscape.webp");
+  background-image: image-set(
+    url("./assets/learnloom-hero-landscape.avif") type("image/avif"),
+    url("./assets/learnloom-hero-landscape.webp") type("image/webp")
+  );
   background-position: center bottom;
   background-size: cover;
 }
@@ -348,7 +352,19 @@
 .ll-quote-section blockquote em { color: #627e60; font-family: Georgia, serif; font-weight: 400; }
 .ll-quote-section p { color: #7a847d; font-size: 11px; }
 
-.ll-final-cta { min-height: 720px; display: grid; place-items: center; text-align: center; background-image: url("./assets/learnloom-hero-landscape.webp"); background-position: center 82%; background-size: cover; }
+.ll-final-cta {
+  min-height: 720px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background-image: url("./assets/learnloom-hero-landscape.webp");
+  background-image: image-set(
+    url("./assets/learnloom-hero-landscape.avif") type("image/avif"),
+    url("./assets/learnloom-hero-landscape.webp") type("image/webp")
+  );
+  background-position: center 82%;
+  background-size: cover;
+}
 .ll-final-cta::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(238,247,249,.93), rgba(237,247,245,.52) 55%, rgba(30,52,36,.2)); }
 .ll-final-content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; }
 .ll-final-content > .ll-brand-mark { width: 44px; height: 44px; margin-bottom: 29px; border-radius: 13px; }
@@ -384,11 +400,31 @@
   .ll-email-copy { order: 1; max-width: 620px; }
 }
 
+@media (max-width: 1100px) {
+  .ll-hero,
+  .ll-final-cta {
+    background-image: url("./assets/learnloom-hero-landscape-1440.webp");
+    background-image: image-set(
+      url("./assets/learnloom-hero-landscape-1440.avif") type("image/avif"),
+      url("./assets/learnloom-hero-landscape-1440.webp") type("image/webp")
+    );
+  }
+}
+
 @media (max-width: 680px) {
   .ll-nav { height: 70px; }
   .ll-brand { font-size: 18px; }
   .ll-brand-mark { width: 28px; height: 28px; }
-  .ll-hero { min-height: 940px; padding: 125px 18px 0; background-position: 50% bottom; }
+  .ll-hero {
+    min-height: 940px;
+    padding: 125px 18px 0;
+    background-image: url("./assets/learnloom-hero-landscape-960.webp");
+    background-image: image-set(
+      url("./assets/learnloom-hero-landscape-960.avif") type("image/avif"),
+      url("./assets/learnloom-hero-landscape-960.webp") type("image/webp")
+    );
+    background-position: 50% bottom;
+  }
   .ll-hero h1 { font-size: clamp(47px, 14vw, 66px); }
   .ll-hero h1 br { display: none; }
   .ll-hero h1 em { display: block; margin-top: .06em; }
@@ -440,7 +476,14 @@
   .ll-mail-card h3 { font-size: 24px; }
   .ll-quote-section { min-height: 470px; }
   .ll-quote-section blockquote br { display: none; }
-  .ll-final-cta { min-height: 620px; }
+  .ll-final-cta {
+    min-height: 620px;
+    background-image: url("./assets/learnloom-hero-landscape-960.webp");
+    background-image: image-set(
+      url("./assets/learnloom-hero-landscape-960.avif") type("image/avif"),
+      url("./assets/learnloom-hero-landscape-960.webp") type("image/webp")
+    );
+  }
   .ll-final-content > p:not(.ll-eyebrow) { max-width: 310px; line-height: 1.6; }
   .ll-footer { grid-template-columns: 1fr; gap: 50px; padding: 60px 24px 28px; }
   .ll-footer-links { justify-content: flex-start; flex-wrap: wrap; gap: 40px 60px; }
