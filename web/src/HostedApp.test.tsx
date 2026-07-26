@@ -17,6 +17,7 @@ vi.mock("@clerk/react", () => ({
     return visible ? children : null;
   },
   useAuth: () => ({ getToken: vi.fn() }),
+  useClerk: () => ({ signOut: vi.fn() }),
   useSignIn: () => ({
     errors: { fields: {}, global: null, raw: null },
     fetchStatus: "idle",

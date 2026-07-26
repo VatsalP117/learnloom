@@ -6,10 +6,12 @@ import {
   RedirectToSignIn,
   Show,
   useAuth,
+  useClerk,
 } from "@clerk/react";
 import { useEffect, useState } from "react";
 import App from "./App";
 import AuthPage from "./AuthPage";
+import { SessionActionsProvider } from "./LearningShell";
 import { apiJSON, configureAPI, setCSRFToken } from "./api";
 import type { Profile } from "./types";
 
@@ -85,6 +87,7 @@ function AuthenticatedRedirect() {
 
 function OnboardingGate() {
   const { getToken } = useAuth();
+  const clerk = useClerk();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
 
@@ -108,10 +111,12 @@ function OnboardingGate() {
   if (error) return <AuthPage status={error} />;
   if (!profile) return <AuthPage status="Preparing your workspace…" />;
   return (
-    <App
-      capabilities={profile.capabilities ?? {}}
-      site={profile.site}
-      onSiteUpdate={(site) => setProfile({ ...profile, site })}
-    />
+    <SessionActionsProvider onSignOut={() => clerk.signOut({ redirectUrl: "/sign-in" })}>
+      <App
+        capabilities={profile.capabilities ?? {}}
+        site={profile.site}
+        onSiteUpdate={(site) => setProfile({ ...profile, site })}
+      />
+    </SessionActionsProvider>
   );
 }

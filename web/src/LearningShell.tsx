@@ -5,13 +5,22 @@ import {
   CircleHelp,
   Globe2,
   LibraryBig,
+  LogOut,
   Menu,
   Plus,
   Settings2,
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+
+const SessionActionsContext = createContext<(() => Promise<void>) | null>(null);
 
 const navigation = [
   { href: "/", label: "Today", icon: CalendarDays, key: "today" },
@@ -31,10 +40,22 @@ export default function LearningShell({
   immersive?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signOut = useContext(SessionActionsContext);
 
   useEffect(() => {
     setMenuOpen(false);
   }, [active]);
+
+  const handleSignOut = async () => {
+    if (!signOut || signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch {
+      setSigningOut(false);
+    }
+  };
 
   if (immersive) return children;
 
@@ -80,6 +101,12 @@ export default function LearningShell({
         <div className="atelier-sidebar-bottom">
           <a href="/publishing"><Settings2 size={15} />Site settings</a>
           <a href="mailto:support@learnloom.blog"><CircleHelp size={15} />Support</a>
+          {signOut ? (
+            <button type="button" onClick={handleSignOut} disabled={signingOut}>
+              <LogOut size={15} />
+              {signingOut ? "Signing out…" : "Log out"}
+            </button>
+          ) : null}
         </div>
       </aside>
 
@@ -101,6 +128,20 @@ export default function LearningShell({
         <main className="atelier-main">{children}</main>
       </div>
     </div>
+  );
+}
+
+export function SessionActionsProvider({
+  children,
+  onSignOut,
+}: {
+  children: ReactNode;
+  onSignOut: () => Promise<void>;
+}) {
+  return (
+    <SessionActionsContext.Provider value={onSignOut}>
+      {children}
+    </SessionActionsContext.Provider>
   );
 }
 

@@ -109,7 +109,8 @@
 }
 
 .atelier-nav a,
-.atelier-sidebar-bottom a {
+.atelier-sidebar-bottom a,
+.atelier-sidebar-bottom button {
   min-height: 41px;
   display: flex;
   align-items: center;
@@ -126,7 +127,8 @@
 }
 
 .atelier-nav a:hover,
-.atelier-sidebar-bottom a:hover { background: rgba(21, 23, 25, 0.06); }
+.atelier-sidebar-bottom a:hover,
+.atelier-sidebar-bottom button:hover { background: rgba(21, 23, 25, 0.06); }
 .atelier-nav a.current {
   color: white;
   background: var(--atelier-ink);
@@ -138,7 +140,20 @@
   margin-top: auto;
 }
 
-.atelier-sidebar-bottom a { min-height: 36px; font-size: 9px; }
+.atelier-sidebar-bottom a,
+.atelier-sidebar-bottom button { min-height: 36px; font-size: 9px; }
+.atelier-sidebar-bottom button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.atelier-sidebar-bottom button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
 .atelier-stage { min-height: 100vh; margin-left: 224px; }
 
 .atelier-topbar {
@@ -1580,7 +1595,8 @@
 
 .atelier-new-entry,
 .atelier-nav a,
-.atelier-sidebar-bottom a {
+.atelier-sidebar-bottom a,
+.atelier-sidebar-bottom button {
   border-radius: var(--atelier-radius-small);
 }
 
@@ -1601,7 +1617,8 @@
 }
 
 .atelier-nav a,
-.atelier-sidebar-bottom a {
+.atelier-sidebar-bottom a,
+.atelier-sidebar-bottom button {
   transition:
     color 140ms ease-out,
     background 140ms ease-out,
@@ -1609,7 +1626,8 @@
 }
 
 .atelier-nav a:hover,
-.atelier-sidebar-bottom a:hover {
+.atelier-sidebar-bottom a:hover,
+.atelier-sidebar-bottom button:hover {
   color: var(--atelier-ink);
   background: rgba(255, 255, 255, 0.46);
   transform: translateX(2px);
@@ -2037,6 +2055,7 @@
   .atelier-new-entry,
   .atelier-nav a,
   .atelier-sidebar-bottom a,
+  .atelier-sidebar-bottom button,
   .atelier-top-actions a,
   .atelier-top-actions button,
   .atelier-primary,
