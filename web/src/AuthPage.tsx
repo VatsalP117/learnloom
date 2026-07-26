@@ -39,6 +39,14 @@ function clerkError(error) {
   );
 }
 
+function throwIfClerkError(result) {
+  if (result.error) throw result.error;
+}
+
+function navigateHome({ decorateUrl }) {
+  window.location.assign(decorateUrl("/"));
+}
+
 export default function AuthPage({
   mode = "sign-in",
   status = "",
@@ -109,8 +117,7 @@ function AuthStatus({ message, detail, kind }) {
 }
 
 function SignInFlow() {
-  // Clerk's compatibility flow is broader than the signal-based hook declaration.
-  const { isLoaded, signIn, setActive } = useSignIn() as any;
+  const { signIn, fetchStatus } = useSignIn();
   const [step, setStep] = useState("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -118,28 +125,25 @@ function SignInFlow() {
   const [newPassword, setNewPassword] = useState("");
   const [verificationStrategy, setVerificationStrategy] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const busy = fetchStatus === "fetching";
 
-  const completeSignIn = async (result) => {
-    if (result.status === "complete" && result.createdSessionId) {
-      await setActive({ session: result.createdSessionId, redirectUrl: "/" });
+  const completeSignIn = async () => {
+    if (signIn.status === "complete") {
+      throwIfClerkError(await signIn.finalize({ navigate: navigateHome }));
       return true;
     }
     return false;
   };
 
-  const prepareSecondFactor = async (result) => {
-    const emailFactor = result.supportedSecondFactors?.find(
+  const prepareSecondFactor = async () => {
+    const emailFactor = signIn.supportedSecondFactors.find(
       (factor) => factor.strategy === "email_code",
     );
-    const totpFactor = result.supportedSecondFactors?.find(
+    const totpFactor = signIn.supportedSecondFactors.find(
       (factor) => factor.strategy === "totp",
     );
     if (emailFactor) {
-      await signIn.prepareSecondFactor({
-        strategy: "email_code",
-        emailAddressId: emailFactor.emailAddressId,
-      });
+      throwIfClerkError(await signIn.mfa.sendEmailCode());
       setVerificationStrategy("email_code");
       setStep("second-factor");
       return;
@@ -154,102 +158,83 @@ function SignInFlow() {
 
   const submitCredentials = async (event) => {
     event.preventDefault();
-    if (!isLoaded) return;
-    setBusy(true);
     setError("");
     try {
-      const result = await signIn.create({
-        identifier: email.trim(),
+      throwIfClerkError(await signIn.password({
+        emailAddress: email.trim(),
         password,
-        strategy: "password",
-      });
-      if (await completeSignIn(result)) return;
-      if (result.status === "needs_second_factor") {
-        await prepareSecondFactor(result);
+      }));
+      if (await completeSignIn()) return;
+      if (signIn.status === "needs_second_factor" || signIn.status === "needs_client_trust") {
+        await prepareSecondFactor();
       } else {
         throw new Error("We couldn’t complete your sign in. Please try another method.");
       }
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
   const submitSecondFactor = async (event) => {
     event.preventDefault();
-    setBusy(true);
     setError("");
     try {
-      const result = await signIn.attemptSecondFactor({
-        strategy: verificationStrategy,
-        code: code.trim(),
-      });
-      if (!(await completeSignIn(result))) {
+      const result = verificationStrategy === "totp"
+        ? await signIn.mfa.verifyTOTP({ code: code.trim() })
+        : await signIn.mfa.verifyEmailCode({ code: code.trim() });
+      throwIfClerkError(result);
+      if (!(await completeSignIn())) {
         throw new Error("That code could not be verified.");
       }
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
   const requestReset = async (event) => {
     event.preventDefault();
-    if (!isLoaded) return;
-    setBusy(true);
     setError("");
     try {
-      await signIn.create({
-        strategy: "reset_password_email_code",
-        identifier: email.trim(),
-      });
+      throwIfClerkError(await signIn.create({ identifier: email.trim() }));
+      throwIfClerkError(await signIn.resetPasswordEmailCode.sendCode());
       setCode("");
       setStep("reset-code");
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
   const verifyResetCode = async (event) => {
     event.preventDefault();
-    setBusy(true);
     setError("");
     try {
-      const result = await signIn.attemptFirstFactor({
-        strategy: "reset_password_email_code",
+      throwIfClerkError(await signIn.resetPasswordEmailCode.verifyCode({
         code: code.trim(),
-      });
-      if (result.status !== "needs_new_password") {
+      }));
+      if (signIn.status !== "needs_new_password") {
         throw new Error("That code could not be verified.");
       }
       setStep("reset-password");
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
   const saveNewPassword = async (event) => {
     event.preventDefault();
-    setBusy(true);
     setError("");
     try {
-      const result = await signIn.resetPassword({ password: newPassword });
-      if (await completeSignIn(result)) return;
-      if (result.status === "needs_second_factor") {
-        await prepareSecondFactor(result);
+      throwIfClerkError(await signIn.resetPasswordEmailCode.submitPassword({
+        password: newPassword,
+      }));
+      if (await completeSignIn()) return;
+      if (signIn.status === "needs_second_factor" || signIn.status === "needs_client_trust") {
+        await prepareSecondFactor();
       } else {
         throw new Error("Your password was changed, but sign in could not be completed.");
       }
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -350,61 +335,58 @@ function SignInFlow() {
         }
       />
       <FormError message={error} />
-      <SubmitButton busy={busy || !isLoaded}>Sign in</SubmitButton>
+      <SubmitButton busy={busy}>Sign in</SubmitButton>
     </form>
   );
 }
 
 function SignUpFlow() {
-  const { isLoaded, signUp, setActive } = useSignUp() as any;
+  const { signUp, fetchStatus } = useSignUp();
   const [step, setStep] = useState("details");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const busy = fetchStatus === "fetching";
+
+  const completeSignUp = async () => {
+    if (signUp.status !== "complete") return false;
+    throwIfClerkError(await signUp.finalize({ navigate: navigateHome }));
+    return true;
+  };
 
   const submitDetails = async (event) => {
     event.preventDefault();
-    if (!isLoaded) return;
-    setBusy(true);
     setError("");
     const names = name.trim().split(/\s+/);
     try {
-      const result = await signUp.create({
+      throwIfClerkError(await signUp.password({
         firstName: names[0] || undefined,
         lastName: names.slice(1).join(" ") || undefined,
         emailAddress: email.trim(),
         password,
-      });
-      if (result.status === "complete" && result.createdSessionId) {
-        await setActive({ session: result.createdSessionId, redirectUrl: "/" });
-        return;
-      }
-      await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+      }));
+      if (await completeSignUp()) return;
+      throwIfClerkError(await signUp.verifications.sendEmailCode());
       setStep("verify");
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
   const verifyEmail = async (event) => {
     event.preventDefault();
-    setBusy(true);
     setError("");
     try {
-      const result = await signUp.attemptEmailAddressVerification({ code: code.trim() });
-      if (result.status !== "complete" || !result.createdSessionId) {
+      throwIfClerkError(await signUp.verifications.verifyEmailCode({
+        code: code.trim(),
+      }));
+      if (!(await completeSignUp())) {
         throw new Error("That code could not be verified.");
       }
-      await setActive({ session: result.createdSessionId, redirectUrl: "/" });
     } catch (requestError) {
       setError(clerkError(requestError));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -458,7 +440,7 @@ function SignUpFlow() {
       />
       <div id="clerk-captcha" className="auth-captcha" />
       <FormError message={error} />
-      <SubmitButton busy={busy || !isLoaded}>Create account</SubmitButton>
+      <SubmitButton busy={busy}>Create account</SubmitButton>
       <p className="auth-terms">
         Your learning space is private by default.
       </p>

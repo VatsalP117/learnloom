@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(npx remotion still src/index.jsx LearnloomLaunch ../output/remotion-sfx-test.png --frame 0 2 >& 1)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

@@ -1,3 +1,4 @@
+# - Values polished, premium aesthetic in audiovisual outputs — explicitly rejects anything that feels "cheap" or "loud." This applies to sound design, visual effects, and overall production quality. Confidence: 0.7
 - Values polished, premium aesthetic in audiovisual outputs — explicitly rejects anything that feels "cheap" or "loud." This applies to sound design, visual effects, and overall production quality. Confidence: 0.7
 - Dislikes harsh, high-frequency sound effects (e.g., noisy mechanical keystrokes, aggressive whooshes). Prefers subtle, warm, tonal audio — soft sine-based sounds, gentle envelopes, lower pitches, and more headroom in the mix. Confidence: 0.8
 - Uses Remotion (React-based programmatic video framework) for video creation projects. Confidence: 0.6

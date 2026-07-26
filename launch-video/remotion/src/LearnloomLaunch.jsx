@@ -46,8 +46,43 @@ const fadeOut = (frame, start, duration = 16) =>
   });
 const sceneFade = (frame, end, edge = 15) =>
   fadeIn(frame, 0, edge) * fadeOut(frame, end - edge, edge);
-const typed = (value, frame, start, duration) =>
-  value.slice(0, Math.floor(clamp((frame - start) / duration) * value.length));
+const scheduleCache = new Map();
+function makeSchedule(text, totalFrames) {
+  const key = `${text}|${totalFrames}`;
+  if (scheduleCache.has(key)) return scheduleCache.get(key);
+  let seed = 0;
+  for (let i = 0; i < text.length; i++) seed = ((seed << 5) - seed + text.charCodeAt(i)) | 0;
+  const rand = () => { seed = (seed * 16807 + 0) % 2147483647; return (seed - 1) / 2147483646; };
+  const schedule = new Float64Array(text.length);
+  let t = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    let base;
+    if (i === 0) base = 1.7;
+    else if (ch === " ") base = 1.05;
+    else if (ch === "." || ch === "?" || ch === "!") base = 0.95;
+    else if (ch === ",") base = 0.55;
+    else base = 0.44;
+    const jitter = base * (rand() * 0.55 - 0.08);
+    let delay = base + jitter;
+    if (rand() < 0.12 && i > 1) delay += 0.4 + rand() * 0.7;
+    t += delay;
+    schedule[i] = t;
+  }
+  const total = schedule[text.length - 1];
+  if (total > 0) { const scale = totalFrames / total; for (let i = 0; i < text.length; i++) schedule[i] *= scale; }
+  scheduleCache.set(key, schedule);
+  return schedule;
+}
+function typed(text, frame, start, duration) {
+  if (frame <= start) return "";
+  const elapsed = frame - start;
+  if (elapsed >= duration) return text;
+  const schedule = makeSchedule(text, duration);
+  let count = 0;
+  for (let i = 0; i < text.length; i++) { if (schedule[i] <= elapsed) count++; else break; }
+  return text.slice(0, count);
+}
 
 export function LearnloomLaunch({sound = true}) {
   return (
@@ -56,7 +91,7 @@ export function LearnloomLaunch({sound = true}) {
         <>
           <Audio src={asset("soundtrack.m4a")} volume={0.07} />
           <Audio src={asset("launch-beat.m4a")} volume={0.65} />
-          <Audio src={asset("launch-sfx-v1.m4a")} volume={0.48} />
+          <Audio src={asset("launch-sfx-v1.m4a")} volume={0.60} />
         </>
       ) : null}
 
@@ -88,7 +123,7 @@ export function LearnloomLaunchV2({sound = true}) {
       {sound ? (
         <>
           <Audio src={asset("soundtrack.m4a")} volume={0.05} />
-          <Audio src={asset("launch-beat.m4a")} volume={0.72} />
+          <Audio src={asset("launch-beat.m4a")} volume={0.44} />
         </>
       ) : null}
 
@@ -1110,16 +1145,20 @@ function FrameCounter({current}) {
 }
 
 function Cursor({visible, small = false}) {
+  const frame = useCurrentFrame();
+  const blink = Math.sin(frame * 0.22) * 0.5 + 0.5;
+  const opacity = visible ? 0.35 + blink * 0.65 : 0;
   return (
     <span
       style={{
         display: "inline-block",
-        width: small ? 2 : 4,
-        height: small ? "0.95em" : "0.9em",
-        marginLeft: small ? 5 : 10,
-        verticalAlign: "-0.08em",
+        width: small ? 2 : 3,
+        height: small ? "0.92em" : "0.85em",
+        marginLeft: small ? 5 : 8,
+        verticalAlign: "-0.06em",
         background: palette.forest,
-        opacity: visible ? 1 : 0,
+        borderRadius: 2,
+        opacity,
       }}
     />
   );
