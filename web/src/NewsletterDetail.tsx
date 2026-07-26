@@ -15,7 +15,8 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import LearningShell, { AtelierError, AtelierLoading, formatShortDate } from "./LearningShell";
+import CalmLoader from "./CalmLoader";
+import LearningShell, { AtelierError, formatShortDate } from "./LearningShell";
 import { apiJSON, demoMode } from "./api";
 import { lessonState } from "./learningState";
 import { invalidateWorkspaceCache } from "./useWorkspace";
@@ -68,7 +69,7 @@ export default function NewsletterDetail({ newsletterId }) {
   }
 
   if (!snapshot && !error) {
-    return <LearningShell active="streams"><AtelierLoading label="Opening this learning stream…" /></LearningShell>;
+    return <CalmLoader label="Opening this learning stream…" detail="Bringing your stream into focus." />;
   }
 
   const newsletter = snapshot?.newsletter;

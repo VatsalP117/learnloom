@@ -1634,6 +1634,7 @@
 }
 
 .atelier-nav a.current {
+  color: white;
   background: #1b2920;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.1) inset,
@@ -1851,6 +1852,7 @@
 .visibility-level button {
   min-height: 42px;
   border-radius: var(--atelier-radius-small);
+  color: var(--atelier-ink);
   background: rgba(252, 251, 247, 0.8);
   transition:
     border-color 140ms ease-out,
@@ -2347,6 +2349,19 @@
 .reader-retrieval article small,
 .reader-complete > a {
   font-size: 11px;
+}
+
+/* Keep the Today card metadata visually grouped and aligned. */
+.today-feature-top {
+  margin-bottom: 8px;
+}
+
+.today-feature-copy > .atelier-eyebrow {
+  padding: 6px 0 0 8px;
+}
+
+.today-synthesis > .atelier-icon + .atelier-eyebrow {
+  margin-top: 12px;
 }
 
 @media (max-width: 600px) {
