@@ -24,12 +24,12 @@ x-runtime: &runtime
   DATABASE_URL: postgresql://learnloom:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/learnloom?sslmode=disable
 
 x-object-store: &object-store
-  S3_BUCKET: ${S3_BUCKET:-learnloom-dossiers}
-  S3_REGION: ${S3_REGION:-us-east-1}
-  S3_ENDPOINT: http://minio:9000
+  S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
   S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
-  S3_USE_PATH_STYLE: "true"
+  S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
   ARTIFACT_CACHE_BYTES: ${ARTIFACT_CACHE_BYTES:-67108864}
 
 services:
@@ -49,36 +49,6 @@ services:
     networks:
       - backend
     restart: unless-stopped
-
-  minio:
-    image: ${MINIO_IMAGE:-minio/minio}:RELEASE.2025-09-07T16-13-09Z
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
-    volumes:
-      - object-data:/data
-    networks:
-      - backend
-    restart: unless-stopped
-
-  create-bucket:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_started
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - >
-        until mc alias set local http://minio:9000 "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY"; do sleep 1; done;
-        mc mb --ignore-existing "local/$$S3_BUCKET"
-    environment:
-      S3_BUCKET: ${S3_BUCKET:-learnloom-dossiers}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
-    networks:
-      - backend
-    restart: "no"
 
   migrate:
     <<: *app
@@ -108,8 +78,6 @@ services:
       SOURCE_DISCOVERY_ENABLED: ${SOURCE_DISCOVERY_ENABLED:-true}
     depends_on:
       migrate:
-        condition: service_completed_successfully
-      create-bucket:
         condition: service_completed_successfully
     expose:
       - "3000"
@@ -186,8 +154,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      create-bucket:
-        condition: service_completed_successfully
       searxng:
         condition: service_started
     restart: unless-stopped
@@ -226,7 +192,6 @@ services:
 
 volumes:
   postgres-data:
-  object-data:
   searxng-cache:
   searxng-valkey-data:
 

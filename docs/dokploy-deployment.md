@@ -2,7 +2,9 @@
 
 This guide assumes the VM already runs Dokploy and its Traefik ingress. It uses
 [`compose.dokploy.yaml`](../compose.dokploy.yaml) to deploy Learnloom, Postgres,
-MinIO, the worker, and private SearXNG discovery as one Compose service.
+the worker, and private SearXNG discovery as one Compose service. Immutable
+Dossier artifacts live in a private Cloudflare R2 bucket through its
+S3-compatible API.
 
 The hostname contract is:
 
@@ -25,6 +27,7 @@ Have these accounts and values ready:
 - An OpenAI-compatible model API key. The checked-in default is DeepSeek.
 - A verified Resend domain and sender, such as
   `Learnloom <dossiers@learnloom.blog>`.
+- A private Cloudflare R2 bucket and bucket-scoped S3 credentials.
 - Access to the DNS provider for `learnloom.blog`.
 
 Generate URL-safe secrets locally. Do not paste the output into chat, source
@@ -33,13 +36,36 @@ control, or deployment logs:
 ```sh
 openssl rand -hex 24 # POSTGRES_PASSWORD
 openssl rand -hex 32 # CSRF_SECRET
-openssl rand -hex 16 # S3_ACCESS_KEY_ID
-openssl rand -hex 32 # S3_SECRET_ACCESS_KEY
 openssl rand -hex 32 # SEARXNG_SECRET
 ```
 
 Start from [`.env.dokploy.example`](../.env.dokploy.example). `POSTGRES_PASSWORD`
 must remain URL-safe because the Compose file inserts it into `DATABASE_URL`.
+
+### Cloudflare R2
+
+In the Cloudflare dashboard, open **Storage & databases → R2 → Overview**,
+select **Manage** under API Tokens, and create an Account API token with
+**Object Read & Write** access limited to the Dossier bucket. Copy the displayed
+Access Key ID and Secret Access Key immediately; the secret is shown only once.
+Use those values for `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
+
+Set `S3_BUCKET` to the exact bucket name, `S3_REGION=auto`, and `S3_ENDPOINT`
+to the account endpoint without a bucket suffix:
+
+```text
+https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com
+```
+
+For an EU-jurisdiction bucket, use:
+
+```text
+https://<CLOUDFLARE_ACCOUNT_ID>.eu.r2.cloudflarestorage.com
+```
+
+Keep `S3_USE_PATH_STYLE=false`. The bucket does not need public access, CORS, a
+custom domain, or a Worker because Learnloom reads every artifact through its
+authenticated backend.
 
 ## 2. Configure DNS
 
@@ -118,15 +144,14 @@ change to either requires a fresh image build, not only a container restart.
    container on port `3000`.
 
 The Compose deployment runs a one-shot migration after Postgres becomes
-healthy. The web and worker roles start only after migrations and bucket
-creation succeed. Postgres, MinIO, SearXNG, Valkey, and worker metrics have no
-published ports.
+healthy. The web and worker roles start only after migrations succeed and
+report unhealthy readiness if the configured R2 bucket is unavailable.
+Postgres, SearXNG, Valkey, and worker metrics have no published ports.
 
 `ALLOW_INSECURE_PRIVATE_SERVICES=true` is intentionally fixed in this Compose
-file. It permits non-TLS connections only to local/private service hosts. It
-does not permit an unencrypted public Postgres or S3 endpoint. If Postgres or
-object storage is moved outside the private Compose network, use TLS and remove
-that override.
+file so the application can connect to the private Compose Postgres service
+without TLS. It does not permit an unencrypted public Postgres or object-store
+endpoint; the configured R2 endpoint must use HTTPS.
 
 ## 5. Route the Compose service
 
@@ -138,7 +163,9 @@ ordinary labels injected by that UI.
 
 Click **Preview Compose** before deployment. Verify that Dokploy attaches only
 `web` to its ingress network, preserves the `learnloom-*` Traefik labels, and
-does not publish Postgres, MinIO, SearXNG, Valkey, or port `9090`.
+does not publish Postgres, SearXNG, Valkey, or port `9090`. Confirm the preview
+does not contain the R2 credential values anywhere except the `web` and
+`worker` environment blocks.
 
 The application performs the stricter final username and reserved-name checks.
 The custom wildcard certificate must already be loaded into Traefik.
@@ -147,16 +174,14 @@ The custom wildcard certificate must already be loaded into Traefik.
 
 Click **Deploy** and watch the logs in this order:
 
-1. `postgres` and `minio` start.
-2. `create-bucket` exits successfully.
-3. `migrate` logs no error and exits with code `0`.
-4. `web` logs `web listening` on `:3000`.
-5. `worker` logs its metrics listener and begins polling.
-6. `searxng` and `searxng-valkey` remain healthy/running.
+1. `postgres` starts and becomes healthy.
+2. `migrate` logs no error and exits with code `0`.
+3. `web` logs `web listening` on `:3000`.
+4. `worker` logs its metrics listener and begins polling.
+5. `searxng` and `searxng-valkey` remain healthy/running.
 
-MinIO uses the official pinned image `minio/minio:RELEASE.2025-09-07T16-13-09Z`.
-Do not replace it with an unpinned `latest` image. Set `MINIO_IMAGE` only when
-using an approved private mirror of that exact release.
+The application does not create the production artifact bucket. Provision it
+in Cloudflare and grant the configured token access before deploying.
 
 ## 7. Verify the release
 
@@ -185,20 +210,22 @@ Then complete one browser flow:
 2. Claim `wutsell` (or the desired available lowercase username).
 3. Create a Dossier and confirm its first Issue queues.
 4. Watch the worker logs until generation finishes.
-5. Publish the Personal Site and open
+5. In the R2 bucket, confirm a JSON object exists below
+   `accounts/<account-id>/newsletters/<newsletter-id>/issues/<issue-id>/`.
+6. Publish the Personal Site and open
    `https://wutsell.learnloom.blog`.
-6. Confirm the Resend delivery and Clerk webhook attempts succeed.
+7. Confirm the Resend delivery and Clerk webhook attempts succeed.
 
 ## 8. Backups and routine updates
 
 Before public signup:
 
 - Configure scheduled Postgres backups to storage outside this VM.
-- Back up the `object-data` volume or migrate artifacts to a versioned,
-  encrypted S3 provider.
+- Configure and test an R2 backup or replication policy as part of the same
+  recovery set as Postgres.
 - Test a restore in an isolated environment.
-- Keep `postgres-data`, `object-data`, and Valkey/SearXNG volume deletion
-  protection enabled in Dokploy.
+- Keep `postgres-data` and Valkey/SearXNG volume deletion protection enabled in
+  Dokploy.
 
 For an update, deploy a commit/image that has passed tests. Migrations are
 forward-only: roll back web and worker to the previous image if necessary, but
@@ -219,7 +246,13 @@ unrestricted public signup.
   not local/private.
 - **Web exits with a Clerk production error**: paste the PEM public key with
   its real line breaks and use the exact HTTPS Frontend API origin.
+- **R2 returns `AccessDenied`**: use the Access Key ID and Secret Access Key
+  from an R2 S3 token with Object Read & Write access to the exact bucket, not
+  a general Cloudflare API token.
+- **R2 returns `NoSuchBucket` or a signing error**: verify the exact bucket
+  name, use `S3_REGION=auto`, do not append the bucket to `S3_ENDPOINT`, and
+  use the jurisdiction-specific endpoint when applicable.
 - **Discovery gets `403` from SearXNG**: confirm JSON remains enabled in
   `infra/searxng/settings.yml`.
-- **`readyz` returns `503`**: inspect web logs for the failing Postgres or MinIO
+- **`readyz` returns `503`**: inspect web logs for the failing Postgres or R2
   readiness dependency before restarting containers.
