@@ -15,6 +15,7 @@ import CalmLoader from "./CalmLoader";
 import { SessionActionsProvider } from "./LearningShell";
 import { apiJSON, configureAPI, setCSRFToken } from "./api";
 import type { Profile } from "./types";
+import { preloadWorkspace } from "./useWorkspace";
 
 export default function HostedApp() {
   const path = window.location.pathname;
@@ -95,6 +96,9 @@ function OnboardingGate() {
   useEffect(() => {
     configureAPI(getToken);
     const controller = new AbortController();
+    preloadWorkspace().catch(() => {
+      // useWorkspace owns the learner-facing retry and error state.
+    });
     apiJSON<Profile>("/api/me", { signal: controller.signal })
       .then((body) => {
         setCSRFToken(body.csrfToken);

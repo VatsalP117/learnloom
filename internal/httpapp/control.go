@@ -556,32 +556,54 @@ func (s *Server) newsletterDetail(
 	current session,
 	newsletterID string,
 ) {
-	record, err := s.store.GetNewsletter(
-		request.Context(),
-		current.Account.ID,
-		newsletterID,
+	var (
+		record   store.NewsletterRecord
+		issues   []domain.Issue
+		progress []store.LessonProgress
+		all      []store.NewsletterRecord
+		summary  domain.SourceSummary
+		catalog  []domain.SourceCatalogItem
 	)
-	if err != nil {
-		writeStoreError(response, err)
-		return
-	}
-	issues, err := s.store.ListIssues(
-		request.Context(),
-		current.Account.ID,
-		newsletterID,
-		100,
-	)
-	if err != nil {
-		s.internalError(response, request, err)
-		return
-	}
-	progress, err := s.store.ListLessonProgress(request.Context(), current.Account.ID)
-	if err != nil {
-		s.internalError(response, request, err)
-		return
-	}
-	all, err := s.store.ListNewsletters(request.Context(), current.Account.ID)
-	if err != nil {
+	group, context := errgroup.WithContext(request.Context())
+	group.Go(func() error {
+		var err error
+		record, err = s.store.GetNewsletter(context, current.Account.ID, newsletterID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		issues, err = s.store.ListIssues(context, current.Account.ID, newsletterID, 100)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		progress, err = s.store.ListLessonProgress(context, current.Account.ID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		all, err = s.store.ListNewsletters(context, current.Account.ID)
+		return err
+	})
+	group.Go(func() error {
+		summary, _ = s.store.GetSourceSummary(context, newsletterID)
+		return nil
+	})
+	group.Go(func() error {
+		var err error
+		catalog, err = s.store.ListSourceCatalog(
+			context,
+			current.Account.ID,
+			newsletterID,
+			50,
+		)
+		return err
+	})
+	if err := group.Wait(); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeStoreError(response, err)
+			return
+		}
 		s.internalError(response, request, err)
 		return
 	}
@@ -590,17 +612,6 @@ func (s *Server) newsletterDetail(
 		sidebar = append(sidebar, map[string]any{
 			"id": item.ID, "name": item.Name, "active": item.Active,
 		})
-	}
-	summary, _ := s.store.GetSourceSummary(request.Context(), newsletterID)
-	catalog, err := s.store.ListSourceCatalog(
-		request.Context(),
-		current.Account.ID,
-		newsletterID,
-		50,
-	)
-	if err != nil {
-		s.internalError(response, request, err)
-		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{
 		"csrfToken":        s.csrfToken(current.SessionID),

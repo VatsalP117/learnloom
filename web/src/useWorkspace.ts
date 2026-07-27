@@ -26,6 +26,10 @@ async function loadSnapshot(force: boolean) {
   return snapshotRequest;
 }
 
+export function preloadWorkspace() {
+  return loadSnapshot(false);
+}
+
 export function hydrateWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
   syncLessonProgress(workspace.lessonProgress);
   const newslettersByID = new Map(

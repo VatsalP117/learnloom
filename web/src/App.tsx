@@ -1,16 +1,16 @@
 import { Menu, Plus, Sparkles } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import CalmLoader from "./CalmLoader";
+import LibraryPage from "./LibraryPage";
+import PublishingPage from "./PublishingPage";
+import ReviewPage from "./ReviewPage";
+import StreamsPage from "./StreamsPage";
+import TodayPage from "./TodayPage";
 import type { Site } from "./types";
 
 const IssueDetail = lazy(() => import("./IssueDetail"));
-const LibraryPage = lazy(() => import("./LibraryPage"));
 const NewsletterCreate = lazy(() => import("./NewsletterCreate"));
 const NewsletterDetail = lazy(() => import("./NewsletterDetail"));
-const PublishingPage = lazy(() => import("./PublishingPage"));
-const ReviewPage = lazy(() => import("./ReviewPage"));
-const StreamsPage = lazy(() => import("./StreamsPage"));
-const TodayPage = lazy(() => import("./TodayPage"));
 
 interface AppProps {
   capabilities?: { sourceDiscovery?: boolean };
