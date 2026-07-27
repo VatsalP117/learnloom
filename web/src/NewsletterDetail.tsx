@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import CalmLoader from "./CalmLoader";
 import LearningShell, { AtelierError, formatShortDate } from "./LearningShell";
 import { apiJSON, demoMode } from "./api";
-import { lessonState } from "./learningState";
+import { lessonState, syncLessonProgress } from "./learningState";
 import { invalidateWorkspaceCache } from "./useWorkspace";
 
 export default function NewsletterDetail({ newsletterId }) {
@@ -30,9 +30,12 @@ export default function NewsletterDetail({ newsletterId }) {
   const load = useCallback(async ({ signal }: { signal?: AbortSignal } = {}) => {
     setError("");
     try {
-      setSnapshot(
-        await apiJSON(`/api/newsletters/${encodeURIComponent(newsletterId)}`, { signal }),
+      const nextSnapshot = await apiJSON(
+        `/api/newsletters/${encodeURIComponent(newsletterId)}`,
+        { signal },
       );
+      syncLessonProgress(nextSnapshot.lessonProgress);
+      setSnapshot(nextSnapshot);
     } catch (requestError) {
       if (requestError.name === "AbortError") return;
       setError(requestError.message);
@@ -77,6 +80,7 @@ export default function NewsletterDetail({ newsletterId }) {
   const latest = issues[0];
   const generated = issues.filter((issue) => issue.status === "generated");
   const preparing = issues.find((issue) => ["queued", "generating"].includes(issue.status));
+  const latestPresentation = latest ? lessonPresentation(lessonState(latest.id)) : null;
 
   return (
     <LearningShell active="streams">
@@ -160,13 +164,13 @@ export default function NewsletterDetail({ newsletterId }) {
                       <span><Clock3 size={13} />{newsletter.lessonMinutes} min</span>
                     </div>
                     <h2>{latest.title}</h2>
-                    <p>
-                      Continue this thread with a focused lesson grounded in your source library.
-                    </p>
+                    <p>{latestPresentation?.description}</p>
                     <div className="latest-lesson-footer">
-                      <span>{formatShortDate(latest.createdAt)}</span>
+                      <span>
+                        {formatShortDate(latest.createdAt)} · {latestPresentation?.status}
+                      </span>
                       <a className="atelier-primary" href={lessonHref(latest.id)}>
-                        {lessonState(latest.id).progress ? "Continue lesson" : "Open lesson"}
+                        {latestPresentation?.cta}
                         <ArrowRight size={15} />
                       </a>
                     </div>
@@ -189,55 +193,63 @@ export default function NewsletterDetail({ newsletterId }) {
                   </div>
                   {issues.length ? (
                     <div className="stream-lesson-list">
-                      {issues.map((issue, index) => (
-                        <article className="stream-lesson-row glass-panel" key={issue.id}>
-                          <span className="stream-lesson-index">{String(index + 1).padStart(2, "0")}</span>
-                          <div>
-                            <span>{formatShortDate(issue.createdAt)} · {humanize(issue.status)}</span>
-                            <h3>{issue.title ?? "Lesson in preparation"}</h3>
-                            {issue.error ? <p className="row-error">{issue.error}</p> : null}
-                          </div>
-                          <div className="stream-lesson-actions">
-                            {issue.status === "generated" ? (
-                              <>
-                                <a href={lessonHref(issue.id)}>Read <ArrowRight size={14} /></a>
+                      {issues.map((issue, index) => {
+                        const presentation = lessonPresentation(lessonState(issue.id));
+                        const status = issue.status === "generated" && presentation.status !== "Unread"
+                          ? presentation.status
+                          : humanize(issue.status);
+                        return (
+                          <article className="stream-lesson-row glass-panel" key={issue.id}>
+                            <span className="stream-lesson-index">{String(index + 1).padStart(2, "0")}</span>
+                            <div>
+                              <span>{formatShortDate(issue.createdAt)} · {status}</span>
+                              <h3>{issue.title ?? "Lesson in preparation"}</h3>
+                              {issue.error ? <p className="row-error">{issue.error}</p> : null}
+                            </div>
+                            <div className="stream-lesson-actions">
+                              {issue.status === "generated" ? (
+                                <>
+                                  <a href={lessonHref(issue.id)}>
+                                    {presentation.historyCta} <ArrowRight size={14} />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(busy)}
+                                    onClick={() =>
+                                      submit(
+                                        `/api/issues/${encodeURIComponent(issue.id)}/publication`,
+                                        {
+                                          state: issue.publicationState === "published" ? "hidden" : "published",
+                                        },
+                                        issue.publicationState === "published"
+                                          ? "Lesson hidden from your personal site."
+                                          : "Lesson published to your personal site.",
+                                      )
+                                    }
+                                  >
+                                    {issue.publicationState === "published" ? "Hide from site" : "Publish"}
+                                  </button>
+                                </>
+                              ) : null}
+                              {issue.status === "failed" ? (
                                 <button
                                   type="button"
                                   disabled={Boolean(busy)}
                                   onClick={() =>
                                     submit(
-                                      `/api/issues/${encodeURIComponent(issue.id)}/publication`,
-                                      {
-                                        state: issue.publicationState === "published" ? "hidden" : "published",
-                                      },
-                                      issue.publicationState === "published"
-                                        ? "Lesson hidden from your personal site."
-                                        : "Lesson published to your personal site.",
+                                      `/api/issues/${encodeURIComponent(issue.id)}/retry-generation`,
+                                      {},
+                                      "Lesson queued for generation again.",
                                     )
                                   }
                                 >
-                                  {issue.publicationState === "published" ? "Hide from site" : "Publish"}
+                                  <RotateCcw size={14} /> Retry
                                 </button>
-                              </>
-                            ) : null}
-                            {issue.status === "failed" ? (
-                              <button
-                                type="button"
-                                disabled={Boolean(busy)}
-                                onClick={() =>
-                                  submit(
-                                    `/api/issues/${encodeURIComponent(issue.id)}/retry-generation`,
-                                    {},
-                                    "Lesson queued for generation again.",
-                                  )
-                                }
-                              >
-                                <RotateCcw size={14} /> Retry
-                              </button>
-                            ) : null}
-                          </div>
-                        </article>
-                      ))}
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="atelier-state-card">
@@ -336,6 +348,31 @@ export default function NewsletterDetail({ newsletterId }) {
 function humanize(value) {
   if (!value) return "Waiting";
   return value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " ");
+}
+
+export function lessonPresentation(state: { progress: number; completed: boolean }) {
+  if (state.completed) {
+    return {
+      status: "Completed",
+      cta: "Review lesson",
+      historyCta: "Review",
+      description: "You completed this lesson. Revisit it whenever you want to refresh the idea.",
+    };
+  }
+  if (state.progress > 0) {
+    return {
+      status: `${Math.round(state.progress)}% read`,
+      cta: "Continue lesson",
+      historyCta: "Continue",
+      description: "Continue this lesson from where you left off.",
+    };
+  }
+  return {
+    status: "Unread",
+    cta: "Open lesson",
+    historyCta: "Read",
+    description: "Begin a focused lesson grounded in your source library.",
+  };
 }
 
 function noticeFromLocation() {

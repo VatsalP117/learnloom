@@ -575,6 +575,11 @@ func (s *Server) newsletterDetail(
 		s.internalError(response, request, err)
 		return
 	}
+	progress, err := s.store.ListLessonProgress(request.Context(), current.Account.ID)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
 	all, err := s.store.ListNewsletters(request.Context(), current.Account.ID)
 	if err != nil {
 		s.internalError(response, request, err)
@@ -604,6 +609,7 @@ func (s *Server) newsletterDetail(
 		"sourceSummary":    summary,
 		"sourceCatalog":    sourceCatalogPayloads(catalog),
 		"issues":           issuePayloads(issues),
+		"lessonProgress":   progress,
 		"newsletters":      sidebar,
 	})
 }
