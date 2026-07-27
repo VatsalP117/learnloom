@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual, code-grounded guide to the Learnloom backend architecture.">
+  <title>Learnloom — Backend Architecture Field Guide</title>
+  <style>
+    :root {
+      --paper: #f5f1e8;
+      --paper-deep: #ebe5d9;
+      --ink: #17211d;
+      --muted: #647069;
+      --faint: #8b948e;
+      --card: rgba(255, 253, 248, 0.88);
+      --card-solid: #fffdf8;
+      --line: rgba(31, 55, 45, 0.14);
+      --line-strong: rgba(31, 55, 45, 0.26);
+      --moss: #2f6b4f;
+      --moss-bright: #4f8d68;
+      --sage: #dce9dc;
+      --amber: #b66a28;
+      --amber-soft: #f4dfc7;
+      --blue: #426f82;
+      --blue-soft: #dce9ed;
+      --plum: #77526d;
+      --plum-soft: #eadfe7;
+      --red: #a4493f;
+      --red-soft: #f3dcd8;
+      --shadow: 0 22px 70px rgba(34, 47, 40, 0.08);
+      --shadow-small: 0 8px 24px rgba(34, 47, 40, 0.07);
+      --radius: 18px;
+      --radius-small: 10px;
+      --sidebar: 286px;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      --body: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+      --display: Iowan Old Style, "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    }
+
+    [data-theme="dark"] {
+      --paper: #101713;
+      --paper-deep: #172019;
+      --ink: #edf2eb;
+      --muted: #a9b5ac;
+      --faint: #7f8c83;
+      --card: rgba(25, 35, 29, 0.88);
+      --card-solid: #19231d;
+      --line: rgba(222, 238, 226, 0.12);
+      --line-strong: rgba(222, 238, 226, 0.24);
+      --moss: #79bc91;
+      --moss-bright: #98cbaa;
+      --sage: #253d2c;
+      --amber: #e2a263;
+      --amber-soft: #452f1f;
+      --blue: #83b7c7;
+      --blue-soft: #203944;
+      --plum: #c59bb9;
+      --plum-soft: #402d3b;
+      --red: #e68b80;
+      --red-soft: #482825;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+      --shadow-small: 0 8px 24px rgba(0, 0, 0, 0.22);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 85% 4%, color-mix(in srgb, var(--sage) 75%, transparent), transparent 28rem),
+        radial-gradient(circle at 16% 34%, color-mix(in srgb, var(--amber-soft) 45%, transparent), transparent 34rem),
+        var(--paper);
+      font-family: var(--body);
+      line-height: 1.65;
+      transition: color 180ms ease, background 180ms ease;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .32;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
+      z-index: 20;
+    }
+    a { color: inherit; }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    :focus-visible { outline: 3px solid var(--moss); outline-offset: 3px; }
+
+    .shell { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); min-width: 0; min-height: 100vh; }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 26px 20px 22px;
+      border-right: 1px solid var(--line);
+      background: color-mix(in srgb, var(--paper) 84%, transparent);
+      backdrop-filter: blur(18px);
+      z-index: 10;
+      overflow-y: auto;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; margin: 0 7px 23px; text-decoration: none; }
+    .brand-mark {
+      width: 39px;
+      height: 39px;
+      display: grid;
+      place-items: center;
+      border-radius: 50% 50% 50% 15%;
+      background: var(--moss);
+      color: var(--paper);
+      font-family: var(--display);
+      font-weight: 700;
+      transform: rotate(-5deg);
+      box-shadow: var(--shadow-small);
+    }
+    .brand strong { display: block; font-family: var(--display); font-size: 1.05rem; }
+    .brand span { display: block; color: var(--muted); font-size: .68rem; letter-spacing: .11em; text-transform: uppercase; }
+    .search-wrap { position: relative; margin-bottom: 17px; }
+    .search-wrap svg { position: absolute; left: 12px; top: 12px; width: 15px; color: var(--muted); }
+    #section-search {
+      width: 100%;
+      height: 40px;
+      padding: 0 12px 0 35px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--card);
+    }
+    .nav-label { margin: 16px 9px 7px; color: var(--faint); font-size: .67rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .nav-list { margin: 0; padding: 0; list-style: none; }
+    .nav-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 34px;
+      margin: 1px 0;
+      padding: 6px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: .83rem;
+      transition: 130ms ease;
+    }
+    .nav-list a::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
+    .nav-list a:hover, .nav-list a.active { color: var(--ink); background: var(--card); }
+    .nav-list a.active::before { background: var(--moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--moss) 18%, transparent); }
+    .sidebar-tools { display: flex; gap: 7px; margin-top: 20px; }
+    .tool-button, .menu-button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--card);
+      cursor: pointer;
+      box-shadow: var(--shadow-small);
+    }
+    .tool-button { flex: 1; padding: 6px 9px; font-size: .76rem; }
+    .menu-button { display: none; width: 42px; position: fixed; top: 14px; left: 14px; z-index: 30; }
+
+    main { width: min(1220px, 100%); min-width: 0; padding: 0 clamp(24px, 5vw, 76px) 100px; }
+    .hero { min-height: 92vh; display: flex; flex-direction: column; justify-content: center; padding: 74px 0 54px; position: relative; }
+    .eyebrow { display: flex; align-items: center; gap: 11px; margin: 0 0 22px; color: var(--moss); font-size: .72rem; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 36px; height: 1px; background: currentColor; }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.08; text-wrap: balance; }
+    h1 { max-width: 980px; font-family: var(--display); font-size: clamp(3.4rem, 8.3vw, 8rem); font-weight: 500; letter-spacing: -.065em; }
+    h1 em { color: var(--moss); font-weight: 500; }
+    .hero-lead { max-width: 760px; margin: 30px 0 0; color: var(--muted); font-size: clamp(1.06rem, 1.7vw, 1.3rem); }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 33px; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted); font-size: .75rem; }
+    .pill b { color: var(--ink); }
+    .hero-note { position: absolute; right: 0; bottom: 52px; display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: .72rem; writing-mode: vertical-rl; }
+    .hero-note::after { content: ""; width: 1px; height: 52px; background: var(--line-strong); }
+
+    .section { padding: 86px 0 10px; }
+    .section.filtered-out { display: none; }
+    .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 440px); gap: 44px; align-items: end; margin-bottom: 34px; }
+    .chapter { display: block; margin-bottom: 10px; color: var(--moss); font-family: var(--mono); font-size: .74rem; letter-spacing: .08em; }
+    h2 { font-family: var(--display); font-size: clamp(2.25rem, 4.5vw, 4.45rem); font-weight: 500; letter-spacing: -.045em; }
+    .section-intro { margin: 0; color: var(--muted); font-size: 1rem; }
+    h3 { font-family: var(--display); font-size: 1.56rem; font-weight: 600; letter-spacing: -.02em; }
+    h4 { font-size: .95rem; }
+    p { margin: .65em 0; }
+    code, .code { font-family: var(--mono); font-size: .88em; }
+
+    .callout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--moss);
+      border-radius: 4px var(--radius-small) var(--radius-small) 4px;
+      background: var(--card);
+      box-shadow: var(--shadow-small);
+    }
+    .callout .icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--sage); color: var(--moss); font-weight: 800; }
+    .callout strong { display: block; margin-bottom: 3px; }
+    .callout p { margin: 0; color: var(--muted); }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: var(--shadow-small);
+    }
+    .card-pad { padding: 24px; }
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .metric { padding: 22px; }
+    .metric span { display: block; color: var(--muted); font-size: .75rem; letter-spacing: .07em; text-transform: uppercase; }
+    .metric strong { display: block; margin: 9px 0 2px; font-family: var(--display); font-size: 2.25rem; line-height: 1; font-weight: 500; }
+    .metric small { color: var(--faint); }
+
+    .diagram {
+      position: relative;
+      padding: clamp(20px, 3.5vw, 38px);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      background:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        var(--card);
+      background-size: 26px 26px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .diagram-label { margin-bottom: 25px; color: var(--faint); font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+    .node {
+      position: relative;
+      padding: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: var(--card-solid);
+      box-shadow: var(--shadow-small);
+      z-index: 2;
+    }
+    .node strong { display: block; font-size: .91rem; }
+    .node small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.35; }
+    .node .tag { display: inline-block; margin-bottom: 8px; color: var(--moss); font-family: var(--mono); font-size: .63rem; letter-spacing: .08em; text-transform: uppercase; }
+    .node.web { border-top: 4px solid var(--blue); }
+    .node.worker { border-top: 4px solid var(--amber); }
+    .node.data { border-top: 4px solid var(--moss); }
+    .node.external { border-top: 4px solid var(--plum); }
+    .arrow { display: flex; align-items: center; justify-content: center; min-width: 32px; color: var(--faint); font-size: 1.45rem; }
+    .arrow.vertical { min-height: 30px; transform: rotate(90deg); }
+    .landscape { display: grid; grid-template-columns: minmax(120px, .75fr) 42px minmax(160px, 1fr) 42px minmax(190px, 1.15fr); gap: 10px; align-items: center; }
+    .external-stack, .role-stack { display: grid; gap: 10px; }
+    .role-stack .node { padding: 14px 16px; }
+    .data-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 20px; color: var(--muted); font-size: .72rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 9px; height: 9px; border-radius: 2px; }
+
+    .principle { padding: 24px; position: relative; overflow: hidden; }
+    .principle::after { content: attr(data-number); position: absolute; right: 12px; bottom: -22px; color: color-mix(in srgb, var(--moss) 10%, transparent); font-family: var(--display); font-size: 6rem; line-height: 1; }
+    .principle h3 { margin-bottom: 10px; }
+    .principle p { color: var(--muted); font-size: .92rem; }
+
+    .role { min-height: 238px; padding: 24px; }
+    .role-icon { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: 28px; border-radius: 11px; font-family: var(--mono); font-size: .75rem; font-weight: 800; }
+    .role:nth-child(1) .role-icon { color: var(--blue); background: var(--blue-soft); }
+    .role:nth-child(2) .role-icon { color: var(--amber); background: var(--amber-soft); }
+    .role:nth-child(3) .role-icon { color: var(--moss); background: var(--sage); }
+    .role p { color: var(--muted); font-size: .89rem; }
+    .role ul, .clean-list { padding: 0; margin: 14px 0 0; list-style: none; }
+    .role li, .clean-list li { padding: 6px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+
+    .flow { display: grid; gap: 0; }
+    .flow-step { display: grid; grid-template-columns: 46px 1fr; gap: 16px; position: relative; padding-bottom: 24px; }
+    .flow-step:not(:last-child)::before { content: ""; position: absolute; left: 22px; top: 42px; bottom: 2px; width: 1px; background: var(--line-strong); }
+    .step-num { width: 45px; height: 45px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--card-solid); color: var(--moss); font-family: var(--mono); font-size: .72rem; z-index: 2; }
+    .step-body { padding: 9px 0 0; }
+    .step-body p { margin: 6px 0 0; color: var(--muted); font-size: .9rem; }
+
+    .routing { display: grid; grid-template-columns: .85fr 54px 1.4fr; align-items: center; gap: 6px; }
+    .routing-branches { display: grid; gap: 10px; }
+    .route-row { display: grid; grid-template-columns: 130px 32px 1fr; align-items: center; gap: 7px; }
+    .host-chip { padding: 9px; border-radius: 8px; background: var(--sage); color: var(--moss); font-family: var(--mono); font-size: .7rem; text-align: center; }
+
+    .pipeline { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 13px; }
+    .stage { min-height: 163px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--card-solid); position: relative; }
+    .stage::after { content: "→"; position: absolute; top: 50%; right: -11px; color: var(--faint); z-index: 3; }
+    .stage:nth-child(4)::after, .stage:last-child::after { display: none; }
+    .stage-num { color: var(--faint); font-family: var(--mono); font-size: .65rem; }
+    .stage h4 { margin: 22px 0 7px; }
+    .stage p { margin: 0; color: var(--muted); font-size: .77rem; line-height: 1.45; }
+    .stage.structured { border-top: 3px solid var(--plum); }
+    .stage.textual { border-top: 3px solid var(--blue); }
+    .stage.parallel { border-top: 3px solid var(--amber); }
+    .stage.gate { border-top: 3px solid var(--moss); }
+
+    .tabs { margin-top: 20px; }
+    .tab-buttons { display: flex; gap: 7px; margin-bottom: 12px; }
+    .tab-button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; cursor: pointer; font-size: .78rem; }
+    .tab-button.active { background: var(--moss); color: var(--paper); border-color: var(--moss); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .states { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .state { padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--card-solid); font-family: var(--mono); font-size: .72rem; }
+    .state.success { color: var(--moss); background: var(--sage); }
+    .state.warning { color: var(--amber); background: var(--amber-soft); }
+    .state.danger { color: var(--red); background: var(--red-soft); }
+    .branch { padding: 22px; }
+    .branch h4 { margin-bottom: 14px; }
+    .branch p { color: var(--muted); font-size: .84rem; }
+
+    .schema { overflow-x: auto; }
+    .schema-groups { min-width: 900px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: start; }
+    .schema-group { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--card-solid); }
+    .schema-group > strong { display: block; margin-bottom: 12px; color: var(--moss); font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; }
+    .table { margin-top: 8px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: .66rem; }
+    .table b { display: block; color: var(--ink); font-size: .72rem; }
+    .table span { color: var(--faint); }
+
+    .package-map { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .package { padding: 20px; }
+    .package-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .package code { color: var(--moss); font-weight: 700; }
+    .package .kind { padding: 4px 8px; border-radius: 999px; background: var(--sage); color: var(--moss); font-size: .63rem; }
+    .package p { color: var(--muted); font-size: .86rem; }
+    .package small { color: var(--faint); }
+
+    .boundary { padding: 23px; }
+    .boundary .boundary-icon { display: inline-flex; padding: 6px 9px; margin-bottom: 17px; border-radius: 7px; background: var(--red-soft); color: var(--red); font-family: var(--mono); font-size: .67rem; }
+    .boundary p { color: var(--muted); font-size: .87rem; }
+
+    details { border-top: 1px solid var(--line); }
+    details:first-child { border-top: 0; }
+    summary { padding: 15px 2px; cursor: pointer; font-weight: 700; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; float: right; color: var(--moss); }
+    details[open] summary::after { content: "−"; }
+    details > div { padding: 0 2px 17px; color: var(--muted); font-size: .9rem; }
+
+    .source-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line);
+      text-decoration: none;
+      color: var(--muted);
+      font-size: .83rem;
+    }
+    .source-link:hover { color: var(--moss); }
+    .source-link code { color: var(--ink); }
+    .source-link span { font-size: .7rem; }
+
+    .footer { margin-top: 100px; padding-top: 28px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 24px; color: var(--muted); font-size: .78rem; }
+    .footer strong { color: var(--ink); }
+
+    @media (max-width: 1080px) {
+      :root { --sidebar: 246px; }
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .pipeline { grid-template-columns: repeat(2, 1fr); }
+      .stage:nth-child(2)::after { display: none; }
+      .stage:nth-child(4)::after { display: initial; }
+      .landscape { grid-template-columns: 1fr; }
+      .landscape > .arrow { transform: rotate(90deg); min-height: 26px; }
+      .data-row { margin-top: 0; }
+    }
+    @media (max-width: 760px) {
+      .shell { display: block; }
+      .sidebar { position: fixed; inset: 0 auto 0 0; width: min(88vw, 310px); transform: translateX(-105%); transition: transform 180ms ease; box-shadow: var(--shadow); }
+      .sidebar.open { transform: translateX(0); }
+      .menu-button { display: block; }
+      body { overflow-x: hidden; }
+      main { width: 100vw; max-width: 100vw; padding-inline: 20px; overflow: hidden; }
+      .section, .hero { min-width: 0; }
+      .hero { min-height: auto; padding-top: 110px; }
+      .hero-note { display: none; }
+      .section-head { grid-template-columns: 1fr; gap: 14px; }
+      .grid-2, .grid-3, .grid-4, .package-map { grid-template-columns: 1fr; }
+      .routing { grid-template-columns: 1fr; }
+      .routing > .arrow { transform: rotate(90deg); }
+      .route-row { grid-template-columns: 104px 24px 1fr; }
+      .pipeline { grid-template-columns: 1fr; }
+      .stage::after, .stage:nth-child(2)::after, .stage:nth-child(4)::after { display: block; content: "↓"; top: auto; bottom: -16px; right: 50%; }
+      .stage:last-child::after { display: none; }
+      .footer { flex-direction: column; }
+    }
+    @media print {
+      :root { --paper: #fff; --card: #fff; --card-solid: #fff; }
+      body { background: white; font-size: 10pt; }
+      .sidebar, .menu-button, .sidebar-tools, .hero-note { display: none !important; }
+      .shell { display: block; }
+      main { width: 100%; padding: 0; }
+      .hero { min-height: auto; page-break-after: always; }
+      .section { padding-top: 34px; }
+      .card, .diagram { box-shadow: none; break-inside: avoid; }
+      details > div { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <button class="menu-button" id="menu-button" aria-label="Open table of contents">☰</button>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#top">
+        <span class="brand-mark">L</span>
+        <span><strong>Learnloom</strong><span>Architecture field guide</span></span>
+      </a>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+        <input id="section-search" type="search" placeholder="Filter chapters…" aria-label="Filter chapters">
+      </div>
+      <p class="nav-label">Mental model</p>
+      <nav aria-label="Architecture chapters">
+        <ul class="nav-list">
+          <li><a href="#overview">System overview</a></li>
+          <li><a href="#principles">Design principles</a></li>
+          <li><a href="#runtime">Runtime roles</a></li>
+          <li><a href="#request-path">HTTP &amp; tenancy</a></li>
+          <li><a href="#issue-life">Issue lifecycle</a></li>
+          <li><a href="#sources">Source intelligence</a></li>
+          <li><a href="#dossier">Dossier pipeline</a></li>
+          <li><a href="#persistence">Data model</a></li>
+          <li><a href="#reliability">Claims &amp; retries</a></li>
+          <li><a href="#security">Security boundaries</a></li>
+          <li><a href="#packages">Package atlas</a></li>
+          <li><a href="#operations">Operations</a></li>
+          <li><a href="#traces">End-to-end traces</a></li>
+          <li><a href="#reading-order">Reading order</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-tools">
+        <button class="tool-button" id="theme-toggle" type="button">Dark mode</button>
+        <button class="tool-button" type="button" onclick="window.print()">Print / PDF</button>
+      </div>
+    </aside>
+
+    <main id="top">
+      <header class="hero">
+        <p class="eyebrow">Code-grounded · July 2026</p>
+        <h1>The backend,<br><em>unfolded.</em></h1>
+        <p class="hero-lead">
+          A visual field guide to how Learnloom turns an authenticated learning intent into
+          source-grounded, durable Knowledge Dossiers—and keeps that process safe, fair,
+          retryable, publishable, and observable.
+        </p>
+        <div class="hero-meta">
+          <span class="pill"><b>Shape</b> modular monolith</span>
+          <span class="pill"><b>Runtime</b> Go + React</span>
+          <span class="pill"><b>Truth</b> PostgreSQL</span>
+          <span class="pill"><b>Artifacts</b> S3-compatible</span>
+          <span class="pill"><b>Identity</b> Clerk</span>
+          <span class="pill"><b>Delivery</b> Resend</span>
+        </div>
+        <span class="hero-note">Scroll to trace the system</span>
+      </header>
+
+      <section class="section" id="overview" data-search="overview system landscape architecture modular monolith">
+        <div class="section-head">
+          <div><span class="chapter">01 / OVERVIEW</span><h2>One product, three process roles.</h2></div>
+          <p class="section-intro">Learnloom is a hosted modular monolith. It ships as one Go binary, but runs as separate web, worker, and migration processes around a shared PostgreSQL core.</p>
+        </div>
+
+        <div class="diagram">
+          <div class="diagram-label">System landscape · solid arrows are runtime calls</div>
+          <div class="landscape">
+            <div class="external-stack">
+              <div class="node external"><span class="tag">People</span><strong>Browser / learner</strong><small>React control plane and public reading pages</small></div>
+              <div class="node external"><span class="tag">Identity</span><strong>Clerk</strong><small>Session verification + lifecycle webhooks</small></div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="role-stack">
+              <div class="node web"><span class="tag">learnloom web</span><strong>Hosted HTTP boundary</strong><small>Hosts, auth, CSRF, JSON APIs, static assets, public sites</small></div>
+              <div class="node worker"><span class="tag">learnloom worker</span><strong>Durable work engine</strong><small>Scheduling, claims, evidence, generation, delivery, deletion</small></div>
+              <div class="node data"><span class="tag">learnloom migrate</span><strong>Schema owner</strong><small>Embedded, transactional, advisory-locked migrations</small></div>
+            </div>
+            <div class="arrow">↔</div>
+            <div>
+              <div class="node data"><span class="tag">System of record</span><strong>PostgreSQL</strong><small>Accounts, streams, Issues, claims, history, source catalog, checkpoints, receipts</small></div>
+              <div class="data-row">
+                <div class="node data"><strong>S3</strong><small>Immutable Dossier artifacts</small></div>
+                <div class="node external"><strong>Providers</strong><small>Model · SearXNG · Resend · web sources</small></div>
+              </div>
+            </div>
+          </div>
+          <div class="legend">
+            <span><i style="background:var(--blue)"></i> synchronous web path</span>
+            <span><i style="background:var(--amber)"></i> asynchronous worker path</span>
+            <span><i style="background:var(--moss)"></i> durable state</span>
+            <span><i style="background:var(--plum)"></i> external trust boundary</span>
+          </div>
+        </div>
+
+        <div class="grid-4" style="margin-top:16px">
+          <div class="card metric"><span>Binary roles</span><strong>3</strong><small>web · worker · migrate</small></div>
+          <div class="card metric"><span>Deep backend modules</span><strong>9</strong><small>under <code>internal/</code></small></div>
+          <div class="card metric"><span>Schema version</span><strong>4</strong><small>embedded migrations</small></div>
+          <div class="card metric"><span>App tables</span><strong>19</strong><small>plus migration metadata</small></div>
+        </div>
+        <div class="callout" style="margin-top:16px">
+          <span class="icon">↳</span>
+          <div><strong>The shortest useful mental model</strong><p>The web role records intent. PostgreSQL makes that intent durable. Workers turn it into immutable artifacts. The web role later reads the durable projection and artifacts back to learners.</p></div>
+        </div>
+      </section>
+
+      <section class="section" id="principles" data-search="principles deep modules postgres durable adapters">
+        <div class="section-head">
+          <div><span class="chapter">02 / PRINCIPLES</span><h2>Why the architecture has this shape.</h2></div>
+          <p class="section-intro">The apparent complexity is mostly deliberate containment: each difficult concern has one owner, and cross-cutting invariants live where they can be enforced consistently.</p>
+        </div>
+        <div class="grid-2">
+          <article class="card principle" data-number="1"><h3>Postgres owns mutable truth</h3><p>No worker-local queues or filesystem state decide what happens next. Scheduling, claims, attempts, quotas, retries, receipts, and deletion all survive process loss.</p></article>
+          <article class="card principle" data-number="2"><h3>Packages follow product responsibilities</h3><p>The code is not split into generic controller/service/repository layers. <code>source</code>, <code>dossier</code>, <code>execution</code>, and <code>failure</code> are deep modules with meaningful behavior.</p></article>
+          <article class="card principle" data-number="3"><h3>Generation and delivery are separate</h3><p>An email retry never spends model tokens again. A generated Dossier and its delivery receipt have independent claims, attempt budgets, and terminal states.</p></article>
+          <article class="card principle" data-number="4"><h3>Untrusted input is normalized once</h3><p>All source URLs pass through one bounded, DNS-pinned acquisition path. Search results are candidates only; extracted snapshots become evidence.</p></article>
+          <article class="card principle" data-number="5"><h3>Public state is a safe projection</h3><p>Internal failure detail stays in attempt records and structured logs. Learner surfaces receive stable codes, safe messages, retryability, and incident IDs.</p></article>
+          <article class="card principle" data-number="6"><h3>Artifacts are immutable</h3><p>Dossier JSON, Markdown, and HTML are rendered together, checksummed, compressed, and written under opaque account/Issue/generation keys.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="runtime" data-search="runtime web worker migrate roles startup dependencies">
+        <div class="section-head">
+          <div><span class="chapter">03 / RUNTIME</span><h2>Same binary, different dependency graphs.</h2></div>
+          <p class="section-intro"><code>cmd/learnloom/main.go</code> validates configuration per role and constructs only the providers that role needs. This keeps deployment simple while allowing independent scaling.</p>
+        </div>
+        <div class="grid-3">
+          <article class="card role">
+            <span class="role-icon">HTTP</span><h3>web</h3>
+            <p>Serves the React build, authenticated JSON control plane, public learner subdomains, Clerk webhook, and health/metrics surfaces.</p>
+            <ul><li>Needs Postgres + S3 + Clerk</li><li>Does not call the model or Resend</li><li>HTTP :3000 by default</li></ul>
+          </article>
+          <article class="card role">
+            <span class="role-icon">JOB</span><h3>worker</h3>
+            <p>Polls durable work, freezes evidence, runs the Dossier pipeline, stores artifacts, delivers email, and completes deletion work.</p>
+            <ul><li>Needs Postgres + S3 + model + Resend</li><li>Optional SearXNG discovery</li><li>Metrics/readiness :9090</li></ul>
+          </article>
+          <article class="card role">
+            <span class="role-icon">SQL</span><h3>migrate</h3>
+            <p>Serially applies SQL embedded in the Go binary and exits. Each migration is transactional and protected by a Postgres advisory lock.</p>
+            <ul><li>Needs Postgres only</li><li>Runs before web and worker rollout</li><li>Schema mismatch fails readiness</li></ul>
+          </article>
+        </div>
+        <div class="card card-pad" style="margin-top:16px">
+          <h3>Startup composition</h3>
+          <div class="grid-2" style="margin-top:20px">
+            <div class="flow">
+              <div class="flow-step"><span class="step-num">W1</span><div class="step-body"><strong>Open Postgres + S3</strong><p>Both are readiness-checked before serving.</p></div></div>
+              <div class="flow-step"><span class="step-num">W2</span><div class="step-body"><strong>Create <code>httpapp.Server</code></strong><p>Inject store, artifacts, static filesystem, Clerk configuration, limits, and capability flags.</p></div></div>
+              <div class="flow-step"><span class="step-num">W3</span><div class="step-body"><strong>Serve with bounded HTTP timeouts</strong><p>Header 10s · read 30s · write 2m · idle 60s · 32 KiB headers.</p></div></div>
+            </div>
+            <div class="flow">
+              <div class="flow-step"><span class="step-num">J1</span><div class="step-body"><strong>Open Postgres + S3 + model</strong><p>Construct the source acquisition and optional search adapter.</p></div></div>
+              <div class="flow-step"><span class="step-num">J2</span><div class="step-body"><strong>Compose Generator + Worker</strong><p>Execution gets narrow interfaces for lifecycle, production, artifacts, mail, and sources.</p></div></div>
+              <div class="flow-step"><span class="step-num">J3</span><div class="step-body"><strong>Poll until shutdown</strong><p>On SIGTERM, stop claiming, keep renewing active claims, drain, then explicitly release overdue work.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="request-path" data-search="http host routing apex app tenant subdomain clerk csrf origin auth">
+        <div class="section-head">
+          <div><span class="chapter">04 / HTTP &amp; TENANCY</span><h2>The Host header chooses the product surface.</h2></div>
+          <p class="section-intro">Routing begins with strict hostname classification. There is no “default tenant”: unknown hosts receive 421 before application routing.</p>
+        </div>
+        <div class="diagram">
+          <div class="diagram-label">Host-first router</div>
+          <div class="routing">
+            <div class="node web"><span class="tag">Every request</span><strong><code>Server.ServeHTTP</code></strong><small>Request ID · security headers · panic recovery · metrics · structured log</small></div>
+            <div class="arrow">→</div>
+            <div class="routing-branches">
+              <div class="route-row"><span class="host-chip">www.root</span><span class="arrow">→</span><div class="node"><strong>308 to apex</strong><small>Canonical marketing origin</small></div></div>
+              <div class="route-row"><span class="host-chip">root</span><span class="arrow">→</span><div class="node"><strong>Marketing SPA</strong><small><code>/</code>, privacy, terms, hashed assets</small></div></div>
+              <div class="route-row"><span class="host-chip">app.root</span><span class="arrow">→</span><div class="node"><strong>Control plane</strong><small>React SPA, API, Clerk webhook, health, metrics</small></div></div>
+              <div class="route-row"><span class="host-chip">user.root</span><span class="arrow">→</span><div class="node"><strong>Public reading</strong><small>Server-rendered site, topic, Dossier, sitemap, robots</small></div></div>
+              <div class="route-row"><span class="host-chip">anything else</span><span class="arrow">→</span><div class="node" style="border-color:var(--red)"><strong>421 rejected</strong><small>Arbitrary Host headers cannot select a tenant</small></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px">
+          <div class="card card-pad">
+            <h3>Authenticated mutation path</h3>
+            <div class="flow" style="margin-top:20px">
+              <div class="flow-step"><span class="step-num">1</span><div class="step-body"><strong>Verify Clerk session</strong><p>Bearer token or <code>__session</code> cookie; authorized party must match the app origin.</p></div></div>
+              <div class="flow-step"><span class="step-num">2</span><div class="step-body"><strong>Resolve Account</strong><p><code>EnsureAccount</code> maps the verified Clerk subject to internal Account state.</p></div></div>
+              <div class="flow-step"><span class="step-num">3</span><div class="step-body"><strong>Enforce mutation policy</strong><p>Exact Origin, session-bound HMAC CSRF token, and JSON content type.</p></div></div>
+              <div class="flow-step"><span class="step-num">4</span><div class="step-body"><strong>Execute owner-scoped query</strong><p>Account identity is passed into store methods; client-supplied ownership is never trusted.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <h3>Three presentation styles</h3>
+            <div style="margin-top:13px">
+              <details open><summary>React SPA shell</summary><div>The apex and app hosts receive the built <code>web/dist/index.html</code>. Hashed assets are cached for a year; the HTML shell is <code>no-store</code>.</div></details>
+              <details><summary>JSON control API</summary><div>Workspace, library, streams, Issues, progress, publication, retry, site settings, capability discovery, and performance vitals. Stable problem responses map store errors without leaking internals.</div></details>
+              <details><summary>Server-rendered public reading</summary><div>Username subdomains query only public, visible, generated state; fetch the immutable artifact; inject canonical metadata; and return restrictive reading headers.</div></details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="issue-life" data-search="issue lifecycle schedule manual dispatch claim generate artifact complete delivery">
+        <div class="section-head">
+          <div><span class="chapter">05 / ISSUE LIFECYCLE</span><h2>An Issue is the durable unit of learning work.</h2></div>
+          <p class="section-intro">A Newsletter describes recurring intent. An Issue is one scheduled or manual attempt to produce a Dossier from that intent.</p>
+        </div>
+        <div class="card card-pad">
+          <div class="states">
+            <span class="state">scheduled intent</span><span class="arrow">→</span>
+            <span class="state">queued</span><span class="arrow">→</span>
+            <span class="state warning">generating</span><span class="arrow">→</span>
+            <span class="state success">generated</span><span class="arrow">→</span>
+            <span class="state">delivery pending</span><span class="arrow">→</span>
+            <span class="state success">delivered</span>
+          </div>
+          <div class="grid-3" style="margin-top:22px">
+            <div class="card branch"><h4>Generation failure</h4><div class="states"><span class="state warning">generating</span><span class="arrow">↘</span><span class="state danger">failed</span></div><p>Retryable failures return to <code>queued</code> with exponential backoff until the attempt budget is exhausted.</p></div>
+            <div class="card branch"><h4>Delivery failure</h4><div class="states"><span class="state">delivering</span><span class="arrow">↘</span><span class="state danger">failed</span></div><p>Delivery can retry independently. Explicit user action can move a failed receipt back to pending.</p></div>
+            <div class="card branch"><h4>Ambiguous delivery</h4><div class="states"><span class="state">delivering</span><span class="arrow">↘</span><span class="state warning">unknown</span></div><p>Never automatically replayed: the provider may have accepted the request before the claim was lost.</p></div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px">
+          <div class="callout"><span class="icon">A</span><div><strong>Artifact first, database second</strong><p>The worker writes and checksums the artifact before <code>CompleteIssue</code> atomically records generated state, history, and a pending delivery receipt.</p></div></div>
+          <div class="callout"><span class="icon">D</span><div><strong>Delivery is not part of generation</strong><p>Its own claim token, lease, attempt count, external ID, and status isolate provider ambiguity from expensive model work.</p></div></div>
+        </div>
+      </section>
+
+      <section class="section" id="sources" data-search="source intelligence discovery searxng ssrf snapshots evidence feeds article">
+        <div class="section-head">
+          <div><span class="chapter">06 / SOURCES</span><h2>Search discovers candidates. Snapshots become evidence.</h2></div>
+          <p class="section-intro">The source module is a security boundary and an evidence engine. It resolves learner-provided or discovered URLs through the same safe path, then freezes the exact ordered evidence set on the Issue.</p>
+        </div>
+        <div class="diagram">
+          <div class="diagram-label">Catalog-first source intelligence</div>
+          <div class="pipeline">
+            <div class="stage structured"><span class="stage-num">01</span><h4>Load catalog</h4><p>Active provided and discovered <code>source_specs</code> for the Newsletter.</p></div>
+            <div class="stage textual"><span class="stage-num">02</span><h4>Resolve safely</h4><p>Fetch endpoint, normalize feed/article, extract text, update endpoint health.</p></div>
+            <div class="stage gate"><span class="stage-num">03</span><h4>Snapshot</h4><p>Persist immutable content + canonical URL + SHA-256 + metadata.</p></div>
+            <div class="stage parallel"><span class="stage-num">04</span><h4>Check sufficiency</h4><p>At least 4 usable items or one substantial exact article by default.</p></div>
+            <div class="stage structured"><span class="stage-num">05</span><h4>Discover if needed</h4><p>SearXNG queries only when policy permits and catalog evidence is short.</p></div>
+            <div class="stage textual"><span class="stage-num">06</span><h4>Resolve candidates</h4><p>Snippets are discarded as evidence; bounded top candidates use native fetch.</p></div>
+            <div class="stage gate"><span class="stage-num">07</span><h4>Rank + dedupe</h4><p>Stable selection by usability, title/URL identity, recency, and max item count.</p></div>
+            <div class="stage gate"><span class="stage-num">08</span><h4>Freeze on Issue</h4><p><code>issue_sources</code> records exact snapshot IDs and ordering for every retry.</p></div>
+          </div>
+        </div>
+        <div class="grid-3" style="margin-top:16px">
+          <article class="card card-pad"><h3>provided</h3><p class="section-intro">Use only the learner’s catalog. Insufficient evidence fails without autonomous search.</p></article>
+          <article class="card card-pad"><h3>discovered</h3><p class="section-intro">Autonomous search can fill the catalog. Generation requires the hard evidence minimum.</p></article>
+          <article class="card card-pad"><h3>hybrid</h3><p class="section-intro">Start with provided sources; search only to close a gap. A sufficient existing catalog can survive search outage.</p></article>
+        </div>
+        <div class="card card-pad" style="margin-top:16px">
+          <h3>SSRF and acquisition controls</h3>
+          <div class="grid-2" style="margin-top:15px">
+            <ul class="clean-list">
+              <li>Only HTTP and HTTPS; no URL credentials</li>
+              <li>Reject localhost, private, reserved, link-local, multicast, and documentation ranges</li>
+              <li>Resolve DNS first and pin the connection to a validated public IP</li>
+              <li>Revalidate every redirect; cap redirect count</li>
+            </ul>
+            <ul class="clean-list">
+              <li>TLS 1.2 minimum and bounded connection/header timeouts</li>
+              <li>Content-type allowlists for feeds and articles</li>
+              <li>Strict feed/article byte limits and character budgets</li>
+              <li>Conditional requests with ETag and Last-Modified</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="dossier" data-search="dossier generator curator blueprint researcher skeptic teacher examiner exploration editor quality model">
+        <div class="section-head">
+          <div><span class="chapter">07 / DOSSIER PIPELINE</span><h2>A small editorial room, encoded as stages.</h2></div>
+          <p class="section-intro">The generator is not one giant prompt. It progressively narrows evidence, plans teaching, checks claims, writes, tests recall, edits, and runs a deterministic quality gate.</p>
+        </div>
+        <div class="diagram">
+          <div class="diagram-label">Model stages · purple = structured contract · blue = text · amber = optional parallel · green = deterministic gate</div>
+          <div class="pipeline">
+            <div class="stage structured"><span class="stage-num">01 · CHECKPOINT</span><h4>Curator</h4><p>Selects evidence IDs and a coherent theme. JSON contract is validated against available sources.</p></div>
+            <div class="stage structured"><span class="stage-num">02 · CHECKPOINT</span><h4>Blueprint</h4><p>Defines objective, prerequisites, mechanism, example, misconception, experiment, and continuity.</p></div>
+            <div class="stage textual"><span class="stage-num">03 · CHECKPOINT</span><h4>Researcher</h4><p>Builds a source-grounded research brief within the intermediate context budget.</p></div>
+            <div class="stage textual"><span class="stage-num">04 · CHECKPOINT</span><h4>Skeptic</h4><p>Challenges weak claims, missing nuance, evidence fit, and misleading simplifications.</p></div>
+            <div class="stage textual"><span class="stage-num">05 · CHECKPOINT</span><h4>Teacher</h4><p>Writes the lesson for learner level, goal, history, citations, and time budget.</p></div>
+            <div class="stage parallel"><span class="stage-num">06 · PARALLEL</span><h4>Examiner</h4><p>Produces practice and numbered answers from the source-grounded lesson.</p></div>
+            <div class="stage parallel"><span class="stage-num">07 · OPTIONAL</span><h4>Exploration</h4><p>Runs beside Examiner when AI exploration is enabled.</p></div>
+            <div class="stage structured"><span class="stage-num">08 · REPAIRABLE</span><h4>Editor</h4><p>Returns lesson, critique, practice, exploration, and notes under a strict JSON contract.</p></div>
+          </div>
+          <div class="node data" style="margin-top:14px"><span class="tag">09 · deterministic, no model judgment</span><strong>Quality gate → render JSON + Markdown + HTML → Learning History projection</strong><small>Checks required sections, citation IDs, answer keys, blueprint coverage, history continuity, exploration contract, and lesson time-fit.</small></div>
+        </div>
+
+        <div class="tabs" data-tabs>
+          <div class="tab-buttons" role="tablist">
+            <button class="tab-button active" data-tab="contracts" type="button">Contract repair</button>
+            <button class="tab-button" data-tab="checkpoints" type="button">Checkpoint reuse</button>
+            <button class="tab-button" data-tab="fallbacks" type="button">Editorial fallback</button>
+            <button class="tab-button" data-tab="context" type="button">Context budgets</button>
+          </div>
+          <div class="card card-pad tab-panel active" data-panel="contracts"><h3>Structured stages get one repair attempt</h3><p class="section-intro">Curator, Blueprint, and Editor outputs are decoded with unknown JSON fields rejected, then validated. A failed contract is summarized into a safe repair instruction and tried once more; repeated drift becomes a classified, retryable content-quality failure.</p></div>
+          <div class="card card-pad tab-panel" data-panel="checkpoints"><h3>Reuse requires an exact fingerprint</h3><p class="section-intro">The fingerprint incorporates pipeline version, model name, Newsletter learning settings, recent Learning History, and frozen Issue evidence. A restored structured checkpoint is validated again against today’s contract. Successful completion deletes the Issue’s checkpoints.</p></div>
+          <div class="card card-pad tab-panel" data-panel="fallbacks"><h3>Validated work is preserved when the editor regresses it</h3><p class="section-intro">If the editor damages an otherwise valid teacher lesson or examiner answer key, the generator can keep the independently validated outputs. Editor candidates that fail the current contract are never checkpointed.</p></div>
+          <div class="card card-pad tab-panel" data-panel="context"><h3>Each stage receives weighted, bounded context</h3><p class="section-intro">Sources and intermediate material are rune-limited and assembled with per-section weights. The required practice draft is protected in editor input; source candidate and article allocations adapt to item count.</p></div>
+        </div>
+      </section>
+
+      <section class="section" id="persistence" data-search="postgres data model schema tables accounts newsletters issues sources history receipts">
+        <div class="section-head">
+          <div><span class="chapter">08 / PERSISTENCE</span><h2>The database is both record and coordinator.</h2></div>
+          <p class="section-intro">PostgreSQL stores product data, scheduling intent, coordination leases, attempt evidence, rate buckets, runtime controls, and deletion work. S3 stores only immutable artifact payloads.</p>
+        </div>
+        <div class="diagram schema">
+          <div class="diagram-label">Logical schema groups · compact relationship map</div>
+          <div class="schema-groups">
+            <div class="schema-group">
+              <strong>Identity &amp; product</strong>
+              <div class="table"><b>accounts</b><span>Clerk mapping · status · email</span></div>
+              <div class="table"><b>personal_sites</b><span>1:1 owner · username · visibility</span></div>
+              <div class="table"><b>newsletters</b><span>N:1 owner · learning intent · schedule · source mode</span></div>
+              <div class="table"><b>lesson_progress</b><span>account × Issue · 0–100 · completion</span></div>
+            </div>
+            <div class="schema-group">
+              <strong>Issue execution</strong>
+              <div class="table"><b>issues</b><span>N:1 Newsletter · state · lease · artifact pointer</span></div>
+              <div class="table"><b>issue_attempts</b><span>append-only attempt context + failure</span></div>
+              <div class="table"><b>issue_stage_attempts</b><span>stage timings + classified failure</span></div>
+              <div class="table"><b>issue_generation_checkpoints</b><span>fingerprint × stage output</span></div>
+              <div class="table"><b>learning_history</b><span>successful learning projection</span></div>
+              <div class="table"><b>delivery_receipts</b><span>1:1 Issue · separate delivery state</span></div>
+            </div>
+            <div class="schema-group">
+              <strong>Source intelligence</strong>
+              <div class="table"><b>source_specs</b><span>catalog entry · origin · state · scope</span></div>
+              <div class="table"><b>source_endpoints</b><span>resolved URL · health · validators</span></div>
+              <div class="table"><b>source_snapshots</b><span>immutable extracted evidence</span></div>
+              <div class="table"><b>issue_sources</b><span>frozen ordered Issue evidence</span></div>
+              <div class="table"><b>discovery_runs</b><span>query bundle · outcomes · degradation</span></div>
+            </div>
+            <div class="schema-group">
+              <strong>Platform control</strong>
+              <div class="table"><b>webhook_events</b><span>Clerk event idempotency</span></div>
+              <div class="table"><b>request_rate_buckets</b><span>action × key × time window</span></div>
+              <div class="table"><b>runtime_controls</b><span>durable generation pause switch</span></div>
+              <div class="table"><b>account_deletion_queue</b><span>leased artifact cleanup work</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px">
+          <div class="card card-pad"><h3>What is transactional?</h3><ul class="clean-list"><li>Claim selection + Issue transition + attempt creation</li><li>Generated state + history append + checkpoint cleanup + delivery enqueue</li><li>Newsletter scheduling advance + scheduled Issue creation</li><li>Migration SQL + schema version record</li></ul></div>
+          <div class="card card-pad"><h3>What is intentionally not one transaction?</h3><ul class="clean-list"><li>S3 artifact write happens before DB completion</li><li>Provider delivery happens outside Postgres, under a lease</li><li>Database account deletion and bucket object deletion are independently observable</li><li>Search and source fetch occur outside DB transactions</li></ul></div>
+        </div>
+      </section>
+
+      <section class="section" id="reliability" data-search="claims leases skip locked fair retry backoff recovery drain idempotency">
+        <div class="section-head">
+          <div><span class="chapter">09 / RELIABILITY</span><h2>Leases make horizontal workers boring.</h2></div>
+          <p class="section-intro">Workers coordinate using time-bounded database claims. Ownership is proven by a UUID token on every renewal, stage record, release, completion, or failure transition.</p>
+        </div>
+        <div class="grid-2">
+          <div class="card card-pad">
+            <h3>Fair claim selection</h3>
+            <div class="flow" style="margin-top:20px">
+              <div class="flow-step"><span class="step-num">1</span><div class="step-body"><strong>Check global pause + daily quota</strong><p>A durable runtime switch can stop new model claims without redeploying.</p></div></div>
+              <div class="flow-step"><span class="step-num">2</span><div class="step-body"><strong>Compute Account activity</strong><p>Respect active generation and daily limits per Account.</p></div></div>
+              <div class="flow-step"><span class="step-num">3</span><div class="step-body"><strong>Choose one candidate per Account</strong><p>Oldest eligible work per Account, then Accounts with the oldest last-start time.</p></div></div>
+              <div class="flow-step"><span class="step-num">4</span><div class="step-body"><strong><code>FOR UPDATE SKIP LOCKED</code></strong><p>Concurrent workers skip rows already claimed by peers.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <h3>Lease behavior</h3>
+            <div style="margin-top:13px">
+              <details open><summary>Renewal</summary><div>A companion goroutine extends the Issue or Delivery lease while work runs. Renewal also updates the append-only Issue attempt heartbeat.</div></details>
+              <details><summary>Retry</summary><div>Classified retryable failures return to the queue with bounded exponential backoff: 15s × 2^(attempt−1), capped at 15 minutes.</div></details>
+              <details><summary>Claim loss</summary><div>Expired Issue claims become abandoned evidence and are recovered separately. Infrastructure claim loss has its own bounded count and does not spend a generation attempt.</div></details>
+              <details><summary>Graceful drain</summary><div>A draining worker becomes unready and stops new claims, but keeps renewing current work. At deadline it releases active claims back to the queue without consuming content attempts.</div></details>
+            </div>
+          </div>
+        </div>
+        <div class="callout" style="margin-top:16px;border-left-color:var(--amber)">
+          <span class="icon" style="background:var(--amber-soft);color:var(--amber)">!</span>
+          <div><strong>Exactly-once external delivery is impossible here</strong><p>Learnloom instead uses deterministic Resend idempotency keys and an explicit <code>unknown</code> outcome. If network failure makes acceptance ambiguous, automatic replay is less safe than surfacing uncertainty.</p></div>
+        </div>
+      </section>
+
+      <section class="section" id="security" data-search="security trust boundaries csrf clerk csp ssrf ownership secrets failure">
+        <div class="section-head">
+          <div><span class="chapter">10 / SECURITY</span><h2>Trust is narrowed at every boundary.</h2></div>
+          <p class="section-intro">Security here is structural: hostname, identity, ownership, browser mutation, remote content, model output, public rendering, secrets, and provider errors each have a dedicated choke point.</p>
+        </div>
+        <div class="grid-3">
+          <article class="card boundary"><span class="boundary-icon">HOST</span><h3>Tenant routing</h3><p>Strict root/app/username classification; malformed and unknown hosts receive 421.</p></article>
+          <article class="card boundary"><span class="boundary-icon">AUTH</span><h3>Identity</h3><p>Verified Clerk subject and session ID create server-side Account context.</p></article>
+          <article class="card boundary"><span class="boundary-icon">SCOPE</span><h3>Ownership</h3><p>Every control-plane store query carries the current Account ID.</p></article>
+          <article class="card boundary"><span class="boundary-icon">BROWSER</span><h3>Mutations</h3><p>Exact Origin + HMAC CSRF + JSON content type + bounded request body.</p></article>
+          <article class="card boundary"><span class="boundary-icon">FETCH</span><h3>Remote sources</h3><p>Public-IP validation, DNS pinning, redirect checks, time and size bounds.</p></article>
+          <article class="card boundary"><span class="boundary-icon">MODEL</span><h3>Generated content</h3><p>Strict contracts, escaped rendering, known citation IDs, deterministic quality checks.</p></article>
+          <article class="card boundary"><span class="boundary-icon">PUBLIC</span><h3>Reading pages</h3><p>Public-only projections, canonical paths, restrictive CSP, escaped metadata.</p></article>
+          <article class="card boundary"><span class="boundary-icon">ERROR</span><h3>Failure privacy</h3><p>Safe public messages are separated from internal diagnostic detail and incident IDs.</p></article>
+          <article class="card boundary"><span class="boundary-icon">CONFIG</span><h3>Secrets</h3><p>Environment-only configuration; production TLS validation; provider keys redacted from errors.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="packages" data-search="packages modules httpapp store execution source dossier artifact delivery failure domain config">
+        <div class="section-head">
+          <div><span class="chapter">11 / PACKAGE ATLAS</span><h2>Where each responsibility lives.</h2></div>
+          <p class="section-intro">Read package boundaries as ownership boundaries. HTTP does not generate, execution does not implement SQL, and store does not call providers.</p>
+        </div>
+        <div class="package-map">
+          <article class="card package"><div class="package-top"><code>internal/httpapp</code><span class="kind">boundary</span></div><p>Host classification, request policy, Clerk auth/webhooks, control JSON, public reading, static assets, stable responses.</p><small>Depends on store, artifact, domain.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/store</code><span class="kind">persistence</span></div><p>Concrete PostgreSQL implementation: lifecycle, claims, fairness, history, quotas, rate limits, public projections, migrations.</p><small>Depends primarily on domain and failure.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/execution</code><span class="kind">orchestration</span></div><p>Worker cycle, claim renewal, generation coordination, artifact-first completion, delivery, deletion, cleanup, drain metrics.</p><small>Consumes narrow lifecycle/producer/artifact/mailer interfaces.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/source</code><span class="kind">deep module</span></div><p>Catalog resolution, SearXNG discovery, feed/article extraction, URL safety, snapshots, evidence selection and freezing.</p><small>Store implements its Repository interface.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/dossier</code><span class="kind">deep module</span></div><p>Multi-stage generation, structured repair, context fitting, checkpoint validation, quality, Markdown/HTML rendering, model adapter.</p><small>Consumes source and model seams.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/artifact</code><span class="kind">adapter</span></div><p>Opaque S3 keys, canonical serialization, SHA-256 checksums, gzip storage, retrieval validation, bounded in-memory LRU cache.</p><small>Returns a complete DossierArtifact.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/delivery</code><span class="kind">adapter</span></div><p>Resend request construction, deterministic idempotency, subject sanitization, response bounds, secret redaction, ambiguity typing.</p><small>No scheduling logic.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/failure</code><span class="kind">policy</span></div><p>Stable codes, categories, stages, retryability, safe learner messages, incident IDs, internal descriptions.</p><small>Shared across sources, dossier, execution, and store.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/domain</code><span class="kind">vocabulary</span></div><p>Accounts, Personal Sites, Newsletters, source catalog, Issues, deliveries, Dossiers, artifacts, history, and state enums.</p><small>Contains data vocabulary, not provider behavior.</small></article>
+          <article class="card package"><div class="package-top"><code>internal/config</code><span class="kind">composition</span></div><p>Environment parsing, defaults, role-specific required fields, production TLS checks, provider and concurrency limits.</p><small>Startup fails closed on invalid configuration.</small></article>
+        </div>
+        <div class="callout" style="margin-top:16px">
+          <span class="icon">↓</span>
+          <div><strong>Dependency direction in one sentence</strong><p>Transport and provider adapters sit at the outside; product modules consume narrow behavior; shared domain vocabulary sits at the center.</p></div>
+        </div>
+      </section>
+
+      <section class="section" id="operations" data-search="operations deployment readiness metrics backup restore rollback configuration cleanup observability">
+        <div class="section-head">
+          <div><span class="chapter">12 / OPERATIONS</span><h2>Production behavior is part of the architecture.</h2></div>
+          <p class="section-intro">The system is designed for immutable image rollout, forward-only migrations, independently scaled workers, dependency-aware readiness, and recovery of interrupted leases.</p>
+        </div>
+        <div class="grid-2">
+          <div class="card card-pad">
+            <h3>Deployment order</h3>
+            <div class="flow" style="margin-top:20px">
+              <div class="flow-step"><span class="step-num">1</span><div class="step-body"><strong>Provision Postgres + private S3</strong><p>They form the documented recovery set.</p></div></div>
+              <div class="flow-step"><span class="step-num">2</span><div class="step-body"><strong>Configure identity + providers</strong><p>Clerk domains/webhook, model endpoint, Resend sender, optional SearXNG.</p></div></div>
+              <div class="flow-step"><span class="step-num">3</span><div class="step-body"><strong>Run <code>migrate</code> once</strong><p>Only then roll web and worker images.</p></div></div>
+              <div class="flow-step"><span class="step-num">4</span><div class="step-body"><strong>Verify health, readiness, metrics</strong><p>Shift DNS/TLS traffic after dependencies and schema are current.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <h3>Signals that matter</h3>
+            <ul class="clean-list">
+              <li>Readiness and HTTP 5xx / rate-limit spikes</li>
+              <li>Oldest queued Issue age and exhausted attempts</li>
+              <li>Active Issues, draining state, recovered/released claims</li>
+              <li>Stage/model latency, provider errors, renewal failures</li>
+              <li>Delivery failure rate and unknown outcomes</li>
+              <li>Postgres pool saturation and S3 errors</li>
+              <li>Browser web vitals logged through the control plane</li>
+            </ul>
+          </div>
+        </div>
+        <div class="grid-3" style="margin-top:16px">
+          <div class="card card-pad"><h3>Backup</h3><p class="section-intro">Postgres PITR + S3 versioning/encryption; test isolated restores quarterly.</p></div>
+          <div class="card card-pad"><h3>Rollback</h3><p class="section-intro">Roll app images back; never reverse a database migration in place. Keep schema compatible through rollout.</p></div>
+          <div class="card card-pad"><h3>Pause</h3><p class="section-intro">A durable generation control stops new model claims; scale workers to zero to stop scheduling and delivery.</p></div>
+        </div>
+      </section>
+
+      <section class="section" id="traces" data-search="trace walkthrough create stream scheduled retry public read account deletion">
+        <div class="section-head">
+          <div><span class="chapter">13 / TRACES</span><h2>Follow three real journeys.</h2></div>
+          <p class="section-intro">These traces connect the modules so you can see where synchronous request work ends and durable asynchronous work begins.</p>
+        </div>
+        <div class="tabs" data-tabs>
+          <div class="tab-buttons" role="tablist">
+            <button class="tab-button active" data-tab="create" type="button">Create → Dossier</button>
+            <button class="tab-button" data-tab="retry" type="button">Failure → Retry</button>
+            <button class="tab-button" data-tab="read" type="button">Public read</button>
+          </div>
+          <div class="card card-pad tab-panel active" data-panel="create">
+            <div class="flow">
+              <div class="flow-step"><span class="step-num">01</span><div class="step-body"><strong>React sends Newsletter intent</strong><p>Clerk session, exact Origin, CSRF, JSON → <code>httpapp</code> → owner-scoped <code>store.CreateNewsletter</code>.</p></div></div>
+              <div class="flow-step"><span class="step-num">02</span><div class="step-body"><strong>Scheduler dispatches due work</strong><p>Worker cycle calls <code>DispatchDue</code>; the local scheduled date is unique per Newsletter and DST-aware next occurrence is advanced.</p></div></div>
+              <div class="flow-step"><span class="step-num">03</span><div class="step-body"><strong>Worker claims fairly</strong><p>Postgres chooses one eligible Issue under Account/global concurrency and quota rules; an append-only attempt begins.</p></div></div>
+              <div class="flow-step"><span class="step-num">04</span><div class="step-body"><strong>Evidence is resolved and frozen</strong><p><code>source.Service.PrepareIssue</code> returns an ordered snapshot set. Retry sees the same evidence and skips network/search.</p></div></div>
+              <div class="flow-step"><span class="step-num">05</span><div class="step-body"><strong>Dossier stages run with renewal</strong><p>Checkpoints are loaded/saved under a generation fingerprint; every stage outcome is recorded against the attempt.</p></div></div>
+              <div class="flow-step"><span class="step-num">06</span><div class="step-body"><strong>Artifact lands, then state commits</strong><p>S3 returns key/checksum/size. One DB transaction marks generated, appends history, clears checkpoints, and optionally enqueues delivery.</p></div></div>
+              <div class="flow-step"><span class="step-num">07</span><div class="step-body"><strong>Delivery is claimed separately</strong><p>Resend receives a deterministic idempotency key. Receipt becomes delivered, failed, or unknown.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad tab-panel" data-panel="retry">
+            <div class="flow">
+              <div class="flow-step"><span class="step-num">01</span><div class="step-body"><strong>A stage returns a classified error</strong><p><code>failure.Describe</code> yields code, category, stage, retryability, public message, incident ID, and internal detail.</p></div></div>
+              <div class="flow-step"><span class="step-num">02</span><div class="step-body"><strong>Attempt evidence is closed</strong><p>The attempt and current Issue projection are updated under the claim token.</p></div></div>
+              <div class="flow-step"><span class="step-num">03</span><div class="step-body"><strong>Retryable work returns to queued</strong><p>Backoff delays eligibility. Non-retryable or exhausted work becomes terminally failed with a safe public error.</p></div></div>
+              <div class="flow-step"><span class="step-num">04</span><div class="step-body"><strong>Next claim reuses durable work</strong><p>Frozen evidence removes source drift; matching checkpoints skip completed stages; structured checkpoints are revalidated.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad tab-panel" data-panel="read">
+            <div class="flow">
+              <div class="flow-step"><span class="step-num">01</span><div class="step-body"><strong>Request arrives at <code>alice.root</code></strong><p>Host classifier selects the public Reading surface before path routing.</p></div></div>
+              <div class="flow-step"><span class="step-num">02</span><div class="step-body"><strong>Store returns a public projection</strong><p>Site must be public; Newsletter visible; Issue generated, published, and owned through that site.</p></div></div>
+              <div class="flow-step"><span class="step-num">03</span><div class="step-body"><strong>Artifact is loaded by opaque key</strong><p>The S3 adapter validates stored metadata/checksum, decompresses the canonical payload, and may serve from its bounded LRU cache.</p></div></div>
+              <div class="flow-step"><span class="step-num">04</span><div class="step-body"><strong>Canonical reading document is returned</strong><p>Server adds canonical metadata and restrictive headers. A mismatched Dossier slug receives a permanent redirect.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="reading-order" data-search="reading order files code guide source map">
+        <div class="section-head">
+          <div><span class="chapter">14 / READING ORDER</span><h2>How to enter the codebase without drowning.</h2></div>
+          <p class="section-intro">Read one complete path at a time. Start with composition, then orchestration, then dive into the deep module that interests you.</p>
+        </div>
+        <div class="grid-2">
+          <div class="card card-pad">
+            <h3>Recommended sequence</h3>
+            <div class="flow" style="margin-top:20px">
+              <div class="flow-step"><span class="step-num">1</span><div class="step-body"><strong>Composition</strong><p><code>cmd/learnloom/main.go</code> shows the whole object graph.</p></div></div>
+              <div class="flow-step"><span class="step-num">2</span><div class="step-body"><strong>Vocabulary</strong><p><code>internal/domain/domain.go</code> names the product and its states.</p></div></div>
+              <div class="flow-step"><span class="step-num">3</span><div class="step-body"><strong>Worker happy path</strong><p><code>internal/execution/worker.go</code> connects every backend subsystem.</p></div></div>
+              <div class="flow-step"><span class="step-num">4</span><div class="step-body"><strong>Persistence invariants</strong><p>Read <code>store/issues.go</code>, migrations, then deliveries.</p></div></div>
+              <div class="flow-step"><span class="step-num">5</span><div class="step-body"><strong>Deep pipelines</strong><p>Read source service, acquisition, then Dossier generator and quality.</p></div></div>
+              <div class="flow-step"><span class="step-num">6</span><div class="step-body"><strong>Edges</strong><p>Finish with HTTP, S3 artifact, Resend, configuration, and operations.</p></div></div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <h3>Source map</h3>
+            <a class="source-link" href="../cmd/learnloom/main.go"><code>cmd/learnloom/main.go</code><span>composition →</span></a>
+            <a class="source-link" href="../internal/execution/worker.go"><code>internal/execution/worker.go</code><span>orchestration →</span></a>
+            <a class="source-link" href="../internal/source/service.go"><code>internal/source/service.go</code><span>evidence →</span></a>
+            <a class="source-link" href="../internal/dossier/generator.go"><code>internal/dossier/generator.go</code><span>generation →</span></a>
+            <a class="source-link" href="../internal/store/issues.go"><code>internal/store/issues.go</code><span>state machine →</span></a>
+            <a class="source-link" href="../internal/httpapp/server.go"><code>internal/httpapp/server.go</code><span>request policy →</span></a>
+            <a class="source-link" href="../internal/store/migrations/001_initial.sql"><code>internal/store/migrations/</code><span>schema →</span></a>
+            <a class="source-link" href="architecture.md"><code>docs/architecture.md</code><span>canonical summary →</span></a>
+            <a class="source-link" href="adr/0001-hosted-go-runtime.md"><code>docs/adr/</code><span>why →</span></a>
+          </div>
+        </div>
+        <div class="card card-pad" style="margin-top:16px">
+          <h3>Keep these invariants in your head</h3>
+          <div class="grid-3" style="margin-top:16px">
+            <div class="callout"><span class="icon">1</span><div><strong>No model calls from HTTP</strong><p>Web records intent; worker spends tokens.</p></div></div>
+            <div class="callout"><span class="icon">2</span><div><strong>No evidence from snippets</strong><p>Only safely fetched snapshots ground Dossiers.</p></div></div>
+            <div class="callout"><span class="icon">3</span><div><strong>No completion without a live token</strong><p>Claim ownership guards every terminal transition.</p></div></div>
+            <div class="callout"><span class="icon">4</span><div><strong>No delivery coupled to generation</strong><p>Separate leases protect cost and ambiguity.</p></div></div>
+            <div class="callout"><span class="icon">5</span><div><strong>No internal failure detail in public UI</strong><p>Safe projection and incident IDs only.</p></div></div>
+            <div class="callout"><span class="icon">6</span><div><strong>No mutable worker-local truth</strong><p>Postgres survives process death.</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span><strong>Learnloom Backend Architecture Field Guide</strong><br>Derived from the repository’s Go code, SQL migrations, ADRs, and operations guide.</span>
+        <span>Standalone HTML · Light/dark · Searchable · Print-friendly</span>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById('theme-toggle');
+      const savedTheme = localStorage.getItem('learnloom-architecture-theme');
+      if (savedTheme === 'dark' || savedTheme === 'light') root.dataset.theme = savedTheme;
+      const updateThemeLabel = () => {
+        themeButton.textContent = root.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode';
+      };
+      updateThemeLabel();
+      themeButton.addEventListener('click', () => {
+        root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('learnloom-architecture-theme', root.dataset.theme);
+        updateThemeLabel();
+      });
+
+      const sidebar = document.getElementById('sidebar');
+      document.getElementById('menu-button').addEventListener('click', () => sidebar.classList.toggle('open'));
+      sidebar.querySelectorAll('a').forEach(link => link.addEventListener('click', () => sidebar.classList.remove('open')));
+
+      document.querySelectorAll('[data-tabs]').forEach(group => {
+        const buttons = group.querySelectorAll('[data-tab]');
+        const panels = group.querySelectorAll('[data-panel]');
+        buttons.forEach(button => button.addEventListener('click', () => {
+          buttons.forEach(item => item.classList.toggle('active', item === button));
+          panels.forEach(panel => panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab));
+        }));
+      });
+
+      const navLinks = [...document.querySelectorAll('.nav-list a')];
+      const sections = [...document.querySelectorAll('.section')];
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        navLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
+      }, { rootMargin: '-20% 0px -68% 0px', threshold: [0, .2, .6] });
+      sections.forEach(section => observer.observe(section));
+
+      const search = document.getElementById('section-search');
+      search.addEventListener('input', () => {
+        const query = search.value.trim().toLowerCase();
+        sections.forEach(section => {
+          const haystack = (section.dataset.search + ' ' + section.textContent).toLowerCase();
+          section.classList.toggle('filtered-out', query && !haystack.includes(query));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
