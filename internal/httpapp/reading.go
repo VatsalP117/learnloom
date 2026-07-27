@@ -111,14 +111,14 @@ func (s *Server) renderPublicHome(
 		`<dl><div><dt>Topics</dt><dd>` + fmt.Sprint(len(newsletters)) +
 		`</dd></div><div><dt>Dossiers</dt><dd>` + fmt.Sprint(dossierCount) +
 		`</dd></div></dl></aside></header>` +
-		`<section class="reading-section latest-section" id="latest"><div class="section-heading">` +
-		`<div><p class="eyebrow">Recently tended</p><h2>Latest Dossiers</h2></div>` +
-		`<p>Source-grounded lessons shaped for patient, lasting understanding.</p>` +
-		`</div><div class="issues">` + renderIssueCards(issues) + `</div></section>` +
 		`<section class="reading-section topics-section" id="topics"><div class="section-heading">` +
 		`<div><p class="eyebrow">Paths of inquiry</p><h2>Learning streams</h2></div>` +
 		`<p>Each stream follows one question over time, building context instead of adding noise.</p>` +
-		`</div><div class="topics">` + topics.String() + `</div></section></main>` +
+		`</div><div class="topics">` + topics.String() + `</div></section>` +
+		`<section class="reading-section latest-section" id="latest"><div class="section-heading">` +
+		`<div><p class="eyebrow">Recently tended</p><h2>Latest Dossiers</h2></div>` +
+		`<p>Source-grounded lessons shaped for patient, lasting understanding.</p>` +
+		`</div><div class="issues">` + renderIssueCards(issues) + `</div></section></main>` +
 		renderReadingFooter(site)
 	s.sendReadingPage(
 		response,
