@@ -52,6 +52,12 @@ export interface WorkspaceSnapshot {
   newsletters: Newsletter[];
   issues: Issue[];
   reviews?: Review[];
+  lessonProgress?: Array<{
+    issueId: string;
+    progress: number;
+    completedAt?: string;
+    updatedAt?: string;
+  }>;
   nextIssueCursor?: string;
   [key: string]: any;
 }

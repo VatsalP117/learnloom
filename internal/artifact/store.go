@@ -19,9 +19,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 const maximumArtifactBytes = 20 << 20
+
+var ErrNotFound = errors.New("Dossier Artifact not found")
 
 type Config struct {
 	Bucket          string
@@ -151,6 +154,11 @@ func (s *Store) Get(ctx context.Context, key string) (domain.DossierArtifact, er
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		var apiError smithy.APIError
+		if errors.As(err, &apiError) &&
+			(apiError.ErrorCode() == "NoSuchKey" || apiError.ErrorCode() == "NotFound") {
+			return domain.DossierArtifact{}, fmt.Errorf("%w: %s", ErrNotFound, key)
+		}
 		return domain.DossierArtifact{}, fmt.Errorf("load Dossier Artifact: %w", err)
 	}
 	defer result.Body.Close()

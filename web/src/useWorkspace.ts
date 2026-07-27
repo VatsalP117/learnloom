@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJSON } from "./api";
 import { errorMessage, type WorkspaceSnapshot } from "./types";
+import { syncLessonProgress } from "./learningState";
 
 let cachedSnapshot: WorkspaceSnapshot | null = null;
 let snapshotRequest: Promise<WorkspaceSnapshot> | null = null;
@@ -26,6 +27,7 @@ async function loadSnapshot(force: boolean) {
 }
 
 export function hydrateWorkspace(workspace: WorkspaceSnapshot): WorkspaceSnapshot {
+  syncLessonProgress(workspace.lessonProgress);
   const newslettersByID = new Map(
     (workspace.newsletters ?? []).map((newsletter) => [newsletter.id, newsletter]),
   );

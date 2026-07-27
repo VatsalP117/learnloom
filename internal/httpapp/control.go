@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/VatsalP117/learnloom/internal/artifact"
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/store"
 	"github.com/google/uuid"
@@ -249,10 +250,11 @@ func (s *Server) workspaceSnapshot(
 	current session,
 ) {
 	var (
-		records []store.NewsletterRecord
-		issues  []domain.Issue
-		next    *store.WorkspaceIssueCursor
-		reviews []store.WorkspaceReview
+		records  []store.NewsletterRecord
+		issues   []domain.Issue
+		next     *store.WorkspaceIssueCursor
+		reviews  []store.WorkspaceReview
+		progress []store.LessonProgress
 	)
 	group, context := errgroup.WithContext(request.Context())
 	group.Go(func() error {
@@ -273,6 +275,11 @@ func (s *Server) workspaceSnapshot(
 	group.Go(func() error {
 		var err error
 		reviews, err = s.store.ListWorkspaceReviews(context, current.Account.ID, 8)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		progress, err = s.store.ListLessonProgress(context, current.Account.ID)
 		return err
 	})
 	if err := group.Wait(); err != nil {
@@ -296,6 +303,7 @@ func (s *Server) workspaceSnapshot(
 		"issues":          issuePayloads(issues),
 		"nextIssueCursor": encodeIssueCursor(next),
 		"reviews":         reviews,
+		"lessonProgress":  progress,
 	}
 	writePrivateCacheableJSON(
 		response,
@@ -753,6 +761,18 @@ func (s *Server) issueAction(
 			return
 		}
 		writeJSON(response, http.StatusAccepted, map[string]string{"status": "pending"})
+	case "complete":
+		progress, err := s.store.CompleteLesson(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, progress)
 	default:
 		writeProblem(response, http.StatusNotFound, "not_found", "The requested action was not found.")
 	}
@@ -775,6 +795,15 @@ func (s *Server) issuePreview(
 	}
 	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
 	if err != nil {
+		if errors.Is(err, artifact.ErrNotFound) {
+			writeProblem(
+				response,
+				http.StatusGone,
+				"artifact_unavailable",
+				"This lesson file is unavailable. Please prepare the lesson again.",
+			)
+			return
+		}
 		s.internalError(response, request, err)
 		return
 	}
@@ -813,6 +842,15 @@ func (s *Server) issueDetail(
 	}
 	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
 	if err != nil {
+		if errors.Is(err, artifact.ErrNotFound) {
+			writeProblem(
+				response,
+				http.StatusGone,
+				"artifact_unavailable",
+				"This lesson file is unavailable. Please prepare the lesson again.",
+			)
+			return
+		}
 		s.internalError(response, request, err)
 		return
 	}

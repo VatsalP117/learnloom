@@ -21,6 +21,7 @@ export default function IssueDetail({ issueId }) {
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(() => lessonState(issueId).progress ?? 0);
+  const [completionError, setCompletionError] = useState("");
   const latestProgress = useRef(progress);
   const renderedProgress = useRef(Math.round(progress));
 
@@ -85,7 +86,21 @@ export default function IssueDetail({ issueId }) {
       {...snapshot}
       dossier={normalizeDossier(snapshot.dossier, snapshot.newsletter)}
       progress={progress}
-      onComplete={() => {
+      completionError={completionError}
+      onComplete={async () => {
+        setCompletionError("");
+        try {
+          await apiJSON(`/api/issues/${encodeURIComponent(issueId)}/complete`, {
+            method: "POST",
+          });
+        } catch (requestError) {
+          setCompletionError(
+            requestError instanceof Error
+              ? requestError.message
+              : "The lesson could not be marked complete.",
+          );
+          return false;
+        }
         latestProgress.current = 100;
         renderedProgress.current = 100;
         setProgress(100);
@@ -94,13 +109,23 @@ export default function IssueDetail({ issueId }) {
           completed: true,
           completedAt: new Date().toISOString(),
         });
+        return true;
       }}
     />
   );
 }
 
-function LessonReader({ issue, dossier, newsletter, sources, progress, onComplete }) {
+function LessonReader({
+  issue,
+  dossier,
+  newsletter,
+  sources,
+  progress,
+  completionError,
+  onComplete,
+}) {
   const [completed, setCompleted] = useState(() => lessonState(issue.id).completed);
+  const [completing, setCompleting] = useState(false);
 
   return (
     <div className="focus-reader">
@@ -170,14 +195,20 @@ function LessonReader({ issue, dossier, newsletter, sources, progress, onComplet
                 <button
                   className="atelier-primary"
                   type="button"
-                  onClick={() => {
+                  disabled={completing}
+                  onClick={async () => {
+                    setCompleting(true);
+                    if (!(await onComplete())) {
+                      setCompleting(false);
+                      return;
+                    }
                     setCompleted(true);
-                    onComplete();
                   }}
                 >
-                  Mark lesson complete <Check size={15} />
+                  {completing ? "Saving…" : "Mark lesson complete"} <Check size={15} />
                 </button>
               ) : null}
+              {completionError ? <p role="alert">{completionError}</p> : null}
               <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`}>
                 Return to this learning stream <ArrowRight size={15} />
               </a>

@@ -435,6 +435,32 @@ func (g *Generator) Generate(
 		},
 	)
 	if err != nil {
+		// The teacher and examiner outputs are independently produced and are
+		// often still valid when the final editor damages citations, time fit,
+		// or the answer key. Prefer that already-validated pair to failing the
+		// whole Issue after repeated editor-only contract drift.
+		if _, fallbackErr := evaluateQuality(
+			lesson,
+			critique,
+			practice,
+			exploration,
+			enriched,
+			blueprint,
+			len(request.History),
+			wordBudget,
+		); fallbackErr == nil {
+			editorial = editorialOutput{
+				Lesson:   lesson,
+				Critique: critique,
+				Practice: practice,
+				QualityNotes: []string{
+					"Preserved validated teacher and examiner outputs after editor contract drift.",
+				},
+			}
+			err = nil
+		}
+	}
+	if err != nil {
 		return GenerateResult{}, err
 	}
 	finalPractice := editorial.Practice

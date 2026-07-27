@@ -25,20 +25,10 @@ export default function TodayPage() {
     return () => window.removeEventListener("learnloom:state", refresh);
   }, []);
 
-  const readyLessons = useMemo(
-    () =>
-      workspace.lessons.filter(
-        (lesson) =>
-          lesson.status === "generated" &&
-          lesson.newsletter?.active &&
-          !lessonState(lesson.id).completed,
-      ),
+  const { primary, secondary } = useMemo(
+    () => selectTodayLessons(workspace.lessons),
     [workspace.lessons],
   );
-  const primary = readyLessons.find((lesson) => lessonState(lesson.id).progress > 0)
-    ?? readyLessons[0]
-    ?? workspace.lessons.find((lesson) => lesson.status === "generated");
-  const secondary = readyLessons.find((lesson) => lesson.id !== primary?.id);
   const primaryState = primary ? lessonState(primary.id) : null;
 
   return (
@@ -131,6 +121,16 @@ export default function TodayPage() {
               </article>
             </aside>
           </div>
+        ) : !workspace.loading && !workspace.error && workspace.newsletters.length ? (
+          <section className="today-empty glass-panel">
+            <span><CheckCircle2 size={24} /></span>
+            <p className="atelier-eyebrow">A clear queue</p>
+            <h2>You are caught up.</h2>
+            <p>Your completed lesson is in the library. The next one will appear here when it is ready.</p>
+            <a className="atelier-primary" href="/library">
+              Open your library <ArrowRight size={16} />
+            </a>
+          </section>
         ) : null}
 
         {!workspace.loading && workspace.newsletters.length ? (
@@ -146,6 +146,21 @@ export default function TodayPage() {
       </section>
     </LearningShell>
   );
+}
+
+export function selectTodayLessons(lessons, stateFor = lessonState) {
+  const ready = lessons.filter(
+    (lesson) =>
+      lesson.status === "generated" &&
+      lesson.newsletter?.active &&
+      !stateFor(lesson.id).completed,
+  );
+  const primary = ready.find((lesson) => stateFor(lesson.id).progress > 0)
+    ?? ready[0];
+  return {
+    primary,
+    secondary: ready.find((lesson) => lesson.id !== primary?.id),
+  };
 }
 
 function greeting() {

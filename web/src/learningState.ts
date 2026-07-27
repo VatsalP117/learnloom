@@ -49,6 +49,29 @@ export function updateLessonState(issueId: string, patch: Partial<LessonProgress
     },
   });
 }
+
+export function syncLessonProgress(
+  items: Array<{
+    issueId: string;
+    progress: number;
+    completedAt?: string;
+    updatedAt?: string;
+  }> = [],
+) {
+  if (!items.length) return;
+  const state = readState();
+  const lessons = { ...state.lessons };
+  for (const item of items) {
+    const current = lessons[item.issueId] ?? {};
+    lessons[item.issueId] = {
+      ...current,
+      progress: Math.max(current.progress ?? 0, item.progress ?? 0),
+      completed: Boolean(current.completed || item.completedAt),
+      completedAt: current.completedAt ?? item.completedAt,
+    };
+  }
+  writeState({ ...state, lessons });
+}
 export function reviewState(reviewId: string): ReviewProgress {
   return { status: "due", ...readState().reviews?.[reviewId] };
 }
