@@ -1,5 +1,4 @@
 import {
-  BookOpen,
   BrainCircuit,
   CalendarDays,
   CircleHelp,
@@ -8,7 +7,6 @@ import {
   LogOut,
   Menu,
   Plus,
-  Settings2,
   Sparkles,
   X,
 } from "lucide-react";
@@ -100,7 +98,6 @@ export default function LearningShell({
         </nav>
 
         <div className="atelier-sidebar-bottom">
-          <a href="/publishing"><Settings2 size={15} />Site settings</a>
           <a href="mailto:support@learnloom.blog"><CircleHelp size={15} />Support</a>
           {signOut ? (
             <button type="button" onClick={handleSignOut} disabled={signingOut}>
@@ -122,9 +119,6 @@ export default function LearningShell({
             <Menu size={19} />
           </button>
           <a className="atelier-mobile-brand" href="/">Learnloom</a>
-          <div className="atelier-top-actions">
-            <a href="/library" aria-label="Open library"><BookOpen size={16} /></a>
-          </div>
         </header>
         <main className="atelier-main">{children}</main>
       </div>

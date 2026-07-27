@@ -157,40 +157,8 @@
 .atelier-stage { min-height: 100vh; margin-left: 224px; }
 
 .atelier-topbar {
-  position: fixed;
-  z-index: 40;
-  inset: 0 0 auto 224px;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 0 28px;
-  pointer-events: none;
+  display: none;
 }
-
-.atelier-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  pointer-events: auto;
-}
-
-.atelier-top-actions button,
-.atelier-top-actions a {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  color: var(--atelier-ink);
-  background: transparent;
-  cursor: pointer;
-}
-
-.atelier-top-actions button:hover,
-.atelier-top-actions a:hover { background: rgba(255, 255, 255, 0.55); }
 
 .atelier-main {
   position: relative;
@@ -218,7 +186,7 @@
 .today-page {
   width: min(1180px, calc(100% - 64px));
   margin: 0 auto;
-  padding: 48px 0 68px;
+  padding: 30px 0 68px;
 }
 
 .atelier-page-heading { max-width: 740px; margin-bottom: 28px; }
@@ -1426,6 +1394,9 @@
   .atelier-topbar {
     position: sticky;
     inset: auto;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
     padding: 0 16px;
     gap: 10px;
     border-bottom: 1px solid rgba(21, 23, 25, 0.08);
@@ -1450,7 +1421,6 @@
 }
 
 @media (max-width: 600px) {
-  .atelier-top-actions { display: none; }
   .atelier-page-heading.with-actions,
   .stream-overview-header,
   .today-footer-row { align-items: flex-start; flex-direction: column; }
@@ -2058,8 +2028,6 @@
   .atelier-nav a,
   .atelier-sidebar-bottom a,
   .atelier-sidebar-bottom button,
-  .atelier-top-actions a,
-  .atelier-top-actions button,
   .atelier-primary,
   .atelier-filter-row button,
   .contextual-search,
