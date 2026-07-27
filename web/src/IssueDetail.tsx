@@ -24,6 +24,7 @@ export default function IssueDetail({ issueId }) {
   const [completionError, setCompletionError] = useState("");
   const latestProgress = useRef(progress);
   const renderedProgress = useRef(Math.round(progress));
+  const persistedProgress = useRef(Math.floor(progress));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -67,12 +68,23 @@ export default function IssueDetail({ issueId }) {
     return () => {
       window.removeEventListener("scroll", measure);
       if (frame) window.cancelAnimationFrame(frame);
+      void persistLessonProgress(issueId, latestProgress.current);
       updateLessonState(issueId, {
         progress: Math.max(lessonState(issueId).progress ?? 0, latestProgress.current),
         lastOpenedAt: new Date().toISOString(),
       });
     };
   }, [issueId]);
+
+  useEffect(() => {
+    const next = Math.min(99, Math.floor(progress));
+    if (next < 1 || next <= persistedProgress.current) return undefined;
+    const timeout = window.setTimeout(() => {
+      persistedProgress.current = next;
+      void persistLessonProgress(issueId, next);
+    }, 1500);
+    return () => window.clearTimeout(timeout);
+  }, [issueId, progress]);
 
   if (!snapshot && !error) {
     return <CalmLoader label="Opening your lesson…" detail="Bringing you back to the page." />;
@@ -113,6 +125,19 @@ export default function IssueDetail({ issueId }) {
       }}
     />
   );
+}
+
+async function persistLessonProgress(issueId: string, progress: number) {
+  const next = Math.min(99, Math.floor(progress));
+  if (next < 1) return;
+  try {
+    await apiJSON(`/api/issues/${encodeURIComponent(issueId)}/progress`, {
+      method: "POST",
+      body: { progress: next },
+    });
+  } catch {
+    // Reading remains uninterrupted; local progress is retained for a later sync.
+  }
 }
 
 function LessonReader({

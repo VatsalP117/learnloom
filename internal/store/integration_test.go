@@ -274,6 +274,29 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || len(reviews) != 1 || reviews[0].IssueID != issue.ID {
 		t.Fatalf("workspace reviews=%#v err=%v", reviews, err)
 	}
+	partialProgress, err := database.SaveLessonProgress(
+		ctx,
+		account.ID,
+		issue.ID,
+		37,
+		now.Add(37500*time.Millisecond),
+	)
+	if err != nil || partialProgress.Progress != 37 || partialProgress.CompletedAt != nil {
+		t.Fatalf("partial lesson progress=%#v err=%v", partialProgress, err)
+	}
+	library, libraryCursor, err := database.ListLibraryLessonsPage(
+		ctx,
+		account.ID,
+		"generated dossier",
+		LibraryInProgress,
+		24,
+		nil,
+	)
+	if err != nil || len(library) != 1 || library[0].ID != issue.ID ||
+		library[0].Progress == nil || library[0].Progress.Progress != 37 ||
+		libraryCursor != nil {
+		t.Fatalf("Library lessons=%#v cursor=%#v err=%v", library, libraryCursor, err)
+	}
 	completedLesson, err := database.CompleteLesson(
 		ctx,
 		account.ID,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { hydrateWorkspace, mergeIssuePage } from "./useWorkspace";
+import {
+  hydrateWorkspace,
+  mergeIssuePage,
+  workspaceSnapshotIsFresh,
+} from "./useWorkspace";
 
 const newsletter = {
   id: "stream-1",
@@ -34,5 +38,14 @@ describe("workspace issue pagination", () => {
     expect(merged.issues.map((issue) => issue.id)).toEqual(["issue-1", "issue-2"]);
     expect(merged.issues[1].newsletter).toEqual(newsletter);
     expect(merged.nextIssueCursor).toBe("");
+  });
+});
+
+describe("workspace freshness", () => {
+  it("keeps recent snapshots instant and expires old snapshots", () => {
+    const now = 1_000_000;
+    expect(workspaceSnapshotIsFresh(now - 60_000, now)).toBe(true);
+    expect(workspaceSnapshotIsFresh(now - 5 * 60_000, now)).toBe(false);
+    expect(workspaceSnapshotIsFresh(0, now)).toBe(false);
   });
 });

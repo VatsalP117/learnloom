@@ -62,6 +62,21 @@ export interface WorkspaceSnapshot {
   [key: string]: any;
 }
 
+export interface LibraryLesson extends Issue {
+  newsletter: Newsletter;
+  progress?: {
+    issueId: string;
+    progress: number;
+    completedAt?: string;
+    updatedAt?: string;
+  };
+}
+
+export interface LibrarySnapshot {
+  lessons: LibraryLesson[];
+  nextCursor?: string;
+}
+
 export interface Site {
   username: string;
   displayName: string;

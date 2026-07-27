@@ -6,17 +6,30 @@ import { syncLessonProgress } from "./learningState";
 let cachedSnapshot: WorkspaceSnapshot | null = null;
 let snapshotRequest: Promise<WorkspaceSnapshot> | null = null;
 let issuePageRequest: Promise<WorkspaceSnapshot | null> | null = null;
+let snapshotLoadedAt = 0;
+const workspaceFreshnessMs = 5 * 60 * 1000;
 
 export function invalidateWorkspaceCache(_newsletterId?: string) {
   cachedSnapshot = null;
+  snapshotLoadedAt = 0;
+}
+
+export function workspaceSnapshotIsFresh(
+  loadedAt: number,
+  now = Date.now(),
+) {
+  return loadedAt > 0 && now - loadedAt < workspaceFreshnessMs;
 }
 
 async function loadSnapshot(force: boolean) {
-  if (cachedSnapshot && !force) return cachedSnapshot;
+  if (cachedSnapshot && !force && workspaceSnapshotIsFresh(snapshotLoadedAt)) {
+    return cachedSnapshot;
+  }
   if (!snapshotRequest || force) {
     snapshotRequest = apiJSON<WorkspaceSnapshot>("/api/workspace")
       .then((workspace) => {
         cachedSnapshot = hydrateWorkspace(workspace);
+        snapshotLoadedAt = Date.now();
         return cachedSnapshot;
       })
       .finally(() => {
@@ -101,6 +114,18 @@ export function useWorkspace() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [load]);
 
   const lessons = useMemo(

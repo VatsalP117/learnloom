@@ -74,10 +74,8 @@ func (s *Server) renderPublicHome(
 		s.internalError(response, request, err)
 		return
 	}
-	dossierCount := 0
 	var topics strings.Builder
 	for index, newsletter := range newsletters {
-		dossierCount += newsletter.GeneratedCount
 		fmt.Fprintf(
 			&topics,
 			`<a class="topic-card" href="/topics/%s">`+
@@ -100,21 +98,6 @@ func (s *Server) renderPublicHome(
 	}
 	body := renderReadingHeader(site, "home") +
 		`<main id="main-content">` +
-		`<header class="hero home-hero">` +
-		`<div class="hero-copy"><p class="eyebrow"><span></span>Personal learning garden</p>` +
-		`<h1>` + html.EscapeString(site.DisplayName) + `</h1>` +
-		`<p class="hero-description">` +
-		html.EscapeString(firstReadingText(
-			site.Description,
-			"A quiet place for ideas worth returning to.",
-		)) + `</p>` +
-		`<a class="text-link" href="#latest">Explore the latest Dossiers <span aria-hidden="true">↓</span></a></div>` +
-		`<aside class="garden-note" aria-label="Archive summary">` +
-		`<div class="leaf-mark" aria-hidden="true"><i></i></div>` +
-		`<p>A growing record of careful reading, source-grounded lessons, and ideas made durable.</p>` +
-		`<dl><div><dt>Topics</dt><dd>` + fmt.Sprint(len(newsletters)) +
-		`</dd></div><div><dt>Dossiers</dt><dd>` + fmt.Sprint(dossierCount) +
-		`</dd></div></dl></aside></header>` +
 		`<section class="reading-section topics-section" id="topics"><div class="section-heading">` +
 		`<div><p class="eyebrow">Paths of inquiry</p><h2>Learning streams</h2></div>` +
 		`<p>Each stream follows one question over time, building context instead of adding noise.</p>` +
@@ -428,11 +411,9 @@ main{width:min(1180px,calc(100% - 72px));margin:auto}.hero{min-height:600px;disp
 .empty-state{grid-column:1/-1;min-height:250px;display:grid;place-items:center;align-content:center;gap:8px;padding:35px;border:1px dashed rgba(23,33,27,.2);border-radius:17px;color:var(--muted);text-align:center}.empty-state .leaf-mark{margin-bottom:10px}.empty-state strong{color:var(--ink);font-family:var(--serif);font-size:23px;font-weight:400}.empty-state span{font-size:12px}
 .site-footer{width:min(1280px,calc(100% - 72px));display:flex;align-items:flex-end;justify-content:space-between;gap:50px;margin:auto;padding:58px 0 64px;border-top:1px solid var(--line)}.site-footer>div:first-child>p{max-width:450px;margin:26px 0 0;color:var(--muted);font-size:12px}.footer-meta{display:grid;justify-items:end;gap:5px}.footer-meta span{color:var(--muted);font-size:9px;letter-spacing:.12em;text-transform:uppercase}.footer-meta a{font-family:var(--serif);font-size:18px;text-decoration:none}
 .not-found{min-height:100vh;width:min(760px,calc(100% - 48px));display:grid;place-items:center;align-content:center;margin:auto;text-align:center}.not-found .eyebrow{margin-top:28px}.not-found h1{margin:0;font-family:var(--serif);font-size:clamp(45px,7vw,78px);font-weight:400;line-height:.98;letter-spacing:-.055em}.not-found>p:not(.eyebrow){color:var(--muted)}.button{min-height:48px;display:inline-flex;align-items:center;gap:12px;margin-top:18px;padding:0 20px;border-radius:999px;background:var(--green-deep);color:#fff;font-size:12px;font-weight:750;text-decoration:none;box-shadow:0 12px 32px rgba(18,35,23,.18)}
-.home-hero{min-height:360px;grid-template-columns:minmax(0,1.6fr) minmax(220px,.6fr);gap:clamp(35px,6vw,90px);padding:54px 0 46px}.home-hero .hero-copy{max-width:700px}.home-hero h1{font-size:clamp(46px,6vw,78px);line-height:.94}.home-hero .hero-description{max-width:560px;margin-top:16px;font-size:clamp(14px,1.25vw,17px);line-height:1.55}.home-hero .text-link{margin-top:20px}.home-hero .garden-note{max-width:300px;margin-left:auto;padding:22px}.home-hero .leaf-mark{width:38px;height:38px}.home-hero .garden-note p{margin:17px 0 20px;font-size:16px;line-height:1.4}.home-hero .garden-note dd{font-size:25px}.home-hero + .reading-section{padding-top:64px}.home-hero ~ .reading-section .section-heading h2{font-size:clamp(36px,4vw,54px)}.home-hero ~ .latest-section{padding-bottom:92px}.home-hero ~ .topics-section{padding-top:78px}
+.topics-section{padding-top:64px}.topics-section + .latest-section{border-top:0;padding-top:56px}
 @media(max-width:860px){.site-header,main,.site-footer{width:min(100% - 40px,680px)}.site-header{height:76px}.site-header nav{gap:18px}.site-header nav a:last-child{display:none}.hero{min-height:auto;grid-template-columns:1fr;gap:45px;padding:75px 0}.hero h1{font-size:clamp(52px,15vw,80px)}.garden-note,.stream-note{max-width:440px}.reading-section{padding:78px 0}.section-heading{display:grid;gap:20px}.issues{grid-template-columns:1fr 1fr}.topic-card{grid-template-columns:36px minmax(0,1fr) 70px 20px;gap:12px}.topic-copy>span{white-space:normal}.latest-section{padding-bottom:90px}}
 @media(max-width:580px){.site-header nav{gap:14px}.site-header nav a{font-size:10px}.site-brand small{display:none}.hero{padding:58px 0 68px}.hero-description{font-size:15px}.garden-note{padding:25px}.reading-section{padding:66px 0}.section-heading h2{font-size:44px}.topics{border:0}.topic-card{grid-template-columns:30px minmax(0,1fr) 18px;min-height:105px}.topic-count{display:none}.issues{grid-template-columns:1fr}.issue-link{min-height:250px}.issue-card h3{margin:34px 0 25px;font-size:28px}.site-footer{align-items:flex-start;display:grid}.footer-meta{justify-items:start}.latest-section{padding-bottom:75px}}
-@media(max-width:860px){.home-hero{gap:28px;padding:42px 0 36px}.home-hero .garden-note{max-width:440px;margin-left:0}}
-@media(max-width:580px){.home-hero{padding:36px 0 46px}.home-hero h1{font-size:clamp(45px,12vw,64px)}.home-hero .garden-note{padding:20px}.home-hero .garden-note p{font-size:15px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.site-header nav a:after,.topic-card,.arrow,.issue-card,.text-link span{transition:none}}
 `
 

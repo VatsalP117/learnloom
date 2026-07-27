@@ -190,6 +190,50 @@ export const demoSite = {
 export function demoResponse(path: string, options: APIRequestOptions = {}) {
   const method = (options.method ?? "GET").toUpperCase();
   const requestBody = options.body as Record<string, any> | undefined;
+  const requestURL = new URL(path, "https://demo.learnloom.local");
+
+  if (requestURL.pathname === "/api/library" && method === "GET") {
+    const query = (requestURL.searchParams.get("q") ?? "").trim().toLowerCase();
+    const filter = requestURL.searchParams.get("filter") ?? "all";
+    const progressByIssue: Record<string, {
+      issueId: string;
+      progress: number;
+      completedAt?: string;
+      updatedAt: string;
+    }> = {
+      "urban-systems-issue-1": {
+        issueId: "urban-systems-issue-1",
+        progress: 42,
+        updatedAt: createdAt(0),
+      },
+      "urban-systems-issue-2": {
+        issueId: "urban-systems-issue-2",
+        progress: 100,
+        completedAt: createdAt(1),
+        updatedAt: createdAt(1),
+      },
+    };
+    const lessons = newsletters
+      .flatMap((newsletter) =>
+        (issuesByNewsletter[newsletter.id] ?? []).map((issue) => ({
+          ...issue,
+          newsletterId: newsletter.id,
+          newsletter,
+          progress: progressByIssue[issue.id],
+        })),
+      )
+      .filter((lesson) => {
+        const text = `${lesson.title} ${lesson.newsletter.name} ${lesson.newsletter.topic}`.toLowerCase();
+        const progress = lesson.progress;
+        const matchesFilter =
+          filter === "all" ||
+          (filter === "completed" && Boolean(progress?.completedAt)) ||
+          (filter === "in-progress" && Boolean(progress?.progress && !progress.completedAt)) ||
+          (filter === "unread" && !progress?.progress);
+        return matchesFilter && text.includes(query);
+      });
+    return { lessons, nextCursor: "" };
+  }
 
   if (path === "/api/workspace" && method === "GET") {
     const issues = newsletters.flatMap((newsletter) =>
@@ -283,6 +327,15 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
         name: source.name,
         url: source.url,
       })),
+    };
+  }
+
+  const progress = /^\/api\/issues\/([^/]+)\/progress$/.exec(requestURL.pathname);
+  if (progress && method === "POST") {
+    return {
+      issueId: progress[1],
+      progress: requestBody?.progress ?? 0,
+      updatedAt: new Date().toISOString(),
     };
   }
 

@@ -52,6 +52,34 @@ type WorkspaceIssueCursor struct {
 	IssueID   string
 }
 
+type LibraryFilter string
+
+const (
+	LibraryAll        LibraryFilter = "all"
+	LibraryUnread     LibraryFilter = "unread"
+	LibraryInProgress LibraryFilter = "in-progress"
+	LibraryCompleted  LibraryFilter = "completed"
+)
+
+type LibraryLesson struct {
+	ID               string          `json:"id"`
+	NewsletterID     string          `json:"newsletterId"`
+	Title            string          `json:"title"`
+	Status           string          `json:"status"`
+	PublicationState string          `json:"publicationState"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	Newsletter       LibraryStream   `json:"newsletter"`
+	Progress         *LessonProgress `json:"progress,omitempty"`
+}
+
+type LibraryStream struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Topic         string `json:"topic"`
+	LearnerLevel  string `json:"learnerLevel"`
+	LessonMinutes int    `json:"lessonMinutes"`
+}
+
 func (s *Store) LoadIssueCheckpoints(
 	ctx context.Context,
 	issueID, fingerprint string,
@@ -888,6 +916,124 @@ func (s *Store) ListWorkspaceIssuesPage(
 	last := issues[len(issues)-1]
 	next := &WorkspaceIssueCursor{CreatedAt: last.CreatedAt, IssueID: last.ID}
 	return issues, next, nil
+}
+
+func (s *Store) ListLibraryLessonsPage(
+	ctx context.Context,
+	accountID, search string,
+	filter LibraryFilter,
+	limit int,
+	cursor *WorkspaceIssueCursor,
+) ([]LibraryLesson, *WorkspaceIssueCursor, error) {
+	if limit < 1 || limit > 100 {
+		limit = 24
+	}
+	switch filter {
+	case LibraryAll, LibraryUnread, LibraryInProgress, LibraryCompleted:
+	default:
+		filter = LibraryAll
+	}
+	hasCursor := cursor != nil
+	cursorCreatedAt := time.Time{}
+	cursorIssueID := uuid.Nil.String()
+	if cursor != nil {
+		cursorCreatedAt = cursor.CreatedAt
+		cursorIssueID = cursor.IssueID
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+			i.id::text,
+			i.newsletter_id::text,
+			COALESCE(i.dossier_title, ''),
+			i.status,
+			i.publication_state,
+			i.created_at,
+			n.id::text,
+			n.name,
+			n.topic,
+			n.learner_level,
+			n.lesson_minutes,
+			lp.issue_id::text,
+			COALESCE(lp.progress, 0),
+			lp.completed_at,
+			lp.updated_at
+		FROM issues i
+		JOIN newsletters n ON n.id = i.newsletter_id
+		LEFT JOIN lesson_progress lp
+		  ON lp.account_id = n.owner_account_id AND lp.issue_id = i.id
+		WHERE n.owner_account_id = $1
+		  AND i.status = 'generated'
+		  AND (
+			$2 = '' OR
+			strpos(lower(concat_ws(' ', i.dossier_title, n.name, n.topic)), lower($2)) > 0
+		  )
+		  AND (
+			$3 = 'all' OR
+			($3 = 'completed' AND lp.completed_at IS NOT NULL) OR
+			($3 = 'in-progress' AND lp.completed_at IS NULL AND COALESCE(lp.progress, 0) > 0) OR
+			($3 = 'unread' AND lp.completed_at IS NULL AND COALESCE(lp.progress, 0) = 0)
+		  )
+		  AND (
+			NOT $4::boolean OR
+			(i.created_at, i.id) < ($5::timestamptz, $6::uuid)
+		  )
+		ORDER BY i.created_at DESC, i.id DESC
+		LIMIT $7
+	`, accountID, search, string(filter), hasCursor, cursorCreatedAt, cursorIssueID, limit+1)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list Library lessons: %w", err)
+	}
+	defer rows.Close()
+	lessons := make([]LibraryLesson, 0, limit+1)
+	for rows.Next() {
+		var (
+			lesson      LibraryLesson
+			progressID  *string
+			progress    int
+			completedAt *time.Time
+			updatedAt   *time.Time
+		)
+		if err := rows.Scan(
+			&lesson.ID,
+			&lesson.NewsletterID,
+			&lesson.Title,
+			&lesson.Status,
+			&lesson.PublicationState,
+			&lesson.CreatedAt,
+			&lesson.Newsletter.ID,
+			&lesson.Newsletter.Name,
+			&lesson.Newsletter.Topic,
+			&lesson.Newsletter.LearnerLevel,
+			&lesson.Newsletter.LessonMinutes,
+			&progressID,
+			&progress,
+			&completedAt,
+			&updatedAt,
+		); err != nil {
+			return nil, nil, err
+		}
+		if progressID != nil && updatedAt != nil {
+			lesson.Progress = &LessonProgress{
+				IssueID:     *progressID,
+				Progress:    progress,
+				CompletedAt: completedAt,
+				UpdatedAt:   *updatedAt,
+			}
+		}
+		lessons = append(lessons, lesson)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	if len(lessons) <= limit {
+		return lessons, nil, nil
+	}
+	lessons = lessons[:limit]
+	last := lessons[len(lessons)-1]
+	return lessons, &WorkspaceIssueCursor{
+		CreatedAt: last.CreatedAt,
+		IssueID:   last.ID,
+	}, nil
 }
 
 func (s *Store) ListWorkspaceReviews(

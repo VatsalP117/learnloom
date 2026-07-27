@@ -16,6 +16,48 @@ type LessonProgress struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
+func (s *Store) SaveLessonProgress(
+	ctx context.Context,
+	accountID, issueID string,
+	progress int,
+	now time.Time,
+) (LessonProgress, error) {
+	if progress < 1 || progress > 99 {
+		return LessonProgress{}, ErrConflict
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	var result LessonProgress
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO lesson_progress (
+			account_id, issue_id, progress, updated_at
+		)
+		SELECT n.owner_account_id, i.id, $3, $4
+		FROM issues i
+		JOIN newsletters n ON n.id = i.newsletter_id
+		WHERE n.owner_account_id = $1
+		  AND i.id = $2
+		  AND i.status = 'generated'
+		ON CONFLICT (account_id, issue_id) DO UPDATE SET
+			progress = GREATEST(lesson_progress.progress, EXCLUDED.progress),
+			updated_at = EXCLUDED.updated_at
+		RETURNING issue_id::text, progress, completed_at, updated_at
+	`, accountID, issueID, progress, now).Scan(
+		&result.IssueID,
+		&result.Progress,
+		&result.CompletedAt,
+		&result.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LessonProgress{}, ErrConflict
+	}
+	if err != nil {
+		return LessonProgress{}, fmt.Errorf("save lesson progress: %w", err)
+	}
+	return result, nil
+}
+
 func (s *Store) CompleteLesson(
 	ctx context.Context,
 	accountID, issueID string,
@@ -70,6 +112,44 @@ func (s *Store) ListLessonProgress(
 	}
 	defer rows.Close()
 	items := make([]LessonProgress, 0)
+	for rows.Next() {
+		var item LessonProgress
+		if err := rows.Scan(
+			&item.IssueID,
+			&item.Progress,
+			&item.CompletedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) ListRecentLessonProgress(
+	ctx context.Context,
+	accountID string,
+	limit int,
+) ([]LessonProgress, error) {
+	if limit < 1 || limit > 100 {
+		limit = 24
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT lp.issue_id::text, lp.progress, lp.completed_at, lp.updated_at
+		FROM lesson_progress lp
+		JOIN issues i ON i.id = lp.issue_id
+		JOIN newsletters n ON n.id = i.newsletter_id
+		WHERE lp.account_id = $1
+		  AND n.owner_account_id = $1
+		ORDER BY i.created_at DESC, i.id DESC
+		LIMIT $2
+	`, accountID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent lesson progress: %w", err)
+	}
+	defer rows.Close()
+	items := make([]LessonProgress, 0, limit)
 	for rows.Next() {
 		var item LessonProgress
 		if err := rows.Scan(

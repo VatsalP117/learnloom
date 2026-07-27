@@ -137,6 +137,14 @@ func (s *Server) handleControl(
 		s.workspaceSnapshot(response, request, current)
 		return
 	}
+	if request.URL.Path == "/api/library" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(response, http.MethodGet)
+			return
+		}
+		s.libraryLessons(response, request, current)
+		return
+	}
 	if request.URL.Path == "/api/performance/vitals" {
 		if request.Method != http.MethodPost {
 			methodNotAllowed(response, http.MethodPost)
@@ -279,7 +287,7 @@ func (s *Server) workspaceSnapshot(
 	})
 	group.Go(func() error {
 		var err error
-		progress, err = s.store.ListLessonProgress(context, current.Account.ID)
+		progress, err = s.store.ListRecentLessonProgress(context, current.Account.ID, 24)
 		return err
 	})
 	if err := group.Wait(); err != nil {
@@ -346,6 +354,58 @@ func (s *Server) listWorkspaceIssues(
 	writeJSON(response, http.StatusOK, map[string]any{
 		"issues":          issuePayloads(issues),
 		"nextIssueCursor": encodeIssueCursor(next),
+	})
+}
+
+func (s *Server) libraryLessons(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+) {
+	limit := 24
+	if raw := request.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			writeProblem(response, http.StatusBadRequest, "invalid_limit", "The Library page limit must be between 1 and 100.")
+			return
+		}
+		limit = value
+	}
+	search := strings.TrimSpace(request.URL.Query().Get("q"))
+	if len(search) > 120 {
+		writeProblem(response, http.StatusBadRequest, "invalid_query", "The Library search must be 120 characters or fewer.")
+		return
+	}
+	filter := store.LibraryFilter(request.URL.Query().Get("filter"))
+	if filter == "" {
+		filter = store.LibraryAll
+	}
+	switch filter {
+	case store.LibraryAll, store.LibraryUnread, store.LibraryInProgress, store.LibraryCompleted:
+	default:
+		writeProblem(response, http.StatusBadRequest, "invalid_filter", "The Library filter is invalid.")
+		return
+	}
+	cursor, err := decodeIssueCursor(request.URL.Query().Get("cursor"))
+	if err != nil {
+		writeProblem(response, http.StatusBadRequest, "invalid_cursor", "The Library cursor is invalid.")
+		return
+	}
+	lessons, next, err := s.store.ListLibraryLessonsPage(
+		request.Context(),
+		current.Account.ID,
+		search,
+		filter,
+		limit,
+		cursor,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		"lessons":    lessons,
+		"nextCursor": encodeIssueCursor(next),
 	})
 }
 
@@ -783,6 +843,29 @@ func (s *Server) issueAction(
 			request.Context(),
 			current.Account.ID,
 			issueID,
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, progress)
+	case "progress":
+		var body struct {
+			Progress int `json:"progress"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if body.Progress < 1 || body.Progress > 99 {
+			writeProblem(response, http.StatusBadRequest, "invalid_progress", "Lesson progress must be between 1 and 99.")
+			return
+		}
+		progress, err := s.store.SaveLessonProgress(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			body.Progress,
 			time.Now().UTC(),
 		)
 		if err != nil {

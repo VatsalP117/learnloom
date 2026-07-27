@@ -4,42 +4,26 @@ import {
   Clock3,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import LearningShell, {
   AtelierError,
   AtelierLoading,
   formatShortDate,
 } from "./LearningShell";
 import { lessonState } from "./learningState";
-import { useWorkspace } from "./useWorkspace";
+import { type LibraryFilter, useLibrary } from "./useLibrary";
 
 export default function LibraryPage() {
-  const workspace = useWorkspace();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<LibraryFilter>("all");
   const [, refreshState] = useState(0);
+  const library = useLibrary(query, filter);
 
   useEffect(() => {
     const refresh = () => refreshState((value) => value + 1);
     window.addEventListener("learnloom:state", refresh);
     return () => window.removeEventListener("learnloom:state", refresh);
   }, []);
-
-  const lessons = useMemo(
-    () =>
-      workspace.lessons.filter((lesson) => {
-        if (lesson.status !== "generated") return false;
-        const state = lessonState(lesson.id);
-        const matchesFilter =
-          filter === "all" ||
-          (filter === "completed" && state.completed) ||
-          (filter === "unread" && !state.completed && !state.progress) ||
-          (filter === "in-progress" && !state.completed && state.progress > 0);
-        const text = `${lesson.title} ${lesson.newsletter.name} ${lesson.newsletter.topic}`.toLowerCase();
-        return matchesFilter && text.includes(query.trim().toLowerCase());
-      }),
-    [workspace.lessons, query, filter],
-  );
 
   return (
     <LearningShell active="library">
@@ -52,12 +36,12 @@ export default function LibraryPage() {
 
         <div className="contextual-toolbar">
           <div className="atelier-filter-row" role="group" aria-label="Filter lessons">
-            {[
+            {([
               ["all", "All lessons"],
               ["unread", "Unread"],
               ["in-progress", "In progress"],
               ["completed", "Completed"],
-            ].map(([value, label]) => (
+            ] as Array<[LibraryFilter, string]>).map(([value, label]) => (
               <button
                 className={filter === value ? "current" : ""}
                 type="button"
@@ -80,9 +64,9 @@ export default function LibraryPage() {
           </label>
         </div>
 
-        {workspace.loading ? <AtelierLoading label="Opening your library…" /> : null}
-        {workspace.error ? <AtelierError message={workspace.error} onRetry={workspace.reload} /> : null}
-        {!workspace.loading && !lessons.length ? (
+        {library.loading ? <AtelierLoading label="Opening your library…" /> : null}
+        {library.error ? <AtelierError message={library.error} onRetry={library.reload} /> : null}
+        {!library.loading && !library.lessons.length ? (
           <div className="atelier-state-card">
             <Search size={20} />
             <strong>No lessons found.</strong>
@@ -91,7 +75,7 @@ export default function LibraryPage() {
         ) : null}
 
         <div className="lesson-library-grid">
-          {lessons.map((lesson) => {
+          {library.lessons.map((lesson) => {
             const state = lessonState(lesson.id);
             return (
               <a
@@ -122,15 +106,15 @@ export default function LibraryPage() {
             );
           })}
         </div>
-        {workspace.hasMore ? (
+        {library.hasMore ? (
           <div className="library-load-more">
             <button
               className="atelier-primary"
               type="button"
-              disabled={workspace.loadingMore}
-              onClick={workspace.loadMore}
+              disabled={library.loadingMore}
+              onClick={library.loadMore}
             >
-              {workspace.loadingMore ? "Loading older lessons…" : "Load older lessons"}
+              {library.loadingMore ? "Loading older lessons…" : "Load older lessons"}
             </button>
           </div>
         ) : null}
