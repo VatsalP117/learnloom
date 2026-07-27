@@ -69,7 +69,7 @@ func (s *Store) ListLessonProgress(
 		return nil, fmt.Errorf("list lesson progress: %w", err)
 	}
 	defer rows.Close()
-	var items []LessonProgress
+	items := make([]LessonProgress, 0)
 	for rows.Next() {
 		var item LessonProgress
 		if err := rows.Scan(

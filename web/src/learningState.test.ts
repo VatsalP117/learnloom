@@ -26,4 +26,12 @@ describe("server-backed lesson progress", () => {
       completedAt: "2026-07-27T12:00:00Z",
     });
   });
+
+  it("accepts an empty progress projection from the API", () => {
+    expect(() => syncLessonProgress(null)).not.toThrow();
+    expect(lessonState("lesson-1")).toMatchObject({
+      progress: 0,
+      completed: false,
+    });
+  });
 });

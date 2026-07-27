@@ -56,9 +56,9 @@ export function syncLessonProgress(
     progress: number;
     completedAt?: string;
     updatedAt?: string;
-  }> = [],
+  }> | null | undefined = [],
 ) {
-  if (!items.length) return;
+  if (!items?.length) return;
   const state = readState();
   const lessons = { ...state.lessons };
   for (const item of items) {
