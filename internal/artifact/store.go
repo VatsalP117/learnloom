@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/dossier"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -22,7 +24,12 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-const maximumArtifactBytes = 20 << 20
+const (
+	maximumArtifactBytes       = 20 << 20
+	maximumStoredArtifactBytes = 21 << 20
+	artifactFormatVersion      = 1
+	artifactRenderVersion      = 1
+)
 
 var ErrNotFound = errors.New("Dossier Artifact not found")
 
@@ -98,6 +105,12 @@ type PutResult struct {
 	Bytes    int
 }
 
+type storedArtifact struct {
+	FormatVersion int            `json:"formatVersion"`
+	RenderVersion int            `json:"renderVersion"`
+	Dossier       domain.Dossier `json:"dossier"`
+}
+
 func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 	for name, value := range map[string]string{
 		"Account ID": input.AccountID, "Newsletter ID": input.NewsletterID,
@@ -107,7 +120,14 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 			return PutResult{}, fmt.Errorf("%s is invalid", name)
 		}
 	}
-	body, err := json.Marshal(input.Artifact)
+	if input.Artifact.Dossier.Version < 1 {
+		return PutResult{}, errors.New("Dossier Artifact is incomplete")
+	}
+	body, err := json.Marshal(storedArtifact{
+		FormatVersion: artifactFormatVersion,
+		RenderVersion: artifactRenderVersion,
+		Dossier:       input.Artifact.Dossier,
+	})
 	if err != nil {
 		return PutResult{}, fmt.Errorf("marshal Dossier Artifact: %w", err)
 	}
@@ -115,20 +135,26 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 		return PutResult{}, errors.New("Dossier Artifact exceeds the size limit")
 	}
 	checksum := sha256.Sum256(body)
+	compressed, err := compressArtifact(body)
+	if err != nil {
+		return PutResult{}, fmt.Errorf("compress Dossier Artifact: %w", err)
+	}
+	storedChecksum := sha256.Sum256(compressed)
 	key := path.Join(
 		"accounts", input.AccountID,
 		"newsletters", input.NewsletterID,
 		"issues", input.IssueID,
-		input.GenerationID+".json",
+		input.GenerationID+".json.gz",
 	)
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:         aws.String(s.bucket),
-		Key:            aws.String(key),
-		Body:           bytes.NewReader(body),
-		ContentLength:  aws.Int64(int64(len(body))),
-		ContentType:    aws.String("application/json"),
-		CacheControl:   aws.String("private, max-age=31536000, immutable"),
-		ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
+		Bucket:          aws.String(s.bucket),
+		Key:             aws.String(key),
+		Body:            bytes.NewReader(compressed),
+		ContentLength:   aws.Int64(int64(len(compressed))),
+		ContentType:     aws.String("application/json"),
+		ContentEncoding: aws.String("gzip"),
+		CacheControl:    aws.String("private, max-age=31536000, immutable"),
+		ChecksumSHA256:  aws.String(base64.StdEncoding.EncodeToString(storedChecksum[:])),
 		Metadata: map[string]string{
 			"sha256": hex.EncodeToString(checksum[:]),
 		},
@@ -136,9 +162,10 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 	if err != nil {
 		return PutResult{}, fmt.Errorf("store Dossier Artifact: %w", err)
 	}
-	s.cache.put(key, input.Artifact, int64(len(body)))
+	artifactValue := renderArtifact(input.Artifact.Dossier)
+	s.cache.put(key, artifactValue, cacheBytes(artifactValue, len(body)))
 	return PutResult{
-		Key: key, Checksum: hex.EncodeToString(checksum[:]), Bytes: len(body),
+		Key: key, Checksum: hex.EncodeToString(checksum[:]), Bytes: len(compressed),
 	}, nil
 }
 
@@ -162,27 +189,82 @@ func (s *Store) Get(ctx context.Context, key string) (domain.DossierArtifact, er
 		return domain.DossierArtifact{}, fmt.Errorf("load Dossier Artifact: %w", err)
 	}
 	defer result.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(result.Body, maximumArtifactBytes+1))
+	compressed, err := io.ReadAll(io.LimitReader(result.Body, maximumStoredArtifactBytes+1))
 	if err != nil {
 		return domain.DossierArtifact{}, fmt.Errorf("read Dossier Artifact: %w", err)
 	}
-	if len(body) > maximumArtifactBytes {
+	if len(compressed) > maximumStoredArtifactBytes {
 		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact exceeds the size limit")
+	}
+	if !strings.EqualFold(strings.TrimSpace(aws.ToString(result.ContentEncoding)), "gzip") {
+		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact encoding is invalid")
+	}
+	body, err := decompressArtifact(compressed)
+	if err != nil {
+		return domain.DossierArtifact{}, fmt.Errorf("decompress Dossier Artifact: %w", err)
 	}
 	checksum := sha256.Sum256(body)
 	expected := strings.ToLower(strings.TrimSpace(result.Metadata["sha256"]))
 	if expected == "" || !strings.EqualFold(expected, hex.EncodeToString(checksum[:])) {
 		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact checksum is invalid")
 	}
-	var artifact domain.DossierArtifact
-	if err := json.Unmarshal(body, &artifact); err != nil {
+	var stored storedArtifact
+	if err := json.Unmarshal(body, &stored); err != nil {
 		return domain.DossierArtifact{}, fmt.Errorf("decode Dossier Artifact: %w", err)
 	}
-	if artifact.Dossier.Version < 1 || artifact.Markdown == "" || artifact.HTML == "" {
+	if stored.FormatVersion != artifactFormatVersion ||
+		stored.RenderVersion != artifactRenderVersion {
+		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact version is unsupported")
+	}
+	if stored.Dossier.Version < 1 {
 		return domain.DossierArtifact{}, errors.New("stored Dossier Artifact is incomplete")
 	}
-	s.cache.put(key, artifact, int64(len(body)))
-	return artifact, nil
+	artifactValue := renderArtifact(stored.Dossier)
+	s.cache.put(key, artifactValue, cacheBytes(artifactValue, len(body)))
+	return artifactValue, nil
+}
+
+func compressArtifact(body []byte) ([]byte, error) {
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(body); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return compressed.Bytes(), nil
+}
+
+func decompressArtifact(compressed []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(reader, maximumArtifactBytes+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(body) > maximumArtifactBytes {
+		return nil, errors.New("decompressed Dossier Artifact exceeds the size limit")
+	}
+	return body, nil
+}
+
+func renderArtifact(value domain.Dossier) domain.DossierArtifact {
+	return domain.DossierArtifact{
+		Dossier:  value,
+		Markdown: dossier.RenderMarkdown(value),
+		HTML:     dossier.RenderHTML(value, ""),
+	}
+}
+
+func cacheBytes(artifactValue domain.DossierArtifact, canonicalBytes int) int64 {
+	return int64(canonicalBytes + len(artifactValue.Markdown) + len(artifactValue.HTML))
 }
 
 func (s *Store) Delete(ctx context.Context, key string) error {

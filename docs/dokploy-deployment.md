@@ -210,7 +210,7 @@ Then complete one browser flow:
 2. Claim `wutsell` (or the desired available lowercase username).
 3. Create a Dossier and confirm its first Issue queues.
 4. Watch the worker logs until generation finishes.
-5. In the R2 bucket, confirm a JSON object exists below
+5. In the R2 bucket, confirm a gzip-compressed JSON object exists below
    `accounts/<account-id>/newsletters/<newsletter-id>/issues/<issue-id>/`.
 6. Publish the Personal Site and open
    `https://wutsell.learnloom.blog`.

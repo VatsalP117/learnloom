@@ -20,6 +20,7 @@ func TestS3ArtifactLifecycleIntegration(t *testing.T) {
 		Bucket: os.Getenv("TEST_S3_BUCKET"), Region: "us-east-1",
 		Endpoint: endpoint, AccessKeyID: os.Getenv("TEST_S3_ACCESS_KEY_ID"),
 		SecretAccessKey: os.Getenv("TEST_S3_SECRET_ACCESS_KEY"), UsePathStyle: true,
+		CacheBytes: -1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +46,17 @@ func TestS3ArtifactLifecycleIntegration(t *testing.T) {
 	}
 	if loaded.Dossier.Title != "Integration Dossier" {
 		t.Fatalf("unexpected Dossier: %#v", loaded.Dossier)
+	}
+	if loaded.Markdown == "" || loaded.HTML == "" {
+		t.Fatal("canonical Dossier was not rendered after loading")
+	}
+	if loaded.Markdown == "# Integration Dossier" ||
+		loaded.HTML == "<h1>Integration Dossier</h1>" {
+		t.Fatal("stored Markdown or HTML was used instead of rendering the canonical Dossier")
+	}
+	if saved.Bytes <= 0 || saved.Key !=
+		"accounts/account-test/newsletters/newsletter-test/issues/issue-test/generation-test.json.gz" {
+		t.Fatalf("unexpected stored artifact result: %#v", saved)
 	}
 	if err := storage.DeleteAccount(ctx, "account-test"); err != nil {
 		t.Fatal(err)
