@@ -21,6 +21,10 @@ func (s *Server) handleReading(
 		methodNotAllowed(response, http.MethodGet, http.MethodHead)
 		return
 	}
+	if isFaviconPath(request.URL.Path) {
+		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+		return
+	}
 	site, err := s.store.GetPublicSite(request.Context(), host.Username)
 	if err != nil {
 		s.readingNotFound(response, request)
@@ -267,6 +271,7 @@ func (s *Server) sendReadingPage(
 ) {
 	document := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
+		`<link rel="icon" href="/favicon.svg" type="image/svg+xml">` +
 		`<title>` + html.EscapeString(title) + ` · Learnloom</title>` +
 		`<meta name="description" content="` + html.EscapeString(description) + `">` +
 		`<link rel="canonical" href="` + html.EscapeString(canonical) + `">` +
@@ -300,6 +305,7 @@ func (s *Server) readingNotFound(
 	if request.Method != http.MethodHead {
 		_, _ = response.Write([]byte(`<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 			`<meta name="viewport" content="width=device-width,initial-scale=1">` +
+			`<link rel="icon" href="/favicon.svg" type="image/svg+xml">` +
 			`<title>Not found · Learnloom</title><style>` + readingCSS +
 			`</style></head><body><main class="not-found"><div class="leaf-mark" aria-hidden="true"><i></i></div>` +
 			`<p class="eyebrow">A quiet corner of the web</p><h1>This page has wandered off the path.</h1>` +
@@ -378,7 +384,7 @@ func decoratePublicDossier(
 	document = strings.Replace(
 		document,
 		"</head>",
-		`<style>`+readingArticleCSS+`</style></head>`,
+		`<link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>`+readingArticleCSS+`</style></head>`,
 		1,
 	)
 	if strings.Contains(document, `class="public-dossier"`) {

@@ -228,6 +228,14 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
 		return
 	}
+	if isFaviconPath(request.URL.Path) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			methodNotAllowed(response, http.MethodGet, http.MethodHead)
+			return
+		}
+		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+		return
+	}
 	if !isApexPage(request.URL.Path) {
 		writeProblem(response, http.StatusNotFound, "not_found", "Page not found.")
 		return
@@ -260,6 +268,14 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/assets/") {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			methodNotAllowed(response, http.MethodGet, http.MethodHead)
+			return
+		}
+		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+		return
+	}
+	if isFaviconPath(request.URL.Path) {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			methodNotAllowed(response, http.MethodGet, http.MethodHead)
 			return
@@ -360,7 +376,8 @@ func (s *Server) serveStatic(
 	name string,
 ) {
 	clean := path.Clean(name)
-	if clean != name || !strings.HasPrefix(clean, "assets/") {
+	if clean != name ||
+		(clean != "favicon.svg" && clean != "favicon-leaf.svg" && !strings.HasPrefix(clean, "assets/")) {
 		writeProblem(response, http.StatusNotFound, "not_found", "Asset not found.")
 		return
 	}
@@ -374,11 +391,19 @@ func (s *Server) serveStatic(
 		contentType = "application/octet-stream"
 	}
 	response.Header().Set("Content-Type", contentType)
-	response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if strings.HasPrefix(clean, "assets/") {
+		response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		response.Header().Set("Cache-Control", "public, max-age=300, must-revalidate")
+	}
 	response.WriteHeader(http.StatusOK)
 	if request.Method != http.MethodHead {
 		_, _ = response.Write(body)
 	}
+}
+
+func isFaviconPath(requestPath string) bool {
+	return requestPath == "/favicon.svg" || requestPath == "/favicon-leaf.svg"
 }
 
 func (s *Server) applyAppCSP(response http.ResponseWriter) {
