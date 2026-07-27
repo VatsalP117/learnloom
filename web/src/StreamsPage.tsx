@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   BookOpen,
   Clock3,
   Pause,
@@ -80,7 +79,11 @@ export default function StreamsPage() {
 
         <div className="stream-grid">
           {visible.map((newsletter) => (
-            <article className="stream-card glass-panel" key={newsletter.id}>
+            <a
+              className="stream-card glass-panel"
+              href={`/newsletters/${encodeURIComponent(newsletter.id)}`}
+              key={newsletter.id}
+            >
               <div className="stream-card-top">
                 <span className="atelier-icon">
                   {newsletter.active ? <Sparkles size={17} /> : <Pause size={17} />}
@@ -102,10 +105,7 @@ export default function StreamsPage() {
                   <dd>{newsletter.generatedCount} lessons</dd>
                 </div>
               </dl>
-              <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`}>
-                Open stream <ArrowRight size={15} />
-              </a>
-            </article>
+            </a>
           ))}
           {!query && filter === "all" ? (
             <a className="stream-create-card" href="/newsletters/new">

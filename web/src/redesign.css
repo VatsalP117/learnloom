@@ -503,7 +503,7 @@
 }
 .atelier-filter-row button.current { color: white; background: var(--atelier-ink); }
 .stream-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.stream-card { min-height: 286px; display: flex; flex-direction: column; padding: 21px; }
+.stream-card { min-height: 286px; display: flex; flex-direction: column; padding: 21px; color: inherit; text-decoration: none; }
 .stream-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .stream-card h2 {
   margin: 9px 0 9px;
@@ -516,7 +516,6 @@
 .stream-card dl div { padding-top: 12px; border-top: 1px solid var(--atelier-line); }
 .stream-card dt { display: flex; align-items: center; gap: 5px; color: var(--atelier-muted); font-size: 8px; text-transform: uppercase; }
 .stream-card dd { margin: 6px 0 0; font-size: 10px; font-weight: 700; }
-.stream-card > a { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 0; border-top: 1px solid var(--atelier-line); color: var(--atelier-ink); font-size: 10px; font-weight: 750; text-decoration: none; }
 .stream-create-card {
   min-height: 286px;
   display: grid;
@@ -537,7 +536,7 @@
 
 .lesson-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .library-load-more { display: flex; justify-content: center; padding: 24px 0 4px; }
-.lesson-library-card { position: relative; overflow: hidden; min-height: 202px; display: flex; flex-direction: column; padding: 20px; }
+.lesson-library-card { position: relative; overflow: hidden; min-height: 202px; display: flex; flex-direction: column; padding: 20px; color: inherit; text-decoration: none; }
 .lesson-library-meta > span:last-child { display: flex; align-items: center; gap: 5px; color: #4d5560; font-size: 9px; }
 .lesson-library-card h2 {
   margin: 18px 0 7px;
@@ -556,9 +555,7 @@
   color: var(--atelier-muted);
   font-size: 9px;
 }
-.lesson-library-footer span,
-.lesson-library-footer a { display: flex; align-items: center; gap: 5px; }
-.lesson-library-footer a { margin-left: auto; color: var(--atelier-ink); font-weight: 750; text-decoration: none; }
+.lesson-library-footer span { display: flex; align-items: center; gap: 5px; }
 .library-progress { position: absolute; inset: auto 0 0; height: 3px; background: rgba(21, 23, 25, 0.1); }
 .library-progress i { height: 100%; display: block; background: var(--atelier-ink); }
 
@@ -1750,7 +1747,6 @@
   text-wrap: balance;
 }
 
-.stream-card > a,
 .lesson-library-footer,
 .stream-card dl div {
   border-color: rgba(23, 35, 28, 0.11);
@@ -2031,8 +2027,6 @@
   .atelier-primary,
   .atelier-filter-row button,
   .contextual-search,
-  .stream-card a,
-  .lesson-library-card a,
   .stream-header-actions button,
   .stream-rhythm button,
   .stream-lesson-actions button,

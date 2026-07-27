@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   BookOpen,
   CheckCircle2,
   Clock3,
@@ -95,7 +94,11 @@ export default function LibraryPage() {
           {lessons.map((lesson) => {
             const state = lessonState(lesson.id);
             return (
-              <article className="lesson-library-card glass-panel" key={lesson.id}>
+              <a
+                className="lesson-library-card glass-panel"
+                href={`/issues/${encodeURIComponent(lesson.id)}`}
+                key={lesson.id}
+              >
                 <div className="lesson-library-meta">
                   <span className="atelier-chip">{lesson.newsletter.name}</span>
                   {state.completed ? (
@@ -111,14 +114,11 @@ export default function LibraryPage() {
                 <div className="lesson-library-footer">
                   <span><Clock3 size={13} />{lesson.newsletter.lessonMinutes} min</span>
                   <span><BookOpen size={13} />{formatShortDate(lesson.createdAt)}</span>
-                  <a href={`/issues/${encodeURIComponent(lesson.id)}`}>
-                    {state.progress ? "Continue" : "Open"} <ArrowRight size={14} />
-                  </a>
                 </div>
                 {state.progress && !state.completed ? (
                   <div className="library-progress"><i style={{ width: `${state.progress}%` }} /></div>
                 ) : null}
-              </article>
+              </a>
             );
           })}
         </div>
