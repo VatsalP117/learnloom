@@ -1,5 +1,8 @@
 # Search discovery operations
 
+The ordered implementation and external setup roadmap lives in
+[SEO next steps](seo-next-steps.md).
+
 Learnloom's search strategy is problem-led. The apex site should answer the
 questions people ask before they know the product name, while public learner
 sites provide carefully controlled, source-grounded examples of learning in
