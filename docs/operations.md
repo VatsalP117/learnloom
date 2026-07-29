@@ -90,3 +90,15 @@ Do not expose SearXNG publicly unless it has an appropriate reverse proxy and
 rate limits. Search outages do not affect provided-only streams. Hybrid
 streams continue only when their provided catalog already satisfies the hard
 evidence minimum; otherwise the Issue fails without calling the model.
+
+## Curated public examples
+
+The web role accepts `FEATURED_SITE_USERNAMES` as a comma-separated allowlist
+for the apex `/examples` gallery. A configured site is still excluded unless
+its owner has made it public, explicitly enabled search indexing, and published
+at least one Dossier.
+
+Review the site and recent Dossiers before adding a username. Treat owner
+consent as revocable: disabling search indexing or making the site private
+removes it without an operator change. Remove unsafe, low-quality, stale, or
+disputed entries from the allowlist and redeploy the web role.

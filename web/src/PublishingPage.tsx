@@ -7,6 +7,7 @@ import {
   Globe2,
   LockKeyhole,
   Save,
+  Search,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
@@ -104,6 +105,28 @@ export default function PublishingPage({ site, onSiteUpdate }) {
         visibility === "public"
           ? "Your site is public. Only streams and lessons you publish can appear."
           : "Your site is now private.",
+      );
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function toggleSearchIndexing() {
+    setBusy("search-indexing");
+    setError("");
+    const searchIndexing = !site.searchIndexing;
+    try {
+      const body = await apiJSON("/api/me/site/settings", {
+        method: "POST",
+        body: { visibility: site.visibility, searchIndexing },
+      });
+      onSiteUpdate?.(body.site);
+      setNotice(
+        searchIndexing
+          ? "Search indexing is enabled. Search engines may discover eligible published pages."
+          : "Search indexing is disabled. Your public links still work, but pages ask search engines not to list them.",
       );
     } catch (requestError) {
       setError(requestError.message);
@@ -256,6 +279,29 @@ export default function PublishingPage({ site, onSiteUpdate }) {
                     {site.visibility === "public" ? "Make private" : "Publish site"}
                   </button>
                 </div>
+                <div className="visibility-level">
+                  <span className="atelier-icon">
+                    <Search size={17} />
+                  </span>
+                  <div>
+                    <strong>Search discovery</strong>
+                    <p>
+                      {site.searchIndexing
+                        ? "Enabled. Eligible published pages may appear in search results."
+                        : "Off. Public links work, but pages request exclusion from search results."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleSearchIndexing}
+                    disabled={
+                      site.visibility !== "public" ||
+                      busy === "search-indexing"
+                    }
+                  >
+                    {site.searchIndexing ? "Disable indexing" : "Allow indexing"}
+                  </button>
+                </div>
                 <div className="visibility-streams">
                   <span><LockKeyhole size={15} /> Streams</span>
                   {workspace.loading ? <AtelierLoading label="Checking stream visibility…" /> : null}
@@ -269,7 +315,8 @@ export default function PublishingPage({ site, onSiteUpdate }) {
                 </div>
                 <p className="visibility-help">
                   A lesson appears publicly only when the site is public, its stream
-                  is visible, and that lesson is published.
+                  is visible, and that lesson is published. Search discovery is a
+                  separate opt-in for eligible public pages.
                 </p>
               </article>
             </div>

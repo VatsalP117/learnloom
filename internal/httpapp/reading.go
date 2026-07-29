@@ -34,11 +34,7 @@ func (s *Server) handleReading(
 	origin := "https://" + host.Hostname
 	switch request.URL.Path {
 	case "/robots.txt":
-		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		response.Header().Set("Cache-Control", "public, max-age=300")
-		if request.Method != http.MethodHead {
-			fmt.Fprintf(response, "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n", origin)
-		}
+		renderPersonalRobots(response, request, site, origin)
 		return
 	case "/sitemap.xml":
 		s.renderSitemap(response, request, site, origin)
@@ -57,6 +53,22 @@ func (s *Server) handleReading(
 		return
 	}
 	s.readingNotFound(response, request)
+}
+
+func renderPersonalRobots(
+	response http.ResponseWriter,
+	request *http.Request,
+	site domain.PersonalSite,
+	origin string,
+) {
+	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	response.Header().Set("Cache-Control", "public, max-age=300")
+	if request.Method != http.MethodHead {
+		fmt.Fprint(response, "User-agent: *\nAllow: /\n")
+		if site.SearchIndexing {
+			fmt.Fprintf(response, "Sitemap: %s/sitemap.xml\n", origin)
+		}
+	}
 }
 
 func (s *Server) renderPublicHome(
@@ -115,7 +127,7 @@ func (s *Server) renderPublicHome(
 		firstReadingText(site.Description, "A durable personal learning archive."),
 		origin,
 		body,
-		len(issues) > 0,
+		site.SearchIndexing && len(issues) > 0,
 	)
 }
 
@@ -166,7 +178,7 @@ func (s *Server) renderPublicTopic(
 		selected.Topic,
 		origin+"/topics/"+url.PathEscape(selected.PublicSlug),
 		body,
-		len(issues) > 0,
+		site.SearchIndexing && len(issues) > 0,
 	)
 }
 
@@ -233,7 +245,7 @@ func (s *Server) renderPublicDossier(
 		1,
 	)
 	document = decoratePublicDossier(document, site, issue)
-	s.applyReadingHeaders(response, true)
+	s.applyReadingHeaders(response, site.SearchIndexing)
 	response.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if request.Method != http.MethodHead {
@@ -247,6 +259,10 @@ func (s *Server) renderSitemap(
 	site domain.PersonalSite,
 	origin string,
 ) {
+	if !site.SearchIndexing {
+		writeEmptySitemap(response, request)
+		return
+	}
 	newsletters, err := s.store.ListPublicNewsletters(request.Context(), site.Username)
 	if err != nil {
 		s.internalError(response, request, err)
@@ -281,6 +297,16 @@ func (s *Server) renderSitemap(
 	response.Header().Set("Cache-Control", "public, max-age=300")
 	if request.Method != http.MethodHead {
 		_, _ = response.Write([]byte(body.String()))
+	}
+}
+
+func writeEmptySitemap(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	response.Header().Set("Cache-Control", "public, max-age=300")
+	if request.Method != http.MethodHead {
+		_, _ = response.Write([]byte(
+			`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`,
+		))
 	}
 }
 

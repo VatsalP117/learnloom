@@ -1,6 +1,12 @@
 package store
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/VatsalP117/learnloom/internal/domain"
+)
 
 func TestNormalizeUsername(t *testing.T) {
 	t.Parallel()
@@ -14,5 +20,21 @@ func TestNormalizeUsername(t *testing.T) {
 		if _, err := normalizeUsername(value); err == nil {
 			t.Errorf("%q should be rejected", value)
 		}
+	}
+}
+
+func TestUpdateSiteRejectsIndexingForPrivateSite(t *testing.T) {
+	t.Parallel()
+	enabled := true
+	_, err := (&Store{}).UpdateSite(
+		context.Background(),
+		"account-id",
+		domain.SitePrivate,
+		nil,
+		nil,
+		&enabled,
+	)
+	if err == nil || !strings.Contains(err.Error(), "requires a public") {
+		t.Fatalf("UpdateSite() error = %v", err)
 	}
 }

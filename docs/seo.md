@@ -17,10 +17,32 @@ nofollow`. Privacy and terms pages use `noindex, follow`. The legacy
 `/marketing` URL permanently redirects to the homepage, and trailing-slash
 variants of SEO routes permanently redirect to their canonical form.
 
-Public learner subdomains own their own `robots.txt` and sitemap. A learner home
-or topic archive is indexable only after it contains a published Dossier. A
-published Dossier receives canonical, social, and `Article` metadata. Missing,
-private, hidden, and empty pages must remain out of the index.
+Public learner subdomains own their own `robots.txt` and sitemap. Public
+visibility and search indexing are separate owner controls. Search indexing is
+off by default, is available only while the site is public, and is automatically
+disabled when a site becomes private. Even after the owner opts in, a learner
+home or topic archive is indexable only after it contains a published Dossier.
+A published Dossier receives canonical, social, and `Article` metadata.
+Missing, private, hidden, empty, and indexing-disabled pages must remain out of
+the index.
+
+## Curated examples
+
+`/examples` is an allowlisted gallery, not a directory of every public learner.
+Configure it with a comma-separated list such as:
+
+```sh
+FEATURED_SITE_USERNAMES=maya,ada
+```
+
+An allowlisted username appears only when the account remains active, the site
+is public, the owner has enabled search indexing, and at least one Dossier is
+published. If no configured site satisfies those conditions, `/examples`
+remains usable but returns `noindex` and is omitted from the apex sitemap.
+
+Before adding a learner, review the visible home, recent Dossiers, sources, and
+privacy intent. Removing a username from the configuration removes it from the
+gallery and sitemap on the next deployment/cache refresh.
 
 ## Initial intent map
 
@@ -48,8 +70,9 @@ intent into an existing page and improve that page instead.
 
 After deploying an SEO release:
 
-1. Fetch `/`, `/robots.txt`, `/sitemap.xml`, one SEO page, the app homepage,
-   one populated learner home, one empty learner home, and one public Dossier.
+1. Fetch `/`, `/robots.txt`, `/sitemap.xml`, `/examples`, one SEO page, the app
+   homepage, one opted-in learner home, one indexing-disabled public learner
+   home, one empty learner home, and one public Dossier.
 2. Confirm status, canonical URL, `X-Robots-Tag`, title, description, and
    structured data for each response.
 3. Verify the domain property in Google Search Console.

@@ -57,9 +57,22 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		domain.SitePublic,
 		nil,
 		nil,
+		nil,
 	)
-	if err != nil || site.Visibility != domain.SitePublic {
+	if err != nil || site.Visibility != domain.SitePublic || site.SearchIndexing {
 		t.Fatalf("site=%#v err=%v", site, err)
+	}
+	searchIndexing := true
+	site, err = database.UpdateSite(
+		ctx,
+		account.ID,
+		domain.SitePublic,
+		nil,
+		nil,
+		&searchIndexing,
+	)
+	if err != nil || !site.SearchIndexing {
+		t.Fatalf("site search indexing=%#v err=%v", site, err)
 	}
 	newsletter, err := database.CreateNewsletter(
 		ctx,

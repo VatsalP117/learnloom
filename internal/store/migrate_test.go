@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMigrationVersion(t *testing.T) {
 	t.Parallel()
@@ -11,6 +14,23 @@ func TestMigrationVersion(t *testing.T) {
 	for _, name := range []string{"initial.sql", "000_invalid.sql", "x_bad.sql"} {
 		if _, err := migrationVersion(name); err == nil {
 			t.Errorf("%q should be rejected", name)
+		}
+	}
+}
+
+func TestSearchIndexingMigrationDefaultsOffAndRequiresPublicVisibility(t *testing.T) {
+	t.Parallel()
+	sql, err := migrationFiles.ReadFile("migrations/005_site_search_indexing.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(sql)
+	for _, expected := range []string{
+		"search_indexing boolean NOT NULL DEFAULT false",
+		"NOT search_indexing OR visibility = 'public'",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("migration missing %q: %s", expected, body)
 		}
 	}
 }

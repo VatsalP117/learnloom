@@ -209,7 +209,8 @@ func (s *Store) GetSite(
 ) (*domain.PersonalSite, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id::text, owner_account_id::text, username, display_name,
-		       description, visibility, claimed_at, created_at, updated_at
+		       description, visibility, search_indexing,
+		       claimed_at, created_at, updated_at
 		FROM personal_sites
 		WHERE owner_account_id = $1
 	`, accountID)
@@ -262,7 +263,8 @@ func (s *Store) ClaimSite(
 		WHERE a.id = $5 AND a.status = 'active'
 		ON CONFLICT DO NOTHING
 		RETURNING id::text, owner_account_id::text, username, display_name,
-		          description, visibility, claimed_at, created_at, updated_at
+		          description, visibility, search_indexing,
+		          claimed_at, created_at, updated_at
 	`, uuid.New(), username, displayName, now, accountID)
 	site, err := scanSite(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -279,9 +281,13 @@ func (s *Store) UpdateSite(
 	accountID string,
 	visibility domain.SiteVisibility,
 	displayName, description *string,
+	searchIndexing *bool,
 ) (domain.PersonalSite, error) {
 	if visibility != domain.SitePrivate && visibility != domain.SitePublic {
 		return domain.PersonalSite{}, errors.New("Personal Site visibility is invalid")
+	}
+	if searchIndexing != nil && *searchIndexing && visibility != domain.SitePublic {
+		return domain.PersonalSite{}, errors.New("search indexing requires a public Personal Site")
 	}
 	if displayName != nil {
 		normalized := strings.TrimSpace(*displayName)
@@ -302,11 +308,16 @@ func (s *Store) UpdateSite(
 			visibility = $2,
 			display_name = COALESCE($3, display_name),
 			description = COALESCE($4, description),
+			search_indexing = CASE
+				WHEN $2 = 'public' THEN COALESCE($5, search_indexing)
+				ELSE false
+			END,
 			updated_at = now()
 		WHERE owner_account_id = $1
 		RETURNING id::text, owner_account_id::text, username, display_name,
-		          description, visibility, claimed_at, created_at, updated_at
-	`, accountID, visibility, displayName, description)
+		          description, visibility, search_indexing,
+		          claimed_at, created_at, updated_at
+	`, accountID, visibility, displayName, description, searchIndexing)
 	site, err := scanSite(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.PersonalSite{}, ErrNotFound
@@ -323,7 +334,8 @@ func (s *Store) GetPublicSite(
 ) (domain.PersonalSite, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT s.id::text, s.owner_account_id::text, s.username, s.display_name,
-		       s.description, s.visibility, s.claimed_at, s.created_at, s.updated_at
+		       s.description, s.visibility, s.search_indexing,
+		       s.claimed_at, s.created_at, s.updated_at
 		FROM personal_sites s
 		JOIN accounts a ON a.id = s.owner_account_id
 		WHERE s.username = $1 AND s.visibility = 'public' AND a.status = 'active'
@@ -365,6 +377,7 @@ func scanSite(row scanner) (domain.PersonalSite, error) {
 		&site.DisplayName,
 		&site.Description,
 		&site.Visibility,
+		&site.SearchIndexing,
 		&site.ClaimedAt,
 		&site.CreatedAt,
 		&site.UpdatedAt,

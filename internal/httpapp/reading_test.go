@@ -116,3 +116,49 @@ func TestReadingIndexabilityHeaders(t *testing.T) {
 		t.Fatalf("empty robots header = %q", got)
 	}
 }
+
+func TestEmptySitemapContainsNoIndexableURLs(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodGet, "https://maya.learnloom.blog/sitemap.xml", nil)
+	response := httptest.NewRecorder()
+
+	writeEmptySitemap(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if strings.Contains(response.Body.String(), "<url>") ||
+		!strings.Contains(response.Body.String(), "<urlset") {
+		t.Fatalf("unexpected empty sitemap: %s", response.Body.String())
+	}
+}
+
+func TestPersonalRobotsAdvertisesSitemapOnlyAfterIndexingOptIn(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodGet, "https://maya.learnloom.blog/robots.txt", nil)
+
+	disabled := httptest.NewRecorder()
+	renderPersonalRobots(
+		disabled,
+		request,
+		domain.PersonalSite{SearchIndexing: false},
+		"https://maya.learnloom.blog",
+	)
+	if strings.Contains(disabled.Body.String(), "Sitemap:") {
+		t.Fatalf("disabled robots advertised a sitemap: %s", disabled.Body.String())
+	}
+
+	enabled := httptest.NewRecorder()
+	renderPersonalRobots(
+		enabled,
+		request,
+		domain.PersonalSite{SearchIndexing: true},
+		"https://maya.learnloom.blog",
+	)
+	if !strings.Contains(
+		enabled.Body.String(),
+		"Sitemap: https://maya.learnloom.blog/sitemap.xml",
+	) {
+		t.Fatalf("enabled robots omitted the sitemap: %s", enabled.Body.String())
+	}
+}

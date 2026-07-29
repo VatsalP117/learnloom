@@ -49,6 +49,7 @@ type HTTP struct {
 	CSRFSecret      string
 	StaticDirectory string
 	TrustedProxy    []net.IPNet
+	FeaturedSites   []string
 }
 
 type Database struct {
@@ -133,6 +134,7 @@ func Load() (Config, error) {
 			AppOrigin:       env("LEARNLOOM_APP_ORIGIN", "https://app.learnloom.blog"),
 			CSRFSecret:      os.Getenv("CSRF_SECRET"),
 			StaticDirectory: env("FRONTEND_DIR", "web/dist"),
+			FeaturedSites:   envList("FEATURED_SITE_USERNAMES"),
 		},
 		Database: Database{
 			URL:              os.Getenv("DATABASE_URL"),
@@ -393,6 +395,19 @@ func envDuration(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return value
+}
+
+func envList(name string) []string {
+	var result []string
+	seen := map[string]bool{}
+	for _, value := range strings.Split(os.Getenv(name), ",") {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" && !seen[value] {
+			result = append(result, value)
+			seen[value] = true
+		}
+	}
+	return result
 }
 
 func isPrivateServiceHost(host string) bool {

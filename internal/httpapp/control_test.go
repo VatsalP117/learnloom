@@ -37,6 +37,23 @@ func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
 	}
 }
 
+func TestSitePayloadIncludesSearchIndexingPreference(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{RootDomain: "learnloom.blog"}}
+	payload := server.sitePayload(&domain.PersonalSite{
+		Username:       "maya",
+		Visibility:     domain.SitePublic,
+		SearchIndexing: true,
+	})
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"searchIndexing":true`) {
+		t.Fatalf("site payload = %s", encoded)
+	}
+}
+
 func TestIssueCursorRoundTrip(t *testing.T) {
 	t.Parallel()
 	cursor := &store.WorkspaceIssueCursor{

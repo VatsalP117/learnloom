@@ -414,7 +414,7 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 	body.WriteString(renderAuthorityHead(page, canonical))
 	body.WriteString(`<style>` + seoCSS + authorityCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
-	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/how-learnloom-works">How it works</a></nav>`)
+	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
 	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
 	body.WriteString(`<main><article class="authority-article"><header class="authority-hero"><p class="eyebrow">` + html.EscapeString(page.Category) + `</p><h1>` + html.EscapeString(page.Title) + `</h1><p>` + html.EscapeString(page.Lead) + `</p></header>`)
 	body.WriteString(`<div class="authority-layout"><div class="authority-body">`)
@@ -520,7 +520,7 @@ func publicPageTitle(path string) (string, bool) {
 func renderSEOFooter(appOrigin string) string {
 	return `<footer><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>` +
 		`<p>Current sources, woven into durable understanding.</p><nav>` +
-		`<a href="/guides">Guides</a><a href="/editorial-principles">Editorial principles</a>` +
+		`<a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/editorial-principles">Editorial principles</a>` +
 		`<a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="` +
 		html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-in") +
 		`">Sign in</a></nav></footer>`

@@ -263,6 +263,16 @@ func (s *Server) renderApexSitemap(
 	for _, page := range authorityPages {
 		locations = append(locations, origin+page.Path)
 	}
+	if len(s.cfg.FeaturedSites) > 0 {
+		examples, err := s.loadFeaturedExamples(request.Context())
+		if err != nil {
+			if s.logger != nil {
+				s.logger.WarnContext(request.Context(), "load featured examples for sitemap", "error", err)
+			}
+		} else if len(examples) > 0 {
+			locations = append(locations, origin+"/examples")
+		}
+	}
 	var body strings.Builder
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	body.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
@@ -302,7 +312,7 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	body.WriteString(renderSEOHead(page.Title+" | Learnloom", page.Description, canonical))
 	body.WriteString(`<style>` + seoCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
-	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/how-learnloom-works">How it works</a></nav>`)
+	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
 	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
 	body.WriteString(`<main><section class="seo-hero"><p class="eyebrow">` + html.EscapeString(page.Eyebrow) + `</p>`)
 	body.WriteString(`<h1>` + html.EscapeString(page.Title) + `</h1><p class="lead">` + html.EscapeString(page.Lead) + `</p>`)
@@ -424,6 +434,8 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 <a href="/solutions/remember-what-you-read">Remember what you read</a>
 <a href="/solutions/keep-up-with-your-field">Keep up with your field</a>
 <a href="/product/ai-learning-assistant">Explore the AI learning assistant</a>
+<a href="/guides">Read the learning guides</a>
+<a href="/examples">Explore public learning examples</a>
 </nav>
 <a href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")) + `/sign-up">Create your learning stream</a>
 </main>`

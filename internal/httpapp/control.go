@@ -97,9 +97,10 @@ func (s *Server) handleControl(
 			return
 		}
 		var body struct {
-			Visibility  domain.SiteVisibility `json:"visibility"`
-			DisplayName *string               `json:"displayName"`
-			Description *string               `json:"description"`
+			Visibility     domain.SiteVisibility `json:"visibility"`
+			DisplayName    *string               `json:"displayName"`
+			Description    *string               `json:"description"`
+			SearchIndexing *bool                 `json:"searchIndexing"`
 		}
 		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 			return
@@ -110,6 +111,7 @@ func (s *Server) handleControl(
 			body.Visibility,
 			body.DisplayName,
 			body.Description,
+			body.SearchIndexing,
 		)
 		if err != nil {
 			writeStoreError(response, err)
@@ -1086,8 +1088,9 @@ func (s *Server) sitePayload(site *domain.PersonalSite) any {
 	return map[string]any{
 		"username": site.Username, "displayName": site.DisplayName,
 		"description": site.Description, "visibility": site.Visibility,
-		"claimedAt": site.ClaimedAt,
-		"url":       "https://" + site.Username + "." + s.cfg.RootDomain,
+		"searchIndexing": site.SearchIndexing,
+		"claimedAt":      site.ClaimedAt,
+		"url":            "https://" + site.Username + "." + s.cfg.RootDomain,
 	}
 }
 

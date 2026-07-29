@@ -36,6 +36,7 @@ export default function MarketingLanding() {
           <a href="/solutions">Solutions</a>
           <a href="/product/ai-learning-assistant">Product</a>
           <a href="/guides">Guides</a>
+          <a href="/examples">Examples</a>
           <a href="#how-it-works">How it works</a>
         </nav>
         <div className="ll-nav-actions">
@@ -235,7 +236,7 @@ export default function MarketingLanding() {
         </div>
         <div className="ll-footer-links">
           <div><strong>Product</strong><a href="/product/ai-learning-assistant">AI learning assistant</a><a href="/product/trusted-source-learning">Trusted-source learning</a><a href="/how-learnloom-works">How Learnloom works</a></div>
-          <div><strong>Learn</strong><a href="/guides">Learning guides</a><a href="/editorial-principles">Editorial principles</a><a href="/solutions/build-a-personal-learning-curriculum">Build a personal curriculum</a></div>
+          <div><strong>Learn</strong><a href="/guides">Learning guides</a><a href="/examples">Public examples</a><a href="/editorial-principles">Editorial principles</a></div>
           <div><strong>Account</strong><a href={`${appOrigin}/sign-in`}>Sign in</a><a href={`${appOrigin}/sign-up`}>Get started</a></div>
           <div><strong>Legal</strong><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
         </div>

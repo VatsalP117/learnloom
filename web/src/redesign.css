@@ -726,6 +726,7 @@
 .visibility-card { padding: 19px; }
 .visibility-card h2 { margin: 7px 0 17px; font-family: var(--atelier-display); font-size: 26px; }
 .visibility-level { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--atelier-line); background: var(--atelier-paper-soft); }
+.visibility-level + .visibility-level { margin-top: 10px; }
 .visibility-level strong { font-size: 11px; }
 .visibility-level p { margin: 4px 0 0; color: var(--atelier-muted); font-size: 9px; line-height: 1.45; }
 .visibility-level button {

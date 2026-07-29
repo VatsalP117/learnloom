@@ -82,6 +82,7 @@ export interface Site {
   displayName: string;
   description?: string;
   visibility: string;
+  searchIndexing: boolean;
   url?: string;
   [key: string]: any;
 }

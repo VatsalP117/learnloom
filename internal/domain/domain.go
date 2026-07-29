@@ -34,6 +34,7 @@ type PersonalSite struct {
 	DisplayName    string         `json:"displayName"`
 	Description    string         `json:"description"`
 	Visibility     SiteVisibility `json:"visibility"`
+	SearchIndexing bool           `json:"searchIndexing"`
 	ClaimedAt      time.Time      `json:"claimedAt"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdatedAt      time.Time      `json:"updatedAt"`

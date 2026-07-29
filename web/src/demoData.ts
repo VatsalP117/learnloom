@@ -184,6 +184,7 @@ export const demoSite = {
   displayName: "Maya’s Learning Garden",
   description: "Notes on cities, intelligence, and the systems quietly shaping everyday life.",
   visibility: "public",
+  searchIndexing: true,
   url: "https://maya.learnloom.blog",
 };
 
@@ -346,15 +347,21 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
         username: requestBody?.username ?? demoSite.username,
         displayName: requestBody?.displayName ?? demoSite.displayName,
         visibility: "private",
+        searchIndexing: false,
       },
     };
   }
 
   if (path === "/api/me/site/settings" && method === "POST") {
+    const visibility = requestBody?.visibility ?? demoSite.visibility;
     return {
       site: {
         ...demoSite,
-        visibility: requestBody?.visibility ?? demoSite.visibility,
+        visibility,
+        searchIndexing:
+          visibility === "public"
+            ? requestBody?.searchIndexing ?? demoSite.searchIndexing
+            : false,
         displayName: requestBody?.displayName ?? demoSite.displayName,
         description: requestBody?.description ?? demoSite.description,
       },

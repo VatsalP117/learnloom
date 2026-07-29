@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -156,5 +157,43 @@ func TestApexAuthorityPageTrailingSlashRedirectsToCanonicalURL(t *testing.T) {
 	if location := response.Header().Get("Location"); location !=
 		"https://learnloom.blog/guides/how-to-remember-what-you-read" {
 		t.Fatalf("Location = %q", location)
+	}
+}
+
+func TestNormalizeFeaturedSitesRejectsInvalidAndReservedNames(t *testing.T) {
+	t.Parallel()
+	got, err := normalizeFeaturedSites([]string{"Maya", "ada", "maya"})
+	if err != nil || strings.Join(got, ",") != "maya,ada" {
+		t.Fatalf("normalizeFeaturedSites() = %#v, %v", got, err)
+	}
+	for _, values := range [][]string{{"a"}, {"api"}, {"bad--name"}} {
+		if _, err := normalizeFeaturedSites(values); err == nil {
+			t.Fatalf("normalizeFeaturedSites(%#v) succeeded", values)
+		}
+	}
+	tooMany := make([]string, 25)
+	for index := range tooMany {
+		tooMany[index] = fmt.Sprintf("site-%02d", index)
+	}
+	if _, err := normalizeFeaturedSites(tooMany); err == nil {
+		t.Fatal("normalizeFeaturedSites accepted more than 24 usernames")
+	}
+}
+
+func TestApexExamplesTrailingSlashRedirectsToCanonicalURL(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{ApexOrigin: "https://learnloom.blog"}}
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"https://learnloom.blog/examples/",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	server.handleApex(response, request)
+
+	if response.Code != http.StatusPermanentRedirect ||
+		response.Header().Get("Location") != "https://learnloom.blog/examples" {
+		t.Fatalf("status=%d location=%q", response.Code, response.Header().Get("Location"))
 	}
 }

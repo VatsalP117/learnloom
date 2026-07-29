@@ -45,6 +45,7 @@ type Config struct {
 	MaxDeliveryAttempts int
 	ResendConfigured    bool
 	SourceDiscovery     bool
+	FeaturedSites       []string
 	Static              fs.FS
 	Authentication      func(http.Handler) http.Handler
 }
@@ -91,6 +92,11 @@ func NewServer(
 	if cfg.Static == nil {
 		return nil, errors.New("frontend static files are required")
 	}
+	featuredSites, err := normalizeFeaturedSites(cfg.FeaturedSites)
+	if err != nil {
+		return nil, err
+	}
+	cfg.FeaturedSites = featuredSites
 	if cfg.MaxRequestBodyBytes == 0 {
 		cfg.MaxRequestBodyBytes = 1 << 20
 	}
@@ -133,6 +139,29 @@ func NewServer(
 	}
 	server.authenticated = auth(http.HandlerFunc(server.handleAuthenticated))
 	return server, nil
+}
+
+func normalizeFeaturedSites(values []string) ([]string, error) {
+	result := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if !siteLabelPattern.MatchString(value) || strings.HasSuffix(value, "-") ||
+			strings.Contains(value, "--") {
+			return nil, fmt.Errorf("featured Personal Site username %q is invalid", value)
+		}
+		if _, reserved := reservedSiteLabels[value]; reserved {
+			return nil, fmt.Errorf("featured Personal Site username %q is reserved", value)
+		}
+		if !seen[value] {
+			result = append(result, value)
+			seen[value] = true
+		}
+	}
+	if len(result) > 24 {
+		return nil, errors.New("FEATURED_SITE_USERNAMES must contain at most 24 usernames")
+	}
+	return result, nil
 }
 
 func clerkSessionToken(request *http.Request) string {
@@ -239,12 +268,24 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 	case "/sitemap.xml":
 		s.renderApexSitemap(response, request)
 		return
+	case "/examples":
+		s.renderExamplesPage(response, request)
+		return
 	case "/marketing":
 		http.Redirect(response, request, s.cfg.ApexOrigin+"/", http.StatusPermanentRedirect)
 		return
 	}
 	if request.URL.Path != "/" && strings.HasSuffix(request.URL.Path, "/") {
 		trimmed := strings.TrimSuffix(request.URL.Path, "/")
+		if trimmed == "/examples" {
+			http.Redirect(
+				response,
+				request,
+				strings.TrimRight(s.cfg.ApexOrigin, "/")+"/examples",
+				http.StatusPermanentRedirect,
+			)
+			return
+		}
 		if page, ok := seoPageForPath(trimmed); ok {
 			http.Redirect(
 				response,

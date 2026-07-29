@@ -20,6 +20,20 @@ func TestLoadExpandsEscapedNewlinesInClerkJWTKey(t *testing.T) {
 	}
 }
 
+func TestLoadNormalizesFeaturedSiteUsernames(t *testing.T) {
+	t.Setenv("FEATURED_SITE_USERNAMES", " Maya,ada,maya,  lin ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	want := []string{"maya", "ada", "lin"}
+	if strings.Join(cfg.HTTP.FeaturedSites, ",") != strings.Join(want, ",") {
+		t.Fatalf("FeaturedSites = %#v, want %#v", cfg.HTTP.FeaturedSites, want)
+	}
+}
+
 func TestValidateForRejectsIncompleteWebRole(t *testing.T) {
 	cfg := Config{}
 	err := cfg.ValidateFor("web")

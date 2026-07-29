@@ -104,6 +104,7 @@ func runWeb(
 			MaxDeliveryAttempts: cfg.Worker.MaxDeliveryAttempts,
 			ResendConfigured:    cfg.Resend.APIKey != "" && cfg.Resend.From != "",
 			SourceDiscovery:     cfg.SourceIntelligence.DiscoveryEnabled,
+			FeaturedSites:       cfg.HTTP.FeaturedSites,
 			Static:              static,
 		},
 		database,
