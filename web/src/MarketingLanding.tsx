@@ -22,7 +22,7 @@ import "./marketing.css";
 
 export default function MarketingLanding() {
   useEffect(() => {
-    document.title = "Learnloom · A learning home that grows with you";
+    document.title = "Learnloom | Turn trusted sources into durable understanding";
   }, []);
 
   return (
@@ -33,9 +33,9 @@ export default function MarketingLanding() {
           <span>Learnloom</span>
         </a>
         <nav className="ll-nav-links" aria-label="Main navigation">
-          <a href="#product">Product</a>
+          <a href="/solutions">Solutions</a>
+          <a href="/product/ai-learning-assistant">Product</a>
           <a href="#how-it-works">How it works</a>
-          <a href="#dossiers">Dossiers</a>
         </nav>
         <div className="ll-nav-actions">
           <a className="ll-sign-in" href={`${appOrigin}/sign-in`}>Sign in</a>
@@ -233,7 +233,8 @@ export default function MarketingLanding() {
           <p>Current sources, woven into durable understanding.</p>
         </div>
         <div className="ll-footer-links">
-          <div><strong>Product</strong><a href="#product">Personal sites</a><a href="#dossiers">Dossiers</a><a href="#how-it-works">How it works</a></div>
+          <div><strong>Product</strong><a href="/product/ai-learning-assistant">AI learning assistant</a><a href="/product/trusted-source-learning">Trusted-source learning</a><a href="#how-it-works">How it works</a></div>
+          <div><strong>Solutions</strong><a href="/solutions/remember-what-you-read">Remember what you read</a><a href="/solutions/keep-up-with-your-field">Keep up with your field</a><a href="/solutions/build-a-personal-learning-curriculum">Build a personal curriculum</a></div>
           <div><strong>Account</strong><a href={`${appOrigin}/sign-in`}>Sign in</a><a href={`${appOrigin}/sign-up`}>Get started</a></div>
           <div><strong>Legal</strong><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
         </div>

@@ -229,15 +229,45 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if isFaviconPath(request.URL.Path) {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			methodNotAllowed(response, http.MethodGet, http.MethodHead)
+		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+		return
+	}
+	switch request.URL.Path {
+	case "/robots.txt":
+		s.renderApexRobots(response, request)
+		return
+	case "/sitemap.xml":
+		s.renderApexSitemap(response, request)
+		return
+	case "/marketing":
+		http.Redirect(response, request, s.cfg.ApexOrigin+"/", http.StatusPermanentRedirect)
+		return
+	}
+	if request.URL.Path != "/" && strings.HasSuffix(request.URL.Path, "/") {
+		trimmed := strings.TrimSuffix(request.URL.Path, "/")
+		if page, ok := seoPageForPath(trimmed); ok {
+			http.Redirect(
+				response,
+				request,
+				strings.TrimRight(s.cfg.ApexOrigin, "/")+page.Path,
+				http.StatusPermanentRedirect,
+			)
 			return
 		}
-		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+	}
+	if page, ok := seoPageForPath(request.URL.Path); ok {
+		s.renderSEOPage(response, request, page)
 		return
 	}
 	if !isApexPage(request.URL.Path) {
 		writeProblem(response, http.StatusNotFound, "not_found", "Page not found.")
+		return
+	}
+	if request.URL.Path == "/privacy" || request.URL.Path == "/terms" {
+		response.Header().Set("X-Robots-Tag", "noindex, follow")
+	}
+	if request.URL.Path == "/" {
+		s.serveMarketingIndex(response, request)
 		return
 	}
 	s.serveIndex(response, request)
@@ -245,7 +275,7 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 
 func isApexPage(path string) bool {
 	switch path {
-	case "/", "/marketing", "/privacy", "/terms":
+	case "/", "/privacy", "/terms":
 		return true
 	default:
 		return false
@@ -290,7 +320,7 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 			methodNotAllowed(response, http.MethodGet, http.MethodHead)
 			return
 		}
-		s.serveIndex(response, request)
+		s.serveAppIndex(response, request)
 		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/api/") ||
@@ -299,10 +329,15 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	if request.Method == http.MethodGet {
-		s.serveIndex(response, request)
+		s.serveAppIndex(response, request)
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "Page not found.")
+}
+
+func (s *Server) serveAppIndex(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	s.serveIndex(response, request)
 }
 
 func (s *Server) handleAuthenticated(
@@ -356,10 +391,25 @@ func (s *Server) csrfToken(sessionID string) string {
 }
 
 func (s *Server) serveIndex(response http.ResponseWriter, request *http.Request) {
+	s.serveIndexDocument(response, request, false)
+}
+
+func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http.Request) {
+	s.serveIndexDocument(response, request, true)
+}
+
+func (s *Server) serveIndexDocument(
+	response http.ResponseWriter,
+	request *http.Request,
+	marketing bool,
+) {
 	body, err := fs.ReadFile(s.cfg.Static, "index.html")
 	if err != nil {
 		s.internalError(response, request, fmt.Errorf("read frontend index: %w", err))
 		return
+	}
+	if marketing {
+		body = decorateMarketingIndex(body, s.cfg.ApexOrigin, s.cfg.AppOrigin)
 	}
 	s.applyAppCSP(response)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -114,6 +115,7 @@ func (s *Server) renderPublicHome(
 		firstReadingText(site.Description, "A durable personal learning archive."),
 		origin,
 		body,
+		len(issues) > 0,
 	)
 }
 
@@ -164,6 +166,7 @@ func (s *Server) renderPublicTopic(
 		selected.Topic,
 		origin+"/topics/"+url.PathEscape(selected.PublicSlug),
 		body,
+		len(issues) > 0,
 	)
 }
 
@@ -190,17 +193,47 @@ func (s *Server) renderPublicDossier(
 		return
 	}
 	canonical := origin + canonicalPath
+	description := "A source-grounded Knowledge Dossier about " + issue.NewsletterName + "."
+	articleSchema, _ := json.Marshal(map[string]any{
+		"@context":         "https://schema.org",
+		"@type":            "Article",
+		"headline":         issue.Title,
+		"description":      description,
+		"datePublished":    issue.CompletedAt.Format(time.RFC3339),
+		"dateModified":     issue.CompletedAt.Format(time.RFC3339),
+		"mainEntityOfPage": canonical,
+		"articleSection":   issue.NewsletterName,
+		"author": map[string]any{
+			"@type": "Person",
+			"name":  site.DisplayName,
+			"url":   origin,
+		},
+		"publisher": map[string]any{
+			"@type": "Organization",
+			"name":  "Learnloom",
+			"url":   "https://learnloom.blog/",
+		},
+	})
+	metadata := `<meta name="description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:type" content="article">` +
+		`<meta property="og:site_name" content="Learnloom">` +
+		`<meta property="og:title" content="` + html.EscapeString(issue.Title) + `">` +
+		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
+		`<meta property="article:published_time" content="` + issue.CompletedAt.Format(time.RFC3339) + `">` +
+		`<meta name="twitter:card" content="summary">` +
+		`<meta name="twitter:title" content="` + html.EscapeString(issue.Title) + `">` +
+		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
+		`<script type="application/ld+json">` + string(articleSchema) + `</script>`
 	document := strings.Replace(
 		artifactValue.HTML,
 		"</head>",
 		`<link rel="canonical" href="`+html.EscapeString(canonical)+`">`+
-			`<meta property="og:type" content="article">`+
-			`<meta property="og:url" content="`+html.EscapeString(canonical)+`">`+
-			"</head>",
+			metadata+"</head>",
 		1,
 	)
 	document = decoratePublicDossier(document, site, issue)
-	s.applyReadingHeaders(response)
+	s.applyReadingHeaders(response, true)
 	response.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if request.Method != http.MethodHead {
@@ -219,25 +252,29 @@ func (s *Server) renderSitemap(
 		s.internalError(response, request, err)
 		return
 	}
-	issues, err := s.store.ListPublicIssues(request.Context(), site.Username, "", 200)
+	issues, err := s.store.ListPublicIssues(request.Context(), site.Username, "", 49000)
 	if err != nil {
 		s.internalError(response, request, err)
 		return
 	}
-	locations := []string{origin}
-	for _, newsletter := range newsletters {
-		locations = append(locations, origin+"/topics/"+url.PathEscape(newsletter.PublicSlug))
+	var locations []string
+	if len(issues) > 0 {
+		locations = append(locations, origin)
 	}
-	for _, issue := range issues {
-		locations = append(
-			locations,
-			origin+"/d/"+url.PathEscape(issue.PublicID)+"/"+url.PathEscape(issue.PublicSlug),
-		)
+	for _, newsletter := range newsletters {
+		if newsletter.GeneratedCount > 0 {
+			locations = append(locations, origin+"/topics/"+url.PathEscape(newsletter.PublicSlug))
+		}
 	}
 	var body strings.Builder
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
 	for _, location := range locations {
 		body.WriteString("<url><loc>" + html.EscapeString(location) + "</loc></url>")
+	}
+	for _, issue := range issues {
+		location := origin + "/d/" + url.PathEscape(issue.PublicID) + "/" + url.PathEscape(issue.PublicSlug)
+		body.WriteString("<url><loc>" + html.EscapeString(location) + "</loc><lastmod>" +
+			issue.CompletedAt.Format(time.RFC3339) + "</lastmod></url>")
 	}
 	body.WriteString("</urlset>")
 	response.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -251,6 +288,7 @@ func (s *Server) sendReadingPage(
 	response http.ResponseWriter,
 	request *http.Request,
 	title, description, canonical, body string,
+	indexable bool,
 ) {
 	document := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
@@ -258,8 +296,16 @@ func (s *Server) sendReadingPage(
 		`<title>` + html.EscapeString(title) + ` · Learnloom</title>` +
 		`<meta name="description" content="` + html.EscapeString(description) + `">` +
 		`<link rel="canonical" href="` + html.EscapeString(canonical) + `">` +
+		`<meta property="og:type" content="website">` +
+		`<meta property="og:site_name" content="Learnloom">` +
+		`<meta property="og:title" content="` + html.EscapeString(title) + ` · Learnloom">` +
+		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
+		`<meta name="twitter:card" content="summary">` +
+		`<meta name="twitter:title" content="` + html.EscapeString(title) + ` · Learnloom">` +
+		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
 		`<style>` + readingCSS + `</style></head><body>` + body + `</body></html>`
-	s.applyReadingHeaders(response)
+	s.applyReadingHeaders(response, indexable)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
 	if request.Method != http.MethodHead {
@@ -267,21 +313,25 @@ func (s *Server) sendReadingPage(
 	}
 }
 
-func (s *Server) applyReadingHeaders(response http.ResponseWriter) {
+func (s *Server) applyReadingHeaders(response http.ResponseWriter, indexable bool) {
 	response.Header().Set(
 		"Content-Security-Policy",
 		"default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; "+
 			"font-src 'self'; base-uri 'none'; form-action 'none'; "+
 			"frame-ancestors 'none'; object-src 'none'",
 	)
-	response.Header().Set("X-Robots-Tag", "index, follow")
+	if indexable {
+		response.Header().Set("X-Robots-Tag", "index, follow")
+	} else {
+		response.Header().Set("X-Robots-Tag", "noindex, follow")
+	}
 }
 
 func (s *Server) readingNotFound(
 	response http.ResponseWriter,
 	request *http.Request,
 ) {
-	s.applyReadingHeaders(response)
+	s.applyReadingHeaders(response, false)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "public, max-age=30")
 	response.WriteHeader(http.StatusNotFound)

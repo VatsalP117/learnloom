@@ -28,12 +28,12 @@ func TestClassifyHost(t *testing.T) {
 
 func TestIsApexPage(t *testing.T) {
 	t.Parallel()
-	for _, path := range []string{"/", "/marketing", "/privacy", "/terms"} {
+	for _, path := range []string{"/", "/privacy", "/terms"} {
 		if !isApexPage(path) {
 			t.Errorf("%q should be served by the apex host", path)
 		}
 	}
-	for _, path := range []string{"/sign-in", "/api/me", "/privacy/extra"} {
+	for _, path := range []string{"/marketing", "/sign-in", "/api/me", "/privacy/extra"} {
 		if isApexPage(path) {
 			t.Errorf("%q should not be served by the apex host", path)
 		}

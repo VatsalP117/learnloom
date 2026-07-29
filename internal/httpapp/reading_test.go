@@ -85,6 +85,9 @@ func TestReadingNotFoundUsesBrandedResponsiveDocument(t *testing.T) {
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("readingNotFound() status = %d", response.Code)
 	}
+	if got := response.Header().Get("X-Robots-Tag"); got != "noindex, follow" {
+		t.Fatalf("readingNotFound() robots header = %q", got)
+	}
 	for _, expected := range []string{
 		`name="viewport"`,
 		`class="not-found"`,
@@ -94,5 +97,22 @@ func TestReadingNotFoundUsesBrandedResponsiveDocument(t *testing.T) {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("readingNotFound() missing %q", expected)
 		}
+	}
+}
+
+func TestReadingIndexabilityHeaders(t *testing.T) {
+	t.Parallel()
+	server := &Server{}
+
+	indexable := httptest.NewRecorder()
+	server.applyReadingHeaders(indexable, true)
+	if got := indexable.Header().Get("X-Robots-Tag"); got != "index, follow" {
+		t.Fatalf("indexable robots header = %q", got)
+	}
+
+	empty := httptest.NewRecorder()
+	server.applyReadingHeaders(empty, false)
+	if got := empty.Header().Get("X-Robots-Tag"); got != "noindex, follow" {
+		t.Fatalf("empty robots header = %q", got)
 	}
 }

@@ -75,7 +75,7 @@ func (s *Store) ListPublicIssues(
 	username, newsletterSlug string,
 	limit int,
 ) ([]PublicIssue, error) {
-	if limit < 1 || limit > 200 {
+	if limit < 1 || limit > 50000 {
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `

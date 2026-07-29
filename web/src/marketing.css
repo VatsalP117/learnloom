@@ -371,9 +371,9 @@
 .ll-final-content h2 em { color: #587655; }
 .ll-final-content > p:not(.ll-eyebrow) { margin: 23px 0 28px; color: #536258; font-size: 14px; }
 
-.ll-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding: 75px max(32px, calc((100% - 1240px) / 2)) 30px; color: #dfe7df; background: #121b15; }
+.ll-footer { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(0, 1.25fr); gap: 50px; padding: 75px max(32px, calc((100% - 1240px) / 2)) 30px; color: #dfe7df; background: #121b15; }
 .ll-footer-brand p { max-width: 340px; margin: 18px 0 0; color: #7f8c82; font-size: 12px; line-height: 1.65; }
-.ll-footer-links { display: flex; justify-content: flex-end; gap: clamp(40px, 6vw, 90px); }
+.ll-footer-links { display: flex; justify-content: flex-end; gap: clamp(24px, 3vw, 48px); }
 .ll-footer-links > div { display: grid; align-content: start; gap: 12px; }
 .ll-footer-links strong { margin-bottom: 5px; color: #eef3ed; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; }
 .ll-footer-links a { color: #8c988e; font-size: 11px; }
