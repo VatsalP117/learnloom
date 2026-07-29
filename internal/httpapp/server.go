@@ -254,9 +254,22 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 			)
 			return
 		}
+		if page, ok := authorityPageForPath(trimmed); ok {
+			http.Redirect(
+				response,
+				request,
+				strings.TrimRight(s.cfg.ApexOrigin, "/")+page.Path,
+				http.StatusPermanentRedirect,
+			)
+			return
+		}
 	}
 	if page, ok := seoPageForPath(request.URL.Path); ok {
 		s.renderSEOPage(response, request, page)
+		return
+	}
+	if page, ok := authorityPageForPath(request.URL.Path); ok {
+		s.renderAuthorityPage(response, request, page)
 		return
 	}
 	if !isApexPage(request.URL.Path) {

@@ -260,6 +260,9 @@ func (s *Server) renderApexSitemap(
 	for _, page := range seoPages {
 		locations = append(locations, origin+page.Path)
 	}
+	for _, page := range authorityPages {
+		locations = append(locations, origin+page.Path)
+	}
 	var body strings.Builder
 	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	body.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
@@ -299,7 +302,7 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	body.WriteString(renderSEOHead(page.Title+" | Learnloom", page.Description, canonical))
 	body.WriteString(`<style>` + seoCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
-	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/compare/ai-summaries">Compare</a></nav>`)
+	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/how-learnloom-works">How it works</a></nav>`)
 	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
 	body.WriteString(`<main><section class="seo-hero"><p class="eyebrow">` + html.EscapeString(page.Eyebrow) + `</p>`)
 	body.WriteString(`<h1>` + html.EscapeString(page.Title) + `</h1><p class="lead">` + html.EscapeString(page.Lead) + `</p>`)
@@ -335,9 +338,8 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">Your learning home is waiting</p><h2>Make curiosity a place you return to.</h2><p>Choose a subject, bring the sources you trust, and prepare your first Knowledge Dossier.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
 	body.WriteString(`">Get started with Learnloom <span>↗</span></a></section></main>`)
-	body.WriteString(`<footer><a class="seo-brand" href="/"><span>✣</span>Learnloom</a><p>Current sources, woven into durable understanding.</p><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="`)
-	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-in"))
-	body.WriteString(`">Sign in</a></nav></footer></body></html>`)
+	body.WriteString(renderSEOFooter(appOrigin))
+	body.WriteString(`</body></html>`)
 	return body.String()
 }
 

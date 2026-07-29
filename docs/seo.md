@@ -34,6 +34,12 @@ The current landing-page set covers:
 - learning from trusted sources; and
 - comparing Knowledge Dossiers with one-off AI summaries.
 
+The authority layer adds substantive guides for recall, keeping up with a
+changing field, and building a personal learning system. `/how-learnloom-works`
+and `/editorial-principles` document product boundaries, source handling,
+quality limitations, and publication controls. These pages should be updated
+when the corresponding product behavior changes.
+
 New pages should be added only after query evidence shows a distinct learner
 need. Do not create pages for trivial keyword variations. Merge overlapping
 intent into an existing page and improve that page instead.

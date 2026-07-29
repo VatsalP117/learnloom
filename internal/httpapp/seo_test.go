@@ -63,6 +63,8 @@ func TestApexRobotsAndSitemapAdvertiseCanonicalPages(t *testing.T) {
 		"<loc>https://learnloom.blog/</loc>",
 		"<loc>https://learnloom.blog/solutions/remember-what-you-read</loc>",
 		"<loc>https://learnloom.blog/product/ai-learning-assistant</loc>",
+		"<loc>https://learnloom.blog/guides/how-to-remember-what-you-read</loc>",
+		"<loc>https://learnloom.blog/how-learnloom-works</loc>",
 	} {
 		if !strings.Contains(sitemapResponse.Body.String(), expected) {
 			t.Fatalf("sitemap missing %q: %s", expected, sitemapResponse.Body.String())
@@ -132,6 +134,27 @@ func TestApexSEOPageTrailingSlashRedirectsToCanonicalURL(t *testing.T) {
 	}
 	if location := response.Header().Get("Location"); location !=
 		"https://learnloom.blog/solutions/remember-what-you-read" {
+		t.Fatalf("Location = %q", location)
+	}
+}
+
+func TestApexAuthorityPageTrailingSlashRedirectsToCanonicalURL(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{ApexOrigin: "https://learnloom.blog"}}
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"https://learnloom.blog/guides/how-to-remember-what-you-read/",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	server.handleApex(response, request)
+
+	if response.Code != http.StatusPermanentRedirect {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if location := response.Header().Get("Location"); location !=
+		"https://learnloom.blog/guides/how-to-remember-what-you-read" {
 		t.Fatalf("Location = %q", location)
 	}
 }
