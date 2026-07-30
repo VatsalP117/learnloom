@@ -1020,7 +1020,12 @@ func (s *Server) issueDetail(
 		if sourceURL == "" {
 			sourceURL = source.URL
 		}
+		sourceID := source.SourceID
+		if sourceID == "" {
+			sourceID = fmt.Sprintf("S%d", len(sources)+1)
+		}
 		sources = append(sources, map[string]string{
+			"id":   sourceID,
 			"name": source.Source,
 			"url":  sourceURL,
 		})

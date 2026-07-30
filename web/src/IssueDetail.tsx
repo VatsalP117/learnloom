@@ -200,16 +200,67 @@ function LessonReader({
               </div>
             </section>
 
+            {dossier.whyNow || dossier.continuityBridge ? (
+              <section className="reader-orientation">
+                {dossier.whyNow ? (
+                  <div>
+                    <p className="atelier-eyebrow">Why this lesson now</p>
+                    <p>{dossier.whyNow}</p>
+                  </div>
+                ) : null}
+                {dossier.continuityBridge ? (
+                  <div>
+                    <p className="atelier-eyebrow">Connection to prior learning</p>
+                    <p>{dossier.continuityBridge}</p>
+                  </div>
+                ) : null}
+                {dossier.concepts?.length ? (
+                  <div className="reader-concepts">
+                    <p className="atelier-eyebrow">Concepts in this lesson</p>
+                    <p>{dossier.concepts.map((concept) => <span key={concept}>{concept}</span>)}</p>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             {dossier.sections.map((section, index) => (
               <section className="reader-section" id={`section-${index + 1}`} key={section.heading}>
                 <p className="atelier-eyebrow">{String(index + 1).padStart(2, "0")} · {section.label}</p>
                 <h2>{section.heading}</h2>
-                {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+                {section.paragraphs.map((paragraph, paragraphIndex) => {
+                  const value = typeof paragraph === "string"
+                    ? { text: paragraph, sourceIds: [] }
+                    : paragraph;
+                  return (
+                    <p key={`${section.heading}-${paragraphIndex}`}>
+                      {value.text}
+                      {value.sourceIds.map((sourceID) => {
+                        const sourceIndex = sources.findIndex((source) => source.id === sourceID);
+                        if (sourceIndex < 0) return null;
+                        return (
+                          <a
+                            className="reader-citation"
+                            href={`#source-${sourceID}`}
+                            title={`See source ${sourceIndex + 1}`}
+                            aria-label={`See source ${sourceIndex + 1}`}
+                            key={sourceID}
+                          >
+                            [{sourceIndex + 1}]
+                          </a>
+                        );
+                      })}
+                    </p>
+                  );
+                })}
                 {section.callout ? <blockquote>{section.callout}</blockquote> : null}
               </section>
             ))}
 
-            <RetrievalSection questions={dossier.retrieval} />
+            <RetrievalSection
+              questions={dossier.retrievalItems?.length
+                ? dossier.retrievalItems
+                : dossier.retrieval}
+            />
 
             <section className="reader-application">
               <p className="atelier-eyebrow"><Sparkles size={14} /> Try this in the world</p>
@@ -263,7 +314,13 @@ function LessonReader({
             <div className="reader-sources">
               <p className="atelier-eyebrow">Sources consulted</p>
               {sources.map((source, index) => (
-                <a href={source.url} target="_blank" rel="noreferrer" key={source.name}>
+                <a
+                  id={`source-${source.id ?? `S${index + 1}`}`}
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  key={`${source.id}-${source.name}`}
+                >
                   <span><i>{index + 1}</i>{source.name}</span>
                   <ExternalLink size={13} />
                 </a>
@@ -395,10 +452,14 @@ function RetrievalSection({ questions }) {
       <h2>Can you explain it without looking back?</h2>
       <p>Answer aloud or write a few words. Reveal each reflection only after trying.</p>
       <div>
-        {questions.map((question, index) => (
-          <article key={question}>
+        {questions.map((question, index) => {
+          const item = typeof question === "string"
+            ? { id: `question-${index + 1}`, prompt: question }
+            : question;
+          return (
+          <article key={item.id ?? item.prompt}>
             <span>{String(index + 1).padStart(2, "0")}</span>
-            <p>{question}</p>
+            <p>{item.prompt}</p>
             <button
               type="button"
               aria-expanded={Boolean(open[index])}
@@ -408,12 +469,13 @@ function RetrievalSection({ questions }) {
             </button>
             {open[index] ? (
               <small>
-                Return to the mechanism and evidence above. If your explanation names
-                both the cause and its limits, you have the useful shape of the idea.
+                {item.answerRubric || item.correctiveExplanation ||
+                  "Return to the mechanism and evidence above. If your explanation names both the cause and its limits, you have the useful shape of the idea."}
               </small>
             ) : null}
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

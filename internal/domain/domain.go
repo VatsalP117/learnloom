@@ -308,13 +308,47 @@ type Curation struct {
 }
 
 type LearningBlueprint struct {
-	LearningObjective   string   `json:"learningObjective"`
-	Prerequisites       []string `json:"prerequisites"`
-	CentralMechanism    string   `json:"centralMechanism"`
-	WorkedExample       string   `json:"workedExample"`
-	Misconception       string   `json:"misconception"`
-	PracticalExperiment string   `json:"practicalExperiment"`
-	ContinuityBridge    string   `json:"continuityBridge"`
+	LearningObjective     string   `json:"learningObjective"`
+	Prerequisites         []string `json:"prerequisites"`
+	Concepts              []string `json:"concepts"`
+	SuggestedNextConcepts []string `json:"suggestedNextConcepts"`
+	CentralMechanism      string   `json:"centralMechanism"`
+	WorkedExample         string   `json:"workedExample"`
+	Misconception         string   `json:"misconception"`
+	PracticalExperiment   string   `json:"practicalExperiment"`
+	ContinuityBridge      string   `json:"continuityBridge"`
+}
+
+type LearningConcept struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Role  string `json:"role"`
+}
+
+type EvidenceClaim struct {
+	ID        string   `json:"id"`
+	Text      string   `json:"text"`
+	SourceIDs []string `json:"sourceIds"`
+}
+
+type RetrievalPrompt struct {
+	ID                    string `json:"id"`
+	Prompt                string `json:"prompt"`
+	AnswerRubric          string `json:"answerRubric"`
+	CorrectiveExplanation string `json:"correctiveExplanation"`
+}
+
+type LearningContract struct {
+	Version               int               `json:"version"`
+	SelectionRationale    string            `json:"selectionRationale"`
+	LearningObjective     string            `json:"learningObjective"`
+	ContinuityBridge      string            `json:"continuityBridge"`
+	Concepts              []LearningConcept `json:"concepts"`
+	Misconception         string            `json:"misconception"`
+	Claims                []EvidenceClaim   `json:"claims"`
+	Retrieval             []RetrievalPrompt `json:"retrieval"`
+	SuggestedNextConcepts []string          `json:"suggestedNextConcepts"`
+	Application           string            `json:"application"`
 }
 
 type QualityReport struct {
@@ -334,6 +368,7 @@ type Dossier struct {
 	Model       string            `json:"model"`
 	Curation    Curation          `json:"curation"`
 	Blueprint   LearningBlueprint `json:"blueprint"`
+	Learning    LearningContract  `json:"learning"`
 	Lesson      string            `json:"lesson"`
 	Critique    string            `json:"critique"`
 	Practice    string            `json:"practice"`

@@ -50,7 +50,7 @@ type GenerateRequest struct {
 
 type StageObserver func(stage string, duration time.Duration, err error)
 
-const PipelineVersion = "dossier-v3"
+const PipelineVersion = "dossier-v4"
 
 func GenerationFingerprint(request GenerateRequest, modelName string) (string, error) {
 	payload := struct {
@@ -499,12 +499,23 @@ func (g *Generator) Generate(
 		return GenerateResult{}, err
 	}
 	quality.EditorNotes = slices.Clone(editorial.QualityNotes)
+	learning, err := buildLearningContract(
+		curation,
+		blueprint,
+		editorial.Lesson,
+		editorial.Critique,
+		finalPractice,
+		enriched,
+	)
+	if err != nil {
+		return GenerateResult{}, err
+	}
 	date, err := localDate(now, request.Newsletter.TimeZone)
 	if err != nil {
 		return GenerateResult{}, err
 	}
 	dossier := domain.Dossier{
-		Version:     2,
+		Version:     3,
 		ProfileID:   request.Newsletter.ID,
 		Date:        date,
 		Title:       curation.Theme,
@@ -512,6 +523,7 @@ func (g *Generator) Generate(
 		Model:       g.cfg.ModelName,
 		Curation:    curation,
 		Blueprint:   blueprint,
+		Learning:    learning,
 		Lesson:      editorial.Lesson,
 		Critique:    editorial.Critique,
 		Practice:    finalPractice,
@@ -735,6 +747,40 @@ func validateBlueprint(value domain.LearningBlueprint) error {
 	if len(value.Prerequisites) == 0 || len(value.Prerequisites) > 5 {
 		return errors.New("Blueprint prerequisites must contain one to five items")
 	}
+	if err := validateShortList("concepts", value.Concepts, 1, 8); err != nil {
+		return err
+	}
+	if err := validateShortList(
+		"suggested next concepts",
+		value.SuggestedNextConcepts,
+		1,
+		5,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateShortList(name string, values []string, minimum, maximum int) error {
+	if len(values) < minimum || len(values) > maximum {
+		return fmt.Errorf(
+			"Blueprint %s must contain %d to %d items",
+			name,
+			minimum,
+			maximum,
+		)
+	}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" || len([]rune(normalized)) > 200 {
+			return fmt.Errorf("Blueprint %s contains an invalid item", name)
+		}
+		if _, exists := seen[normalized]; exists {
+			return fmt.Errorf("Blueprint %s contains a duplicate item", name)
+		}
+		seen[normalized] = struct{}{}
+	}
 	return nil
 }
 
@@ -855,7 +901,7 @@ func stageInstructions() map[string]string {
 	}
 	return map[string]string{
 		"curator":     "Choose one coherent, high-value learning theme from the supplied Source Items. Select three to five complementary Source Item identifiers; use fewer only when fewer exist. Return strict JSON only: {\"theme\":\"...\",\"rationale\":\"...\",\"selectedSourceIds\":[\"S1\",\"S2\",\"S3\"]}.",
-		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\", plus a non-empty string array \"prerequisites\".",
+		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\"; non-empty string arrays \"prerequisites\" and \"concepts\"; and one to five strings in \"suggestedNextConcepts\" describing useful conceptual directions after this lesson.",
 		"researcher":  "Write a compact research brief serving the Learning Blueprint. Explain claims, mechanisms, conditions, and implications using only supplied Source Items. Cite identifiers like [S1], distinguish facts from inference, and identify disagreement or missing evidence.",
 		"skeptic":     "Audit the research brief against the enriched Source Items and Learning Blueprint. Identify weak evidence, missing context, alternatives, edge cases, and unsupported claims. Preserve valid Source Item identifiers and give exact constraints for a trustworthy lesson.",
 		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, honor the lesson-body word budget in the learner context, and end with the Takeaway.",

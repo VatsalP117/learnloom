@@ -1,16 +1,32 @@
 export interface DossierSection {
   label: string;
   heading: string;
-  paragraphs: string[];
+  paragraphs: Array<string | DossierParagraph>;
   callout?: string;
+}
+
+export interface DossierParagraph {
+  text: string;
+  sourceIds: string[];
+}
+
+export interface RetrievalItem {
+  id: string;
+  prompt: string;
+  answerRubric?: string;
+  correctiveExplanation?: string;
 }
 
 export interface NormalizedDossier {
   readTime: number;
   deck: string;
   objective: string;
+  whyNow: string;
+  continuityBridge: string;
+  concepts: string[];
   sections: DossierSection[];
   retrieval: string[];
+  retrievalItems: RetrievalItem[];
   application: string;
 }
 
@@ -21,6 +37,13 @@ interface RawDossier {
   practice?: string;
   curation?: { rationale?: string };
   blueprint?: { continuityBridge?: string; learningObjective?: string };
+  learning?: {
+    selectionRationale?: string;
+    continuityBridge?: string;
+    concepts?: Array<{ label?: string }>;
+    retrieval?: RetrievalItem[];
+    application?: string;
+  };
   [key: string]: unknown;
 }
 
@@ -30,6 +53,17 @@ function plainText(value: string) {
     .replace(/[*_`>#]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function dossierParagraph(value: string): DossierParagraph {
+  return {
+    text: plainText(value)
+      .replace(/\[S\d+\]/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s+([.,;:!?])/g, "$1")
+      .trim(),
+    sourceIds: [...value.matchAll(/\[(S\d+)\]/g)].map((match) => match[1]),
+  };
 }
 
 function markdownSections(markdown: string, startIndex = 0): DossierSection[] {
@@ -43,12 +77,12 @@ function markdownSections(markdown: string, startIndex = 0): DossierSection[] {
     const paragraphs = bodyLines
       .join("\n")
       .split(/\n\s*\n/)
-      .map(plainText)
+      .map(dossierParagraph)
       .filter((paragraph) =>
-        paragraph &&
-        !paragraph.startsWith("<details") &&
-        !paragraph.startsWith("<summary") &&
-        paragraph !== "</details>",
+        paragraph.text &&
+        !paragraph.text.startsWith("<details") &&
+        !paragraph.text.startsWith("<summary") &&
+        paragraph.text !== "</details>",
       );
     return {
       label: String(startIndex + index + 1).padStart(2, "0"),
@@ -88,6 +122,13 @@ export function normalizeDossier(
     dossier?.critique ?? "",
     lessonSections.length,
   );
+  const retrieval = retrievalQuestions(dossier?.practice ?? "");
+  const retrievalItems = dossier?.learning?.retrieval?.length
+    ? dossier.learning.retrieval
+    : retrieval.map((prompt, index) => ({
+      id: `legacy-retrieval-${index + 1}`,
+      prompt,
+    }));
 
   return {
     readTime: newsletter.lessonMinutes ?? 10,
@@ -96,8 +137,22 @@ export function normalizeDossier(
       dossier?.blueprint?.continuityBridge ||
       "A source-grounded lesson prepared for your learning practice.",
     objective: dossier?.blueprint?.learningObjective ?? "",
+    whyNow:
+      dossier?.learning?.selectionRationale ||
+      dossier?.curation?.rationale ||
+      "",
+    continuityBridge:
+      dossier?.learning?.continuityBridge ||
+      dossier?.blueprint?.continuityBridge ||
+      "",
+    concepts: dossier?.learning?.concepts
+      ?.map((concept) => concept.label?.trim() ?? "")
+      .filter(Boolean) ?? [],
     sections: [...lessonSections, ...critiqueSections],
-    retrieval: retrievalQuestions(dossier?.practice ?? ""),
-    application: sectionBody(dossier?.practice ?? "", "Application challenge"),
+    retrieval,
+    retrievalItems,
+    application:
+      dossier?.learning?.application ||
+      sectionBody(dossier?.practice ?? "", "Application challenge"),
   };
 }

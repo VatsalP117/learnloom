@@ -97,7 +97,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	})
 	model := fakeModel{responses: map[string]string{
 		"curator":     `{"theme":"Retrieval and feedback","rationale":"The sources explain one complementary mechanism.","selectedSourceIds":["S1","S2","S3"]}`,
-		"blueprint":   `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Repeated retrieval plus feedback","workedExample":"A learner recalls then corrects an answer","misconception":"Rereading is equivalent","practicalExperiment":"Compare recall with rereading","continuityBridge":"Builds on the prior lesson"}`,
+		"blueprint":   `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"concepts":["retrieval strength","corrective feedback"],"suggestedNextConcepts":["spacing effects"],"centralMechanism":"Repeated retrieval plus feedback","workedExample":"A learner recalls then corrects an answer","misconception":"Rereading is equivalent","practicalExperiment":"Compare recall with rereading","continuityBridge":"Builds on the prior lesson"}`,
 		"researcher":  "Research grounded in [S1] and [S2].",
 		"skeptic":     "The evidence has limits [S1].",
 		"teacher":     lesson,
@@ -318,7 +318,7 @@ func TestGeneratorPreservesExaminerPracticeWhenEditorDamagesAnswerKey(t *testing
 	}
 	model := fakeModel{responses: map[string]string{
 		"curator":    `{"theme":"Retrieval and feedback","rationale":"Complementary evidence.","selectedSourceIds":["S1","S2","S3"]}`,
-		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Retrieval plus feedback","workedExample":"Recall and correction","misconception":"Rereading is equivalent","practicalExperiment":"Compare both methods","continuityBridge":"Build on prior learning"}`,
+		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"concepts":["retrieval strength","corrective feedback"],"suggestedNextConcepts":["spacing effects"],"centralMechanism":"Retrieval plus feedback","workedExample":"Recall and correction","misconception":"Rereading is equivalent","practicalExperiment":"Compare both methods","continuityBridge":"Build on prior learning"}`,
 		"researcher": "Research grounded in [S1] and [S2].",
 		"skeptic":    "The evidence remains bounded [S1].",
 		"teacher":    lesson,
@@ -368,7 +368,7 @@ func TestGeneratorPreservesValidatedDraftsWhenEditorNeverSatisfiesContract(t *te
 	}
 	model := fakeModel{responses: map[string]string{
 		"curator":    `{"theme":"Retrieval and feedback","rationale":"Complementary evidence.","selectedSourceIds":["S1","S2","S3"]}`,
-		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"centralMechanism":"Retrieval plus feedback","workedExample":"Recall and correction","misconception":"Rereading is equivalent","practicalExperiment":"Compare both methods","continuityBridge":"Build on prior learning"}`,
+		"blueprint":  `{"learningObjective":"Explain the mechanism","prerequisites":["Recall"],"concepts":["retrieval strength","corrective feedback"],"suggestedNextConcepts":["spacing effects"],"centralMechanism":"Retrieval plus feedback","workedExample":"Recall and correction","misconception":"Rereading is equivalent","practicalExperiment":"Compare both methods","continuityBridge":"Build on prior learning"}`,
 		"researcher": "Research grounded in [S1] and [S2].",
 		"skeptic":    "The evidence remains bounded [S1].",
 		"teacher":    lesson,
