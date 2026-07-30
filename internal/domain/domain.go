@@ -332,10 +332,11 @@ type EvidenceClaim struct {
 }
 
 type RetrievalPrompt struct {
-	ID                    string `json:"id"`
-	Prompt                string `json:"prompt"`
-	AnswerRubric          string `json:"answerRubric"`
-	CorrectiveExplanation string `json:"correctiveExplanation"`
+	ID                    string   `json:"id"`
+	Prompt                string   `json:"prompt"`
+	AnswerRubric          string   `json:"answerRubric"`
+	CorrectiveExplanation string   `json:"correctiveExplanation"`
+	ConceptIDs            []string `json:"conceptIds"`
 }
 
 type LearningContract struct {
@@ -349,6 +350,22 @@ type LearningContract struct {
 	Retrieval             []RetrievalPrompt `json:"retrieval"`
 	SuggestedNextConcepts []string          `json:"suggestedNextConcepts"`
 	Application           string            `json:"application"`
+}
+
+type LearnerConceptProgress struct {
+	Label              string `json:"label"`
+	Role               string `json:"role"`
+	ExposureCount      int    `json:"exposureCount"`
+	CompletedCount     int    `json:"completedCount"`
+	ReviewAttemptCount int    `json:"reviewAttemptCount"`
+	ConfidenceScore    int    `json:"confidenceScore"`
+}
+
+type LearnerState struct {
+	Concepts         []LearnerConceptProgress `json:"concepts"`
+	Difficulty       string                   `json:"difficulty,omitempty"`
+	Relevance        string                   `json:"relevance,omitempty"`
+	RecallConfidence string                   `json:"recallConfidence,omitempty"`
 }
 
 type QualityReport struct {
@@ -378,14 +395,16 @@ type Dossier struct {
 }
 
 type LearningHistoryEntry struct {
-	Date              string            `json:"date"`
-	GeneratedAt       time.Time         `json:"generatedAt"`
-	SourceTitles      []string          `json:"sourceTitles"`
-	LessonSummary     string            `json:"lessonSummary"`
-	RecallQuestions   []string          `json:"recallQuestions"`
-	RetrievalPrompts  []RetrievalPrompt `json:"retrievalPrompts,omitempty"`
-	LearningObjective string            `json:"learningObjective"`
-	Concepts          []string          `json:"concepts"`
+	Date                  string            `json:"date"`
+	GeneratedAt           time.Time         `json:"generatedAt"`
+	SourceTitles          []string          `json:"sourceTitles"`
+	LessonSummary         string            `json:"lessonSummary"`
+	RecallQuestions       []string          `json:"recallQuestions"`
+	RetrievalPrompts      []RetrievalPrompt `json:"retrievalPrompts,omitempty"`
+	ConceptStates         []LearningConcept `json:"conceptStates,omitempty"`
+	SuggestedNextConcepts []string          `json:"suggestedNextConcepts,omitempty"`
+	LearningObjective     string            `json:"learningObjective"`
+	Concepts              []string          `json:"concepts"`
 }
 
 type DossierArtifact struct {

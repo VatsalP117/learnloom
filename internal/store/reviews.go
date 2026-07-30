@@ -82,6 +82,33 @@ func (s *Store) AssessReview(
 	`, review.ID, accountID, nextStage, nextDue, now); err != nil {
 		return WorkspaceReview{}, fmt.Errorf("reschedule Review Item: %w", err)
 	}
+	confidence := 25
+	if assessment == ReviewPartial {
+		confidence = 60
+	} else if assessment == ReviewSolid {
+		confidence = 85
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE learner_concept_state state
+		SET confidence_score = (
+		      (
+		        state.confidence_score * state.review_attempt_count + $3
+		      ) / (state.review_attempt_count + 1)
+		    )::smallint,
+		    review_attempt_count = state.review_attempt_count + 1,
+		    last_reviewed_at = $4,
+		    updated_at = $4
+		FROM review_items item
+		JOIN issues issue ON issue.id = item.issue_id,
+		     LATERAL unnest(item.concept_keys) AS concept(concept_key)
+		WHERE item.id = $1
+		  AND item.account_id = $2
+		  AND state.account_id = item.account_id
+		  AND state.newsletter_id = issue.newsletter_id
+		  AND state.concept_key = concept.concept_key
+	`, review.ID, accountID, confidence, now); err != nil {
+		return WorkspaceReview{}, fmt.Errorf("project Review Concept confidence: %w", err)
+	}
 	review.Stage = nextStage
 	review.DueAt = nextDue
 	review.LastReviewedAt = &now

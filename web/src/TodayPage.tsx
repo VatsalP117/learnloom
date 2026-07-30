@@ -25,11 +25,13 @@ export default function TodayPage() {
     return () => window.removeEventListener("learnloom:state", refresh);
   }, []);
 
-  const { primary, secondary } = useMemo(
-    () => selectTodayLessons(workspace.lessons),
-    [workspace.lessons],
+  const { primary, secondary, focus } = useMemo(
+    () => selectTodayFocus(workspace.lessons, workspace.reviews),
+    [workspace.lessons, workspace.reviews],
   );
   const primaryState = primary ? lessonState(primary.id) : null;
+  const reviewFirst = focus === "review";
+  const sideLesson = reviewFirst ? primary : secondary;
 
   return (
     <LearningShell active="today">
@@ -60,45 +62,65 @@ export default function TodayPage() {
           </section>
         ) : null}
 
-        {primary ? (
+        {primary || reviewFirst ? (
           <div className="today-grid">
-            <article className="today-feature glass-panel">
-              <div className="today-feature-top">
-                <span className="atelier-chip">
-                  {primaryState?.progress > 0 ? "Continue learning" : "Ready for you"}
-                </span>
-                <span><Clock3 size={14} />{primary.newsletter.lessonMinutes} min</span>
-              </div>
-              <div className="today-feature-copy">
-                <p className="atelier-eyebrow">{primary.newsletter.name}</p>
-                <h2>{primary.title}</h2>
-                <p>
-                  {primaryState?.progress > 0
-                    ? "Pick up where you left off. Your place has been saved."
-                    : `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`}
-                </p>
-              </div>
-              <div className="today-progress">
-                <div>
-                  <span>Reading progress</span>
-                  <strong>{Math.round(primaryState?.progress ?? 0)}%</strong>
+            {reviewFirst ? (
+              <article className="today-feature today-feature-review glass-panel">
+                <div className="today-feature-top">
+                  <span className="atelier-chip"><BrainCircuit size={13} /> Review due</span>
+                  <span>{workspace.reviews.length} prompt{workspace.reviews.length === 1 ? "" : "s"}</span>
                 </div>
-                <span><i style={{ width: `${primaryState?.progress ?? 0}%` }} /></span>
-              </div>
-              <a className="atelier-primary" href={`/issues/${encodeURIComponent(primary.id)}`}>
-                {primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson"}
-                <ArrowRight size={16} />
-              </a>
-            </article>
+                <div className="today-feature-copy">
+                  <p className="atelier-eyebrow">Best next step</p>
+                  <h2>Strengthen what is ready to be recalled.</h2>
+                  <p>
+                    A short retrieval pass now will make recent ideas easier to use
+                    later. Your next lesson will stay ready when you finish.
+                  </p>
+                </div>
+                <a className="atelier-primary" href="/review">
+                  Start review <ArrowRight size={16} />
+                </a>
+              </article>
+            ) : (
+              <article className="today-feature glass-panel">
+                <div className="today-feature-top">
+                  <span className="atelier-chip">
+                    {primaryState?.progress > 0 ? "Continue learning" : "Ready for you"}
+                  </span>
+                  <span><Clock3 size={14} />{primary.newsletter.lessonMinutes} min</span>
+                </div>
+                <div className="today-feature-copy">
+                  <p className="atelier-eyebrow">{primary.newsletter.name}</p>
+                  <h2>{primary.title}</h2>
+                  <p>
+                    {primaryState?.progress > 0
+                      ? "Pick up where you left off. Your place has been saved."
+                      : `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`}
+                  </p>
+                </div>
+                <div className="today-progress">
+                  <div>
+                    <span>Reading progress</span>
+                    <strong>{Math.round(primaryState?.progress ?? 0)}%</strong>
+                  </div>
+                  <span><i style={{ width: `${primaryState?.progress ?? 0}%` }} /></span>
+                </div>
+                <a className="atelier-primary" href={`/issues/${encodeURIComponent(primary.id)}`}>
+                  {primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson"}
+                  <ArrowRight size={16} />
+                </a>
+              </article>
+            )}
 
             <aside className="today-side">
-              {secondary ? (
+              {sideLesson ? (
                 <article className="today-synthesis glass-panel">
                   <span className="atelier-icon"><BookOpen size={17} /></span>
-                  <p className="atelier-eyebrow">Another thread</p>
-                  <h3>{secondary.newsletter.name}</h3>
-                  <p>{secondary.title}</p>
-                  <a href={`/issues/${encodeURIComponent(secondary.id)}`}>
+                  <p className="atelier-eyebrow">{reviewFirst ? "After review" : "Another thread"}</p>
+                  <h3>{sideLesson.newsletter.name}</h3>
+                  <p>{sideLesson.title}</p>
+                  <a href={`/issues/${encodeURIComponent(sideLesson.id)}`}>
                     Open lesson <ArrowRight size={14} />
                   </a>
                 </article>
@@ -110,12 +132,20 @@ export default function TodayPage() {
                   <p>Your next lesson will appear here when it is ready.</p>
                 </article>
               )}
-              <article className="today-review glass-panel">
+              <article className={`today-review glass-panel${workspace.reviews.length ? " is-due" : ""}`}>
                 <BrainCircuit size={18} />
                 <div>
                   <p className="atelier-eyebrow">Recall</p>
-                  <strong>Strengthen what you learned</strong>
-                  <span>Review questions from recent lessons.</span>
+                  <strong>
+                    {workspace.reviews.length
+                      ? `${workspace.reviews.length} prompt${workspace.reviews.length === 1 ? "" : "s"} due`
+                      : "Strengthen what you learned"}
+                  </strong>
+                  <span>
+                    {workspace.reviews.length
+                      ? "A short retrieval pass is ready."
+                      : "Review questions from recent lessons."}
+                  </span>
                 </div>
                 <a href="/review" aria-label="Open review"><ArrowRight size={16} /></a>
               </article>
@@ -160,6 +190,21 @@ export function selectTodayLessons(lessons, stateFor = lessonState) {
   return {
     primary,
     secondary: ready.find((lesson) => lesson.id !== primary?.id),
+  };
+}
+
+export function selectTodayFocus(
+  lessons,
+  reviews = [],
+  stateFor = lessonState,
+) {
+  const selected = selectTodayLessons(lessons, stateFor);
+  const hasInProgressLesson = selected.primary
+    ? stateFor(selected.primary.id).progress > 0
+    : false;
+  return {
+    ...selected,
+    focus: reviews.length > 0 && !hasInProgressLesson ? "review" : "lesson",
   };
 }
 

@@ -698,18 +698,47 @@ func (s *Store) CompleteIssue(
 	`, newsletterID, issueID, input.History.Date, history, input.CompletedAt); err != nil {
 		return fmt.Errorf("append Learning History: %w", err)
 	}
+	for _, concept := range input.History.ConceptStates {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO issue_concepts (
+				account_id, issue_id, newsletter_id, concept_key,
+				label, role, created_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (issue_id, concept_key) DO NOTHING
+		`, accountID, issueID, newsletterID, concept.ID, concept.Label,
+			concept.Role, input.CompletedAt); err != nil {
+			return fmt.Errorf("record Issue Concept: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO learner_concept_state (
+				account_id, newsletter_id, concept_key, label, role,
+				exposure_count, last_seen_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, 1, $6, $6)
+			ON CONFLICT (account_id, newsletter_id, concept_key) DO UPDATE SET
+				label = EXCLUDED.label,
+				role = EXCLUDED.role,
+				exposure_count = learner_concept_state.exposure_count + 1,
+				last_seen_at = EXCLUDED.last_seen_at,
+				updated_at = EXCLUDED.updated_at
+		`, accountID, newsletterID, concept.ID, concept.Label, concept.Role,
+			input.CompletedAt); err != nil {
+			return fmt.Errorf("project Learner Concept exposure: %w", err)
+		}
+	}
 	for _, prompt := range input.History.RetrievalPrompts {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO review_items (
 				account_id, issue_id, prompt_key, prompt, answer_rubric,
-				corrective_explanation, objective, scheduler_version,
-				stage, created_at, updated_at
+				corrective_explanation, objective, concept_keys,
+				scheduler_version, stage, created_at, updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 0, $8, $8)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $9)
 			ON CONFLICT (issue_id, prompt_key) DO NOTHING
 		`, accountID, issueID, prompt.ID, prompt.Prompt, prompt.AnswerRubric,
 			prompt.CorrectiveExplanation, input.History.LearningObjective,
-			input.CompletedAt); err != nil {
+			prompt.ConceptIDs, input.CompletedAt); err != nil {
 			return fmt.Errorf("create Review Item: %w", err)
 		}
 	}

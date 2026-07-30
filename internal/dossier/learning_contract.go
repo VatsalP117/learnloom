@@ -21,6 +21,15 @@ func buildLearningContract(
 		return domain.LearningContract{}, err
 	}
 	retrieval := retrievalPrompts(practice)
+	conceptIDs := make([]string, 0, len(concepts))
+	for _, concept := range concepts {
+		if concept.Role == "core" {
+			conceptIDs = append(conceptIDs, concept.ID)
+		}
+	}
+	for index := range retrieval {
+		retrieval[index].ConceptIDs = append([]string(nil), conceptIDs...)
+	}
 	if len(concepts) == 0 || len(claims) == 0 || len(retrieval) < 3 {
 		return domain.LearningContract{}, errors.New(
 			"structured learning contract is incomplete",

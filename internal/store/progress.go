@@ -109,6 +109,23 @@ func (s *Store) CompleteLesson(
 	`, accountID, issueID, now); err != nil {
 		return LessonProgress{}, fmt.Errorf("activate lesson reviews: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE learner_concept_state state
+		SET completed_count = LEAST(
+		      state.exposure_count,
+		      state.completed_count + 1
+		    ),
+		    last_completed_at = $3,
+		    updated_at = $3
+		FROM issue_concepts concept
+		WHERE concept.issue_id = $2
+		  AND concept.account_id = $1
+		  AND state.account_id = concept.account_id
+		  AND state.newsletter_id = concept.newsletter_id
+		  AND state.concept_key = concept.concept_key
+	`, accountID, issueID, now); err != nil {
+		return LessonProgress{}, fmt.Errorf("complete Learner Concepts: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return LessonProgress{}, fmt.Errorf("commit lesson completion: %w", err)
 	}

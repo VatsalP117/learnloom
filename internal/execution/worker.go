@@ -28,6 +28,7 @@ type Lifecycle interface {
 	LoadIssueCheckpoints(context.Context, string, string) (map[string]string, error)
 	SaveIssueCheckpoint(context.Context, string, string, string, string, string, string, time.Time) error
 	LoadLearningHistory(context.Context, string, int) ([]domain.LearningHistoryEntry, error)
+	LoadLearnerState(context.Context, string, string, int) (domain.LearnerState, error)
 	CompleteIssue(context.Context, string, store.CompleteIssueInput) error
 	FailIssue(context.Context, string, string, error, int, time.Time) error
 	ClaimNextDelivery(context.Context, time.Time, time.Duration, int) (*store.DeliveryClaim, error)
@@ -283,6 +284,17 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 		w.cfg.HistoryEntries,
 	)
 	w.logIssuePhase(ctx, claim.Issue.ID, "history", phaseStarted, err)
+	var learnerState domain.LearnerState
+	if err == nil {
+		phaseStarted = time.Now()
+		learnerState, err = w.lifecycle.LoadLearnerState(
+			ctx,
+			claim.AccountID,
+			claim.Issue.NewsletterID,
+			w.cfg.HistoryEntries,
+		)
+		w.logIssuePhase(ctx, claim.Issue.ID, "learner_state", phaseStarted, err)
+	}
 	if err == nil {
 		if w.sourceSvc == nil {
 			err = errors.New("source intelligence service is unavailable")
@@ -297,6 +309,7 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 			generateRequest := dossier.GenerateRequest{
 				Newsletter:    claim.Issue.Newsletter,
 				History:       history,
+				LearnerState:  learnerState,
 				Now:           w.now(),
 				PreparedItems: prepared.Items,
 				Warnings:      prepared.Warnings,

@@ -40,6 +40,7 @@ type Generator struct {
 type GenerateRequest struct {
 	Newsletter    domain.Newsletter
 	History       []domain.LearningHistoryEntry
+	LearnerState  domain.LearnerState
 	Now           time.Time
 	OnStage       StageObserver
 	OnCheckpoint  func(stage, output string)
@@ -68,11 +69,13 @@ func GenerationFingerprint(request GenerateRequest, modelName string) (string, e
 			AIExplorationEnabled bool                      `json:"aiExplorationEnabled"`
 		} `json:"newsletter"`
 		History       []domain.LearningHistoryEntry `json:"history"`
+		LearnerState  domain.LearnerState           `json:"learnerState"`
 		PreparedItems []domain.SourceItem           `json:"preparedItems"`
 	}{
 		PipelineVersion: PipelineVersion,
 		ModelName:       modelName,
 		History:         request.History,
+		LearnerState:    request.LearnerState,
 		PreparedItems:   request.PreparedItems,
 	}
 	payload.Newsletter.ID = request.Newsletter.ID
@@ -196,7 +199,11 @@ func (g *Generator) Generate(
 			return GenerateResult{}, err
 		}
 	}
-	learnerContext := g.learnerContext(request.Newsletter, request.History)
+	learnerContext := g.learnerContext(
+		request.Newsletter,
+		request.History,
+		request.LearnerState,
+	)
 	wordBudget := lessonWordBudgetFor(request.Newsletter.LessonMinutes)
 	candidateCharacters := max(300, min(
 		g.cfg.MaxItemCharacters,
@@ -534,14 +541,16 @@ func (g *Generator) Generate(
 	markdown := RenderMarkdown(dossier)
 	html := RenderHTML(dossier, "")
 	history := domain.LearningHistoryEntry{
-		Date:              date,
-		GeneratedAt:       now.UTC(),
-		SourceTitles:      mapSourceTitles(enriched),
-		LessonSummary:     truncate(stripMarkdown(editorial.Lesson), 800),
-		RecallQuestions:   extractQuestions(finalPractice),
-		RetrievalPrompts:  slices.Clone(learning.Retrieval),
-		LearningObjective: blueprint.LearningObjective,
-		Concepts:          blueprintConcepts(blueprint),
+		Date:                  date,
+		GeneratedAt:           now.UTC(),
+		SourceTitles:          mapSourceTitles(enriched),
+		LessonSummary:         truncate(stripMarkdown(editorial.Lesson), 800),
+		RecallQuestions:       extractQuestions(finalPractice),
+		RetrievalPrompts:      slices.Clone(learning.Retrieval),
+		ConceptStates:         slices.Clone(learning.Concepts),
+		SuggestedNextConcepts: slices.Clone(learning.SuggestedNextConcepts),
+		LearningObjective:     blueprint.LearningObjective,
+		Concepts:              blueprintConcepts(blueprint),
 	}
 	return GenerateResult{
 		Artifact: domain.DossierArtifact{
@@ -846,6 +855,7 @@ func formatSourceBundle(items []domain.SourceItem, maximum int) string {
 func (g *Generator) learnerContext(
 	newsletter domain.Newsletter,
 	history []domain.LearningHistoryEntry,
+	state domain.LearnerState,
 ) string {
 	retained := history
 	if g.cfg.HistoryEntries <= 0 {
@@ -880,6 +890,21 @@ func (g *Generator) learnerContext(
 	if len(prior) == 0 {
 		prior = []string{"- No previous lessons yet."}
 	}
+	var conceptState []string
+	for _, concept := range state.Concepts {
+		conceptState = append(conceptState, fmt.Sprintf(
+			"- %s (%s): completed %d/%d exposures; confidence %d/100 from %d reviews",
+			concept.Label,
+			concept.Role,
+			concept.CompletedCount,
+			concept.ExposureCount,
+			concept.ConfidenceScore,
+			concept.ReviewAttemptCount,
+		))
+	}
+	if len(conceptState) == 0 {
+		conceptState = []string{"- No durable concept evidence yet."}
+	}
 	return strings.Join([]string{
 		"# Learner",
 		"Interests: " + newsletter.Topic,
@@ -891,7 +916,14 @@ func (g *Generator) learnerContext(
 		"# Previous lessons",
 		strings.Join(prior, "\n"),
 		"",
+		"# Current learner evidence",
+		"Recent difficulty signal: " + firstText(state.Difficulty, "not recorded"),
+		"Recent relevance signal: " + firstText(state.Relevance, "not recorded"),
+		"Recent recall confidence: " + firstText(state.RecallConfidence, "not recorded"),
+		strings.Join(conceptState, "\n"),
+		"",
 		"Build deliberately on prior learning when it is relevant. Do not merely repeat it.",
+		"Use learner evidence conservatively: reinforce low-confidence concepts, avoid repeating strong concepts without a new connection, and adjust depth when difficulty feedback is available.",
 	}, "\n")
 }
 

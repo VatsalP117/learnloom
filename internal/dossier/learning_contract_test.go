@@ -36,7 +36,8 @@ func TestBuildLearningContractPreservesEvidenceAndAnswerRubrics(t *testing.T) {
 		t.Fatalf("contract=%#v", contract)
 	}
 	if contract.Claims[0].SourceIDs[0] != "S1" ||
-		contract.Retrieval[0].AnswerRubric != "It strengthens later access." {
+		contract.Retrieval[0].AnswerRubric != "It strengthens later access." ||
+		len(contract.Retrieval[0].ConceptIDs) != 2 {
 		t.Fatalf("evidence or rubric was not preserved: %#v", contract)
 	}
 }

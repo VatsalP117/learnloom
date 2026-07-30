@@ -1,0 +1,176 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/jackc/pgx/v5"
+)
+
+type LearnerConceptState struct {
+	NewsletterID       string     `json:"newsletterId"`
+	Key                string     `json:"key"`
+	Label              string     `json:"label"`
+	Role               string     `json:"role"`
+	ExposureCount      int        `json:"exposureCount"`
+	CompletedCount     int        `json:"completedCount"`
+	ReviewAttemptCount int        `json:"reviewAttemptCount"`
+	ConfidenceScore    int        `json:"confidenceScore"`
+	LastSeenAt         time.Time  `json:"lastSeenAt"`
+	LastCompletedAt    *time.Time `json:"lastCompletedAt,omitempty"`
+	LastReviewedAt     *time.Time `json:"lastReviewedAt,omitempty"`
+}
+
+type CurriculumProjection struct {
+	Concepts              []LearnerConceptState `json:"concepts"`
+	SuggestedNextConcepts []string              `json:"suggestedNextConcepts"`
+}
+
+func (s *Store) ListLearnerConcepts(
+	ctx context.Context,
+	accountID, newsletterID string,
+	limit int,
+) ([]LearnerConceptState, error) {
+	if limit < 1 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT state.newsletter_id::text, state.concept_key, state.label,
+		       state.role, state.exposure_count, state.completed_count,
+		       state.review_attempt_count, state.confidence_score,
+		       state.last_seen_at, state.last_completed_at,
+		       state.last_reviewed_at
+		FROM learner_concept_state state
+		JOIN newsletters newsletter ON newsletter.id = state.newsletter_id
+		WHERE state.account_id = $1
+		  AND state.newsletter_id = $2
+		  AND newsletter.owner_account_id = $1
+		ORDER BY
+		  CASE state.role WHEN 'core' THEN 0 ELSE 1 END,
+		  state.last_seen_at DESC,
+		  state.label
+		LIMIT $3
+	`, accountID, newsletterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list Learner Concepts: %w", err)
+	}
+	defer rows.Close()
+	concepts := make([]LearnerConceptState, 0)
+	for rows.Next() {
+		var concept LearnerConceptState
+		if err := rows.Scan(
+			&concept.NewsletterID,
+			&concept.Key,
+			&concept.Label,
+			&concept.Role,
+			&concept.ExposureCount,
+			&concept.CompletedCount,
+			&concept.ReviewAttemptCount,
+			&concept.ConfidenceScore,
+			&concept.LastSeenAt,
+			&concept.LastCompletedAt,
+			&concept.LastReviewedAt,
+		); err != nil {
+			return nil, err
+		}
+		concepts = append(concepts, concept)
+	}
+	return concepts, rows.Err()
+}
+
+func (s *Store) LoadLearnerState(
+	ctx context.Context,
+	accountID, newsletterID string,
+	limit int,
+) (domain.LearnerState, error) {
+	concepts, err := s.ListLearnerConcepts(ctx, accountID, newsletterID, limit)
+	if err != nil {
+		return domain.LearnerState{}, err
+	}
+	state := domain.LearnerState{
+		Concepts: make([]domain.LearnerConceptProgress, 0, len(concepts)),
+	}
+	for _, concept := range concepts {
+		state.Concepts = append(state.Concepts, domain.LearnerConceptProgress{
+			Label:              concept.Label,
+			Role:               concept.Role,
+			ExposureCount:      concept.ExposureCount,
+			CompletedCount:     concept.CompletedCount,
+			ReviewAttemptCount: concept.ReviewAttemptCount,
+			ConfidenceScore:    concept.ConfidenceScore,
+		})
+	}
+
+	var difficulty, relevance, recallConfidence *string
+	err = s.pool.QueryRow(ctx, `
+		SELECT feedback.difficulty, feedback.relevance,
+		       feedback.recall_confidence
+		FROM lesson_feedback feedback
+		JOIN issues issue ON issue.id = feedback.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE feedback.account_id = $1
+		  AND issue.newsletter_id = $2
+		  AND newsletter.owner_account_id = $1
+		ORDER BY feedback.updated_at DESC
+		LIMIT 1
+	`, accountID, newsletterID).Scan(
+		&difficulty,
+		&relevance,
+		&recallConfidence,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return state, nil
+	}
+	if err != nil {
+		return domain.LearnerState{}, fmt.Errorf("load Learner feedback: %w", err)
+	}
+	state.Difficulty = stringValue(difficulty)
+	state.Relevance = stringValue(relevance)
+	state.RecallConfidence = stringValue(recallConfidence)
+	return state, nil
+}
+
+func (s *Store) GetCurriculum(
+	ctx context.Context,
+	accountID, newsletterID string,
+) (CurriculumProjection, error) {
+	concepts, err := s.ListLearnerConcepts(ctx, accountID, newsletterID, 100)
+	if err != nil {
+		return CurriculumProjection{}, err
+	}
+	var raw []byte
+	err = s.pool.QueryRow(ctx, `
+		SELECT history.entry
+		FROM learning_history history
+		JOIN newsletters newsletter ON newsletter.id = history.newsletter_id
+		WHERE history.newsletter_id = $1
+		  AND newsletter.owner_account_id = $2
+		ORDER BY history.created_at DESC
+		LIMIT 1
+	`, newsletterID, accountID).Scan(&raw)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return CurriculumProjection{Concepts: concepts}, nil
+		}
+		return CurriculumProjection{}, fmt.Errorf("load Curriculum direction: %w", err)
+	}
+	var history domain.LearningHistoryEntry
+	if err := json.Unmarshal(raw, &history); err != nil {
+		return CurriculumProjection{}, fmt.Errorf("decode Curriculum direction: %w", err)
+	}
+	return CurriculumProjection{
+		Concepts:              concepts,
+		SuggestedNextConcepts: history.SuggestedNextConcepts,
+	}, nil
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}

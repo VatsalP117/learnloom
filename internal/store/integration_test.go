@@ -274,17 +274,24 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 					ID: "retrieval-1", Prompt: "What is the mechanism?",
 					AnswerRubric:          "Explain the mechanism and its limits.",
 					CorrectiveExplanation: "Trace the mechanism step by step.",
+					ConceptIDs:            []string{"mechanism", "evidence"},
 				},
 				{
 					ID: "retrieval-2", Prompt: "What evidence supports it?",
 					AnswerRubric:          "Name the relevant evidence.",
 					CorrectiveExplanation: "Return to the cited evidence.",
+					ConceptIDs:            []string{"evidence"},
 				},
 				{
 					ID: "retrieval-3", Prompt: "When does it fail?",
 					AnswerRubric:          "Name an important boundary condition.",
 					CorrectiveExplanation: "Review the skeptical section.",
+					ConceptIDs:            []string{"mechanism"},
 				},
+			},
+			ConceptStates: []domain.LearningConcept{
+				{ID: "mechanism", Label: "Mechanism", Role: "core"},
+				{ID: "evidence", Label: "Evidence", Role: "core"},
 			},
 		},
 		HistoryLimit: 14, CompletedAt: now.Add(37 * time.Second),
@@ -353,6 +360,17 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		!assessed.DueAt.Equal(now.Add(39*time.Second+7*24*time.Hour)) {
 		t.Fatalf("assessed review=%#v err=%v", assessed, err)
 	}
+	concepts, err := database.ListLearnerConcepts(
+		ctx,
+		account.ID,
+		newsletter.Newsletter.ID,
+		10,
+	)
+	if err != nil || len(concepts) != 2 ||
+		concepts[0].CompletedCount != 1 ||
+		concepts[0].ConfidenceScore != 85 {
+		t.Fatalf("Learner Concepts=%#v err=%v", concepts, err)
+	}
 	if _, err := database.AssessReview(
 		ctx,
 		account.ID,
@@ -392,6 +410,19 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		feedbackSnapshot.RecallConfidence == nil ||
 		*feedbackSnapshot.RecallConfidence != recall {
 		t.Fatalf("lesson feedback snapshot=%#v err=%v", feedbackSnapshot, err)
+	}
+	learnerState, err := database.LoadLearnerState(
+		ctx,
+		account.ID,
+		newsletter.Newsletter.ID,
+		10,
+	)
+	if err != nil || len(learnerState.Concepts) != 2 ||
+		learnerState.Concepts[0].ConfidenceScore != 85 ||
+		learnerState.Difficulty != difficulty ||
+		learnerState.Relevance != relevance ||
+		learnerState.RecallConfidence != recall {
+		t.Fatalf("learner state=%#v err=%v", learnerState, err)
 	}
 	if err := database.RecordOwnedLessonEvent(
 		ctx,

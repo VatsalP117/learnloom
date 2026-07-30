@@ -407,6 +407,11 @@
 }
 .today-progress i { height: 100%; display: block; background: var(--atelier-ink); }
 .today-feature > .atelier-primary { align-self: flex-start; }
+.today-feature-review {
+  background:
+    radial-gradient(circle at 82% 18%, rgb(130 102 255 / 18%), transparent 34%),
+    var(--atelier-panel);
+}
 .today-side { display: grid; align-content: start; gap: 14px; }
 .today-synthesis { min-height: 210px; padding: 21px; }
 .today-synthesis h3 {
@@ -622,6 +627,14 @@
 .stream-rhythm { padding: 19px; }
 .stream-blueprint h2 { margin: 16px 0 10px; font-family: var(--atelier-display); font-size: 23px; line-height: 1.22; }
 .stream-blueprint > p:last-child { color: var(--atelier-muted); font-size: 10px; line-height: 1.55; }
+.stream-curriculum { padding: 22px; }
+.stream-curriculum h2 { margin: 10px 0 16px; font-family: var(--atelier-display); font-size: 20px; line-height: 1.25; }
+.stream-curriculum > div { display: grid; gap: 7px; }
+.stream-curriculum > div > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--atelier-line); }
+.stream-curriculum > div strong { font-size: 10px; }
+.stream-curriculum > div small { color: var(--atelier-muted); font-size: 8px; }
+.stream-curriculum > section { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--atelier-line); }
+.stream-curriculum > section > p:last-child { margin: 8px 0 0; color: var(--atelier-muted); font-size: 9px; line-height: 1.55; }
 .stream-sources .section-heading-row h2 { font-size: 21px; }
 .stream-sources > div:nth-child(2) { display: grid; margin-top: 18px; }
 .stream-sources > div:nth-child(2) a {

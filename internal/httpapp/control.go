@@ -652,12 +652,13 @@ func (s *Server) newsletterDetail(
 	newsletterID string,
 ) {
 	var (
-		record   store.NewsletterRecord
-		issues   []domain.Issue
-		progress []store.LessonProgress
-		all      []store.NewsletterRecord
-		summary  domain.SourceSummary
-		catalog  []domain.SourceCatalogItem
+		record     store.NewsletterRecord
+		issues     []domain.Issue
+		progress   []store.LessonProgress
+		all        []store.NewsletterRecord
+		summary    domain.SourceSummary
+		catalog    []domain.SourceCatalogItem
+		curriculum store.CurriculumProjection
 	)
 	group, context := errgroup.WithContext(request.Context())
 	group.Go(func() error {
@@ -694,6 +695,15 @@ func (s *Server) newsletterDetail(
 		)
 		return err
 	})
+	group.Go(func() error {
+		var err error
+		curriculum, err = s.store.GetCurriculum(
+			context,
+			current.Account.ID,
+			newsletterID,
+		)
+		return err
+	})
 	if err := group.Wait(); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeStoreError(response, err)
@@ -714,6 +724,7 @@ func (s *Server) newsletterDetail(
 		"newsletter":       newsletterPayload(record, current.Account.PrimaryEmail),
 		"sourceSummary":    summary,
 		"sourceCatalog":    sourceCatalogPayloads(catalog),
+		"curriculum":       curriculum,
 		"issues":           issuePayloads(issues),
 		"lessonProgress":   progress,
 		"newsletters":      sidebar,

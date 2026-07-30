@@ -130,6 +130,19 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			LessonSummary:     "Recognition can overstate what a learner can retrieve unaided.",
 			RecallQuestions:   []string{"Why can familiarity mislead a learner?"},
 		}},
+		LearnerState: domain.LearnerState{
+			Concepts: []domain.LearnerConceptProgress{{
+				Label:              "Retrieval strength",
+				Role:               "core",
+				ExposureCount:      2,
+				CompletedCount:     1,
+				ReviewAttemptCount: 1,
+				ConfidenceScore:    25,
+			}},
+			Difficulty:       "too_advanced",
+			Relevance:        "very_relevant",
+			RecallConfidence: "low",
+		},
 		Now: time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC),
 		OnStage: func(stage string, duration time.Duration, stageErr error) {
 			if stageErr != nil {
@@ -189,6 +202,8 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		"Objective: Compare recognition with independent recall",
 		"Concepts: retrieval strength | storage strength",
 		"Sources: Prior evidence review",
+		"Recent difficulty signal: too_advanced",
+		"Retrieval strength (core): completed 1/2 exposures; confidence 25/100 from 1 reviews",
 	} {
 		if !strings.Contains(editorInput, wanted) {
 			t.Fatalf("editor input is missing %q:\n%s", wanted, editorInput)
@@ -219,8 +234,19 @@ func TestGenerationFingerprintInvalidatesChangedLearningContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first == second || second == third || first == third {
-		t.Fatalf("fingerprints did not invalidate: %s %s %s", first, second, third)
+	request.LearnerState.Difficulty = "too_advanced"
+	fourth, err := GenerationFingerprint(request, "model-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || second == third || first == third || third == fourth {
+		t.Fatalf(
+			"fingerprints did not invalidate: %s %s %s %s",
+			first,
+			second,
+			third,
+			fourth,
+		)
 	}
 }
 

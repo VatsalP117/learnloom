@@ -270,6 +270,33 @@ export default function NewsletterDetail({ newsletterId }) {
                   </p>
                 </article>
 
+                {snapshot.curriculum?.concepts?.length ? (
+                  <article className="stream-curriculum glass-panel">
+                    <p className="atelier-eyebrow">Evolving curriculum</p>
+                    <h2>What this thread is building</h2>
+                    <div>
+                      {snapshot.curriculum.concepts.slice(0, 8).map((concept) => (
+                        <span key={concept.key}>
+                          <strong>{concept.label}</strong>
+                          <small>
+                            {concept.confidenceScore >= 75
+                              ? "Recalled solidly"
+                              : concept.completedCount > 0
+                                ? "Introduced"
+                                : "Coming into view"}
+                          </small>
+                        </span>
+                      ))}
+                    </div>
+                    {snapshot.curriculum.suggestedNextConcepts?.length ? (
+                      <section>
+                        <p className="atelier-eyebrow">Likely next directions</p>
+                        <p>{snapshot.curriculum.suggestedNextConcepts.join(" · ")}</p>
+                      </section>
+                    ) : null}
+                  </article>
+                ) : null}
+
                 <article className="stream-sources glass-panel">
                   <div className="section-heading-row">
                     <div>
