@@ -22,21 +22,35 @@ type CompletionRequest struct {
 	Structured  bool
 }
 
+type ModelUsage struct {
+	InputTokens           int
+	OutputTokens          int
+	Retries               int
+	EstimatedCostMicroUSD int64
+}
+
+type CompletionResult struct {
+	Output string
+	Usage  ModelUsage
+}
+
 var ErrOutputTruncated = errors.New("model output was truncated by its token limit")
 
 type Completer interface {
-	Complete(context.Context, CompletionRequest) (string, error)
+	Complete(context.Context, CompletionRequest) (CompletionResult, error)
 }
 
 type ModelConfig struct {
-	BaseURL          string
-	APIKey           string
-	Model            string
-	StructuredOutput bool
-	MaxTokens        int
-	Timeout          time.Duration
-	Retries          int
-	MaxConcurrency   int
+	BaseURL                        string
+	APIKey                         string
+	Model                          string
+	StructuredOutput               bool
+	MaxTokens                      int
+	Timeout                        time.Duration
+	Retries                        int
+	MaxConcurrency                 int
+	InputMicroUSDPerMillionTokens  int64
+	OutputMicroUSDPerMillionTokens int64
 }
 
 type OpenAIModel struct {
@@ -75,12 +89,15 @@ func NewOpenAIModel(cfg ModelConfig) (*OpenAIModel, error) {
 	}, nil
 }
 
-func (m *OpenAIModel) Complete(ctx context.Context, request CompletionRequest) (string, error) {
+func (m *OpenAIModel) Complete(
+	ctx context.Context,
+	request CompletionRequest,
+) (CompletionResult, error) {
 	select {
 	case m.semaphore <- struct{}{}:
 		defer func() { <-m.semaphore }()
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return CompletionResult{}, ctx.Err()
 	}
 	payload := struct {
 		Model          string          `json:"model"`
@@ -100,16 +117,25 @@ func (m *OpenAIModel) Complete(ctx context.Context, request CompletionRequest) (
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return CompletionResult{}, err
 	}
 	var lastErr error
 	for attempt := 0; attempt <= m.cfg.Retries; attempt++ {
-		output, retryAfter, retryable, err := m.completeOnce(ctx, body)
+		result, retryAfter, retryable, err := m.completeOnce(ctx, body)
 		if err == nil {
-			if strings.TrimSpace(output) == "" {
-				return "", fmt.Errorf("model stage %s returned empty output", request.Stage)
+			if strings.TrimSpace(result.Output) == "" {
+				return CompletionResult{}, fmt.Errorf("model stage %s returned empty output", request.Stage)
 			}
-			return strings.TrimSpace(output), nil
+			result.Output = strings.TrimSpace(result.Output)
+			result.Usage.Retries = attempt
+			result.Usage.EstimatedCostMicroUSD =
+				estimateModelCostMicroUSD(
+					result.Usage.InputTokens,
+					result.Usage.OutputTokens,
+					m.cfg.InputMicroUSDPerMillionTokens,
+					m.cfg.OutputMicroUSDPerMillionTokens,
+				)
+			return result, nil
 		}
 		lastErr = err
 		if !retryable || attempt == m.cfg.Retries {
@@ -120,16 +146,16 @@ func (m *OpenAIModel) Complete(ctx context.Context, request CompletionRequest) (
 				time.Duration(rand.IntN(250))*time.Millisecond
 		}
 		if err := m.sleep(ctx, retryAfter); err != nil {
-			return "", err
+			return CompletionResult{}, err
 		}
 	}
-	return "", lastErr
+	return CompletionResult{}, lastErr
 }
 
 func (m *OpenAIModel) completeOnce(
 	ctx context.Context,
 	body []byte,
-) (output string, retryAfter time.Duration, retryable bool, err error) {
+) (completion CompletionResult, retryAfter time.Duration, retryable bool, err error) {
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
@@ -137,7 +163,7 @@ func (m *OpenAIModel) completeOnce(
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return "", 0, false, err
+		return CompletionResult{}, 0, false, err
 	}
 	request.Header.Set("Authorization", "Bearer "+m.cfg.APIKey)
 	request.Header.Set("Content-Type", "application/json")
@@ -146,9 +172,9 @@ func (m *OpenAIModel) completeOnce(
 	response, err := m.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
-			return "", 0, false, ctx.Err()
+			return CompletionResult{}, 0, false, ctx.Err()
 		}
-		return "", 0, true, fmt.Errorf("model request failed: %s", m.redact(err.Error()))
+		return CompletionResult{}, 0, true, fmt.Errorf("model request failed: %s", m.redact(err.Error()))
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -159,28 +185,49 @@ func (m *OpenAIModel) completeOnce(
 		retryable = response.StatusCode == http.StatusRequestTimeout ||
 			response.StatusCode == http.StatusTooManyRequests ||
 			response.StatusCode >= 500
-		return "", retryAfter, retryable, fmt.Errorf(
+		return CompletionResult{}, retryAfter, retryable, fmt.Errorf(
 			"model returned HTTP %d",
 			response.StatusCode,
 		)
 	}
-	var result struct {
+	var responseBody struct {
 		Choices []struct {
 			Message      chatMessage `json:"message"`
 			FinishReason string      `json:"finish_reason"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 4<<20))
-	if err := decoder.Decode(&result); err != nil {
-		return "", 0, false, fmt.Errorf("decode model response: %w", err)
+	if err := decoder.Decode(&responseBody); err != nil {
+		return CompletionResult{}, 0, false, fmt.Errorf("decode model response: %w", err)
 	}
-	if len(result.Choices) == 0 {
-		return "", 0, false, errors.New("model response contained no choices")
+	if len(responseBody.Choices) == 0 {
+		return CompletionResult{}, 0, false, errors.New("model response contained no choices")
 	}
-	if result.Choices[0].FinishReason == "length" {
-		return "", 0, false, ErrOutputTruncated
+	if responseBody.Choices[0].FinishReason == "length" {
+		return CompletionResult{}, 0, false, ErrOutputTruncated
 	}
-	return result.Choices[0].Message.Content, 0, false, nil
+	return CompletionResult{
+		Output: responseBody.Choices[0].Message.Content,
+		Usage: ModelUsage{
+			InputTokens:  responseBody.Usage.PromptTokens,
+			OutputTokens: responseBody.Usage.CompletionTokens,
+		},
+	}, 0, false, nil
+}
+
+func estimateModelCostMicroUSD(
+	inputTokens, outputTokens int,
+	inputRate, outputRate int64,
+) int64 {
+	if inputTokens < 0 || outputTokens < 0 || inputRate < 0 || outputRate < 0 {
+		return 0
+	}
+	return (int64(inputTokens)*inputRate + int64(outputTokens)*outputRate + 999_999) /
+		1_000_000
 }
 
 func (m *OpenAIModel) Ready(ctx context.Context) error {

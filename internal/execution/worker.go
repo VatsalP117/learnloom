@@ -23,10 +23,10 @@ import (
 type Lifecycle interface {
 	RecoverExpiredClaims(context.Context, time.Time, int, int) (int64, error)
 	DispatchDue(context.Context, time.Time, int) (int, error)
-	ClaimNextIssue(context.Context, time.Time, time.Duration, int, int, int, store.IssueAttemptContext) (*store.IssueClaim, error)
+	ClaimNextIssue(context.Context, time.Time, time.Duration, int, int, int, int64, int64, store.IssueAttemptContext) (*store.IssueClaim, error)
 	RenewIssueClaim(context.Context, string, string, time.Time) error
 	ReleaseIssueClaim(context.Context, string, string, error, time.Time) error
-	RecordIssueStage(context.Context, string, string, string, time.Duration, error, time.Time) error
+	RecordIssueStage(context.Context, string, string, string, time.Duration, store.StageUsage, error, time.Time) error
 	LoadIssueCheckpoints(context.Context, string, string) (map[string]string, error)
 	SaveIssueCheckpoint(context.Context, string, string, string, string, string, string, time.Time) error
 	LoadLearningHistory(context.Context, string, int) ([]domain.LearningHistoryEntry, error)
@@ -66,19 +66,21 @@ type Mailer interface {
 }
 
 type Config struct {
-	PollInterval        time.Duration
-	ClaimDuration       time.Duration
-	MaxIssueAttempts    int
-	MaxDeliveryAttempts int
-	AccountConcurrency  int
-	GlobalConcurrency   int
-	IssueTimeout        time.Duration
-	DailyAccountLimit   int
-	DailyGlobalLimit    int
-	HistoryEntries      int
-	RootDomain          string
-	AppOrigin           string
-	AttemptContext      store.IssueAttemptContext
+	PollInterval             time.Duration
+	ClaimDuration            time.Duration
+	MaxIssueAttempts         int
+	MaxDeliveryAttempts      int
+	AccountConcurrency       int
+	GlobalConcurrency        int
+	IssueTimeout             time.Duration
+	DailyAccountLimit        int
+	DailyGlobalLimit         int
+	DailyModelBudgetMicroUSD int64
+	ModelReservationMicroUSD int64
+	HistoryEntries           int
+	RootDomain               string
+	AppOrigin                string
+	AttemptContext           store.IssueAttemptContext
 }
 
 type Worker struct {
@@ -448,6 +450,8 @@ func (w *Worker) processIssues(ctx context.Context) error {
 			w.cfg.AccountConcurrency,
 			w.cfg.DailyAccountLimit,
 			w.cfg.DailyGlobalLimit,
+			w.cfg.DailyModelBudgetMicroUSD,
+			w.cfg.ModelReservationMicroUSD,
 			w.cfg.AttemptContext,
 		)
 		if errors.Is(err, store.ErrGenerationPaused) ||
@@ -565,7 +569,12 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 						)
 					}
 				}
-				generateRequest.OnStage = func(stage string, duration time.Duration, stageErr error) {
+				generateRequest.OnStage = func(
+					stage string,
+					duration time.Duration,
+					usage dossier.ModelUsage,
+					stageErr error,
+				) {
 					w.logger.InfoContext(
 						ctx,
 						"Dossier model stage completed",
@@ -585,6 +594,12 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 						claim.Token,
 						stage,
 						duration,
+						store.StageUsage{
+							InputTokens:           usage.InputTokens,
+							OutputTokens:          usage.OutputTokens,
+							ProviderRetries:       usage.Retries,
+							EstimatedCostMicroUSD: usage.EstimatedCostMicroUSD,
+						},
 						stageErr,
 						w.now(),
 					); recordErr != nil && !errors.Is(recordErr, store.ErrClaimLost) {

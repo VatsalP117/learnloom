@@ -403,6 +403,7 @@ func (s *Store) ClaimNextIssue(
 	now time.Time,
 	claimDuration time.Duration,
 	accountConcurrency, dailyAccountLimit, dailyGlobalLimit int,
+	dailyModelBudgetMicroUSD, modelReservationMicroUSD int64,
 	attemptContext IssueAttemptContext,
 ) (*IssueClaim, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
@@ -412,7 +413,7 @@ func (s *Store) ClaimNextIssue(
 	defer rollback(tx)
 	var paused bool
 	if err := tx.QueryRow(ctx, `
-		SELECT generation_paused FROM runtime_controls WHERE id = true
+		SELECT generation_paused FROM runtime_controls WHERE id = true FOR UPDATE
 	`).Scan(&paused); err != nil {
 		return nil, err
 	}
@@ -428,6 +429,22 @@ func (s *Store) ClaimNextIssue(
 	}
 	if globalToday >= dailyGlobalLimit {
 		return nil, ErrQuotaExceeded
+	}
+	if dailyModelBudgetMicroUSD > 0 && modelReservationMicroUSD > 0 {
+		var attemptsToday int64
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*)
+			FROM issue_attempts
+			WHERE started_at >=
+			  date_trunc('day', $1 AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+		`, now).Scan(&attemptsToday); err != nil {
+			return nil, fmt.Errorf("inspect daily model budget: %w", err)
+		}
+		if attemptsToday >=
+			(dailyModelBudgetMicroUSD+modelReservationMicroUSD-1)/
+				modelReservationMicroUSD {
+			return nil, ErrQuotaExceeded
+		}
 	}
 	var issueID string
 	err = tx.QueryRow(ctx, `
@@ -891,6 +908,7 @@ func (s *Store) RecordIssueStage(
 	ctx context.Context,
 	issueID, token, stage string,
 	duration time.Duration,
+	usage StageUsage,
 	stageErr error,
 	now time.Time,
 ) error {
@@ -903,18 +921,27 @@ func (s *Store) RecordIssueStage(
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO issue_stage_attempts (
 			issue_attempt_id, stage, status, duration_ms,
+			input_tokens, output_tokens, provider_retries,
+			estimated_cost_microusd,
 			failure_code, internal_error, recorded_at
 		)
-		SELECT a.id, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), $8
+		SELECT a.id, $3, $4, $5, $6, $7, $8, $9,
+		       NULLIF($10, ''), NULLIF($11, ''), $12
 		FROM issue_attempts a
 		WHERE a.id = $2::uuid AND a.issue_id = $1::uuid
 		ON CONFLICT (issue_attempt_id, stage) DO UPDATE SET
 			status = EXCLUDED.status,
 			duration_ms = EXCLUDED.duration_ms,
+			input_tokens = EXCLUDED.input_tokens,
+			output_tokens = EXCLUDED.output_tokens,
+			provider_retries = EXCLUDED.provider_retries,
+			estimated_cost_microusd = EXCLUDED.estimated_cost_microusd,
 			failure_code = EXCLUDED.failure_code,
 			internal_error = EXCLUDED.internal_error,
 			recorded_at = EXCLUDED.recorded_at
 	`, issueID, token, stage, status, max(0, duration.Milliseconds()),
+		max(0, usage.InputTokens), max(0, usage.OutputTokens),
+		max(0, usage.ProviderRetries), max(0, usage.EstimatedCostMicroUSD),
 		detail.Code, truncateStore(detail.Internal, 500), now)
 	if err != nil {
 		return fmt.Errorf("record Issue stage: %w", err)
@@ -923,6 +950,13 @@ func (s *Store) RecordIssueStage(
 		return ErrClaimLost
 	}
 	return nil
+}
+
+type StageUsage struct {
+	InputTokens           int
+	OutputTokens          int
+	ProviderRetries       int
+	EstimatedCostMicroUSD int64
 }
 
 func (s *Store) ListIssues(

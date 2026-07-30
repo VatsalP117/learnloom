@@ -26,6 +26,11 @@ release.
   runbook exist.
 - [x] Web metrics run on a separate operations listener and CI exercises the
   canonical artifact lifecycle against a pinned S3-compatible service.
+- [x] Provider tokens, retries, stage latency, estimated spend, and learning
+  outcomes feed durable recording rules and a versioned operations dashboard;
+  claim admission enforces the configured daily reservation budget.
+- [x] A restore harness refuses non-drill databases and verifies schema, row,
+  and sampled artifact checksum evidence.
 
 ## Required staging evidence
 
@@ -48,6 +53,10 @@ release.
 - [ ] Configure alerts for readiness, 5xx rate, queue age, Claim recovery,
   exhausted attempts, delivery outcomes, model errors/latency, Postgres pool
   saturation, S3 errors, and spend controls.
+- [ ] Import the versioned Prometheus rules and Grafana dashboard, route alerts,
+  and test warning and critical delivery in staging.
+- [ ] Verify HSTS at the public edge, wildcard DNS/TLS renewal, scoped provider
+  IAM, staging credential isolation, and cache purge after a privacy change.
 - [ ] Verify privacy changes are not served by any public cache past the
   documented purge window.
 - [ ] Run load and soak tests at the expected launch concurrency.

@@ -195,6 +195,11 @@ Acceptance:
 
 ## Phase 6 — Platform hardening and economics
 
+Status: implementation complete in migrations 015 through 017. Managed backup,
+edge, IAM, staging, alert-routing, and cache-purge evidence remains a
+release-specific gate because it cannot be truthfully established from source
+code.
+
 Contracts and maintainability:
 
 - Replace permissive cross-layer `any` DTOs with endpoint-specific generated

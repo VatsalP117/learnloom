@@ -52,17 +52,23 @@ type sequenceModel struct {
 	responses []string
 }
 
-func (m *sequenceModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+func (m *sequenceModel) Complete(
+	_ context.Context,
+	request CompletionRequest,
+) (CompletionResult, error) {
 	m.requests = append(m.requests, request)
 	if len(m.responses) == 0 {
-		return "", fmt.Errorf("unexpected stage %s", request.Stage)
+		return CompletionResult{}, fmt.Errorf("unexpected stage %s", request.Stage)
 	}
 	response := m.responses[0]
 	m.responses = m.responses[1:]
-	return response, nil
+	return CompletionResult{Output: response}, nil
 }
 
-func (f *fakeModel) Complete(_ context.Context, request CompletionRequest) (string, error) {
+func (f *fakeModel) Complete(
+	_ context.Context,
+	request CompletionRequest,
+) (CompletionResult, error) {
 	f.mu.Lock()
 	if f.requests != nil {
 		*f.requests = append(*f.requests, request)
@@ -81,9 +87,9 @@ func (f *fakeModel) Complete(_ context.Context, request CompletionRequest) (stri
 		f.mu.Unlock()
 	}
 	if !exists {
-		return "", fmt.Errorf("missing stage %s", request.Stage)
+		return CompletionResult{}, fmt.Errorf("missing stage %s", request.Stage)
 	}
-	return value, nil
+	return CompletionResult{Output: value}, nil
 }
 
 func TestGeneratorProducesValidatedArtifact(t *testing.T) {
@@ -144,7 +150,12 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			RecallConfidence: "low",
 		},
 		Now: time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC),
-		OnStage: func(stage string, duration time.Duration, stageErr error) {
+		OnStage: func(
+			stage string,
+			duration time.Duration,
+			_ ModelUsage,
+			stageErr error,
+		) {
 			if stageErr != nil {
 				t.Errorf("stage %s failed: %v", stage, stageErr)
 			}

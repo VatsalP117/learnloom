@@ -25,13 +25,18 @@ func TestOpenAIModelCompletesAndRetries(t *testing.T) {
 			return
 		}
 		response.Header().Set("Content-Type", "application/json")
-		_, _ = response.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"result"}}]}`))
+		_, _ = response.Write([]byte(
+			`{"choices":[{"message":{"role":"assistant","content":"result"}}],` +
+				`"usage":{"prompt_tokens":100,"completion_tokens":50}}`,
+		))
 	}))
 	defer server.Close()
 
 	model, err := NewOpenAIModel(ModelConfig{
 		BaseURL: server.URL, APIKey: "secret-value", Model: "test",
 		Retries: 1, MaxTokens: 100, MaxConcurrency: 1,
+		InputMicroUSDPerMillionTokens:  1_000_000,
+		OutputMicroUSDPerMillionTokens: 2_000_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,8 +49,11 @@ func TestOpenAIModelCompletesAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output != "result" || attempts.Load() != 2 {
-		t.Fatalf("unexpected output=%q attempts=%d", output, attempts.Load())
+	if output.Output != "result" || attempts.Load() != 2 ||
+		output.Usage.Retries != 1 || output.Usage.InputTokens != 100 ||
+		output.Usage.OutputTokens != 50 ||
+		output.Usage.EstimatedCostMicroUSD != 200 {
+		t.Fatalf("unexpected output=%#v attempts=%d", output, attempts.Load())
 	}
 }
 

@@ -31,23 +31,25 @@ type Readiness interface {
 }
 
 type Config struct {
-	RootDomain          string
-	ApexOrigin          string
-	AppOrigin           string
-	CSRFSecret          string
-	ClerkSecretKey      string
-	ClerkJWTKey         string
-	ClerkWebhookSecret  string
-	ClerkFrontendOrigin string
-	MaxRequestBodyBytes int64
-	MaxNewsletters      int
-	DailyAccountLimit   int
-	MaxDeliveryAttempts int
-	ResendConfigured    bool
-	SourceDiscovery     bool
-	FeaturedSites       []string
-	Static              fs.FS
-	Authentication      func(http.Handler) http.Handler
+	RootDomain               string
+	ApexOrigin               string
+	AppOrigin                string
+	CSRFSecret               string
+	ClerkSecretKey           string
+	ClerkJWTKey              string
+	ClerkWebhookSecret       string
+	ClerkFrontendOrigin      string
+	MaxRequestBodyBytes      int64
+	MaxNewsletters           int
+	DailyAccountLimit        int
+	DailyModelBudgetMicroUSD int64
+	ModelReservationMicroUSD int64
+	MaxDeliveryAttempts      int
+	ResendConfigured         bool
+	SourceDiscovery          bool
+	FeaturedSites            []string
+	Static                   fs.FS
+	Authentication           func(http.Handler) http.Handler
 }
 
 type Server struct {
@@ -594,6 +596,32 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 		operations.DatabaseMax,
 		operations.DatabaseAcquireCount,
 		float64(operations.DatabaseAcquireNanos)/float64(time.Second),
+	)
+	_, _ = fmt.Fprintf(
+		response,
+		"# TYPE learnloom_model_input_tokens gauge\nlearnloom_model_input_tokens %d\n"+
+			"# TYPE learnloom_model_output_tokens gauge\nlearnloom_model_output_tokens %d\n"+
+			"# TYPE learnloom_model_provider_retries gauge\nlearnloom_model_provider_retries %d\n"+
+			"# TYPE learnloom_model_estimated_cost_microusd gauge\nlearnloom_model_estimated_cost_microusd %d\n"+
+			"# TYPE learnloom_model_estimated_cost_today_microusd gauge\nlearnloom_model_estimated_cost_today_microusd %d\n"+
+			"# TYPE learnloom_model_daily_budget_microusd gauge\nlearnloom_model_daily_budget_microusd %d\n"+
+			"# TYPE learnloom_model_issue_reservation_microusd gauge\nlearnloom_model_issue_reservation_microusd %d\n"+
+			"# TYPE learnloom_learning_actions gauge\n"+
+			"learnloom_learning_actions{action=\"generated\"} %d\n"+
+			"learnloom_learning_actions{action=\"opened\"} %d\n"+
+			"learnloom_learning_actions{action=\"completed\"} %d\n"+
+			"learnloom_learning_actions{action=\"retained_learner\"} %d\n",
+		operations.ModelInputTokens,
+		operations.ModelOutputTokens,
+		operations.ModelProviderRetries,
+		operations.ModelCostMicroUSD,
+		operations.ModelCostTodayMicroUSD,
+		s.cfg.DailyModelBudgetMicroUSD,
+		s.cfg.ModelReservationMicroUSD,
+		operations.LessonsGenerated,
+		operations.LessonsOpened,
+		operations.LessonsCompleted,
+		operations.RetainedLearners,
 	)
 }
 

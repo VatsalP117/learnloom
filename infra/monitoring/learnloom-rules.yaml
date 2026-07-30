@@ -1,0 +1,60 @@
+groups:
+  - name: learnloom-recording
+    interval: 30s
+    rules:
+      - record: learnloom:model_cost_per_generated_microusd
+        expr: learnloom_model_estimated_cost_microusd / clamp_min(learnloom_learning_actions{action="generated"}, 1)
+      - record: learnloom:model_cost_per_opened_microusd
+        expr: learnloom_model_estimated_cost_microusd / clamp_min(learnloom_learning_actions{action="opened"}, 1)
+      - record: learnloom:model_cost_per_completed_microusd
+        expr: learnloom_model_estimated_cost_microusd / clamp_min(learnloom_learning_actions{action="completed"}, 1)
+      - record: learnloom:model_cost_per_retained_learner_microusd
+        expr: learnloom_model_estimated_cost_microusd / clamp_min(learnloom_learning_actions{action="retained_learner"}, 1)
+      - record: learnloom:database_pool_saturation
+        expr: learnloom_database_connections{state="acquired"} / clamp_min(learnloom_database_connection_limit, 1)
+
+  - name: learnloom-alerts
+    interval: 30s
+    rules:
+      - alert: LearnloomIssueQueueStale
+        expr: learnloom_queue_oldest_issue_seconds > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Oldest queued lesson has waited more than 15 minutes.
+      - alert: LearnloomDeliveryQueueStale
+        expr: learnloom_queue_oldest_delivery_seconds > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Oldest queued delivery has waited more than 15 minutes.
+      - alert: LearnloomDatabasePoolSaturated
+        expr: learnloom:database_pool_saturation > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 85% of the Postgres pool is acquired.
+      - alert: LearnloomDailyModelBudgetWarning
+        expr: learnloom_model_estimated_cost_today_microusd > 0.8 * learnloom_model_daily_budget_microusd
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Estimated daily model spend passed 80% of the configured budget.
+      - alert: LearnloomDailyModelBudgetReached
+        expr: learnloom_model_estimated_cost_today_microusd >= learnloom_model_daily_budget_microusd
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Estimated daily model spend reached the configured claim budget.
+      - alert: LearnloomClaimRecoveryActive
+        expr: increase(learnloom_claims_recovered_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Worker claims required automatic recovery.

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "bounded-causality",
+    "evidence": "[S1] Repeated retrieval strengthens later access more than immediate rereading in the described experiment.",
+    "question": "What does the evidence support, and what does it not establish?",
+    "requiredTerms": ["retrieval", "experiment"],
+    "sourceId": "S1"
+  },
+  {
+    "id": "uncertain-source",
+    "evidence": "[S1] The report observed an association but did not randomize participants.",
+    "question": "State the strongest justified conclusion.",
+    "requiredTerms": ["association", "caus"],
+    "sourceId": "S1"
+  },
+  {
+    "id": "mechanism-and-limit",
+    "evidence": "[S1] The cache reduced median response time in one service; tail latency was not reported.",
+    "question": "Explain the result and its main limitation.",
+    "requiredTerms": ["median", "tail"],
+    "sourceId": "S1"
+  }
+]

@@ -137,10 +137,27 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		10_000_000,
+		1_000_000,
 		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
 		t.Fatalf("claim=%#v err=%v", claim, err)
+	}
+	if err := database.RecordIssueStage(
+		ctx,
+		issue.ID,
+		claim.Token,
+		"curator",
+		150*time.Millisecond,
+		StageUsage{
+			InputTokens: 100, OutputTokens: 50,
+			ProviderRetries: 1, EstimatedCostMicroUSD: 200,
+		},
+		nil,
+		time.Now().UTC(),
+	); err != nil {
+		t.Fatalf("record model economics: %v", err)
 	}
 	if err := database.SaveIssueCheckpoint(
 		ctx,
@@ -206,6 +223,8 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		10_000_000,
+		1_000_000,
 		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
@@ -229,6 +248,8 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		10_000_000,
+		1_000_000,
 		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
@@ -269,6 +290,8 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		10_000_000,
+		1_000_000,
 		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
@@ -290,6 +313,8 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		1,
 		5,
 		100,
+		10_000_000,
+		1_000_000,
 		IssueAttemptContext{WorkerID: "test-worker", DeploymentVersion: "test"},
 	)
 	if err != nil || claim == nil || claim.Issue.ID != issue.ID {
@@ -759,7 +784,11 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	}
 	operations, err := database.OperationalSnapshot(ctx, time.Now().UTC())
 	if err != nil || operations.QueuedIssues < 1 ||
-		operations.DatabaseMax < 1 || operations.DatabaseTotal < 1 {
+		operations.DatabaseMax < 1 || operations.DatabaseTotal < 1 ||
+		operations.ModelInputTokens < 100 ||
+		operations.ModelOutputTokens < 50 ||
+		operations.ModelProviderRetries < 1 ||
+		operations.ModelCostMicroUSD < 200 {
 		t.Fatalf("operational snapshot=%#v err=%v", operations, err)
 	}
 	expiredDeliveryToken := uuid.New()

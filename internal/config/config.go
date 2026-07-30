@@ -71,14 +71,16 @@ type ObjectStore struct {
 }
 
 type Model struct {
-	BaseURL          string
-	APIKey           string
-	Name             string
-	StructuredOutput bool
-	Timeout          time.Duration
-	Retries          int
-	MaxTokens        int
-	MaxConcurrency   int
+	BaseURL                        string
+	APIKey                         string
+	Name                           string
+	StructuredOutput               bool
+	Timeout                        time.Duration
+	Retries                        int
+	MaxTokens                      int
+	MaxConcurrency                 int
+	InputMicroUSDPerMillionTokens  int64
+	OutputMicroUSDPerMillionTokens int64
 }
 
 type Clerk struct {
@@ -96,16 +98,18 @@ type Resend struct {
 }
 
 type Worker struct {
-	PollInterval        time.Duration
-	ClaimDuration       time.Duration
-	MaxIssueAttempts    int
-	MaxDeliveryAttempts int
-	AccountConcurrency  int
-	GlobalConcurrency   int
-	IssueTimeout        time.Duration
-	DailyAccountLimit   int
-	DailyGlobalLimit    int
-	MetricsAddress      string
+	PollInterval             time.Duration
+	ClaimDuration            time.Duration
+	MaxIssueAttempts         int
+	MaxDeliveryAttempts      int
+	AccountConcurrency       int
+	GlobalConcurrency        int
+	IssueTimeout             time.Duration
+	DailyAccountLimit        int
+	DailyGlobalLimit         int
+	DailyModelBudgetMicroUSD int64
+	ModelReservationMicroUSD int64
+	MetricsAddress           string
 }
 
 type Limits struct {
@@ -162,6 +166,14 @@ func Load() (Config, error) {
 			Retries:          envInt("MODEL_RETRIES", 2),
 			MaxTokens:        envInt("MODEL_MAX_TOKENS", 8192),
 			MaxConcurrency:   envInt("MODEL_MAX_CONCURRENCY", 4),
+			InputMicroUSDPerMillionTokens: envInt64(
+				"MODEL_INPUT_MICRO_USD_PER_MILLION_TOKENS",
+				1_000_000,
+			),
+			OutputMicroUSDPerMillionTokens: envInt64(
+				"MODEL_OUTPUT_MICRO_USD_PER_MILLION_TOKENS",
+				1_000_000,
+			),
 		},
 		Clerk: Clerk{
 			SecretKey:      os.Getenv("CLERK_SECRET_KEY"),
@@ -185,7 +197,15 @@ func Load() (Config, error) {
 			IssueTimeout:        envDuration("WORKER_ISSUE_TIMEOUT", 45*time.Minute),
 			DailyAccountLimit:   envInt("ACCOUNT_DAILY_GENERATION_LIMIT", 5),
 			DailyGlobalLimit:    envInt("GLOBAL_DAILY_GENERATION_LIMIT", 1000),
-			MetricsAddress:      env("WORKER_METRICS_ADDR", ":9090"),
+			DailyModelBudgetMicroUSD: envInt64(
+				"GLOBAL_DAILY_MODEL_BUDGET_MICRO_USD",
+				10_000_000,
+			),
+			ModelReservationMicroUSD: envInt64(
+				"MODEL_MAX_ESTIMATED_COST_MICRO_USD_PER_ISSUE",
+				1_000_000,
+			),
+			MetricsAddress: env("WORKER_METRICS_ADDR", ":9090"),
 		},
 		Limits: Limits{
 			MaxSources:                envInt("MAX_SOURCES_PER_NEWSLETTER", 12),
@@ -329,6 +349,14 @@ func (c Config) ValidateFor(role string) error {
 	}
 	if role == "worker" && (c.Model.Retries < 0 || c.Model.Retries > 5 || c.Model.MaxTokens < 256) {
 		problems = append(problems, errors.New("model retry or token limits are invalid"))
+	}
+	if role == "worker" &&
+		(c.Model.InputMicroUSDPerMillionTokens < 1 ||
+			c.Model.OutputMicroUSDPerMillionTokens < 1 ||
+			c.Worker.DailyModelBudgetMicroUSD < 1 ||
+			c.Worker.ModelReservationMicroUSD < 1 ||
+			c.Worker.ModelReservationMicroUSD > c.Worker.DailyModelBudgetMicroUSD) {
+		problems = append(problems, errors.New("model economics limits are invalid"))
 	}
 	if role == "worker" && (c.Worker.ClaimDuration < time.Minute || c.Worker.GlobalConcurrency < 1 ||
 		c.Worker.AccountConcurrency < 1 ||

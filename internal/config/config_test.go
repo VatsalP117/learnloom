@@ -138,11 +138,14 @@ func validWorkerConfig() Config {
 		Model: Model{
 			BaseURL: "https://api.example.com", APIKey: "model-secret",
 			Retries: 2, MaxTokens: 1024,
+			InputMicroUSDPerMillionTokens:  1_000_000,
+			OutputMicroUSDPerMillionTokens: 1_000_000,
 		},
 		Resend: Resend{APIKey: "resend-secret", From: "sender@example.com"},
 		Worker: Worker{
 			ClaimDuration: 5 * time.Minute, GlobalConcurrency: 2,
-			AccountConcurrency: 1,
+			AccountConcurrency: 1, DailyModelBudgetMicroUSD: 10_000_000,
+			ModelReservationMicroUSD: 1_000_000,
 		},
 		SourceIntelligence: SourceIntelligence{
 			MinUsableItems: 4, TargetUsableItems: 8,

@@ -38,6 +38,10 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Validate operational artifacts
+        run: |
+          bash -n scripts/restore-drill.sh
+          jq empty infra/monitoring/learnloom-dashboard.json
       - name: Start S3-compatible integration service
         run: |
           docker run -d --name learnloom-minio-ci \

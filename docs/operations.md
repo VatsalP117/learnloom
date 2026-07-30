@@ -37,6 +37,17 @@ oldest Issue and delivery age; and Postgres acquired, idle, total, and maximum
 connections plus aggregate acquisition wait. Alert from these bounded,
 content-free signals rather than from learner text or query strings.
 
+Model stage metrics persist provider-reported input/output tokens, retries,
+latency, and estimated micro-USD cost. Configure the two per-million-token
+rates from the current provider agreement, not from an old dashboard. The
+worker serializes claim admission and reserves
+`MODEL_MAX_ESTIMATED_COST_MICRO_USD_PER_ISSUE` against
+`GLOBAL_DAILY_MODEL_BUDGET_MICRO_USD`; once the reservation cap is reached, no
+new generation Claim starts. In-flight Claims may finish. Import
+`infra/monitoring/learnloom-rules.yaml` and
+`infra/monitoring/learnloom-dashboard.json` into the operational monitoring
+stack, and keep their alert routing private.
+
 ## Backup and restore
 
 - Enable continuous Postgres backups and point-in-time recovery.
@@ -44,6 +55,9 @@ content-free signals rather than from learner text or query strings.
   cross-region replication when the recovery objective requires it.
 - Test restore quarterly into an isolated account: restore Postgres, restore or
   remap the artifact bucket, run readiness checks, and preview sampled Dossiers.
+- Use `scripts/restore-drill.sh` to refuse non-drill targets, compare schema and
+  row evidence, verify a restored artifact checksum, and write a dated evidence
+  record under `docs/restore-evidence/`.
 - Never replay delivery rows in `sent` or `outcome_unknown` state during restore.
 
 ## Incident controls
@@ -59,9 +73,10 @@ retryability, and incident identifier. Investigate an incident through its
 Issue Attempt and stage rows; never copy internal detail into learner support
 messages.
 
-For an account deletion incident, verify the Account is inactive first, inspect
-its deletion queue row, and retry only the artifact deletion phase. Database
-deletion and artifact deletion are intentionally independently observable.
+For an account deletion incident, verify the Account is inactive first and
+inspect its deletion queue row. Retry the idempotent artifact phase; successful
+artifact cleanup is followed by transactional relational erasure, identity
+tombstoning, and a privacy-minimal receipt.
 
 ## Rollback
 
