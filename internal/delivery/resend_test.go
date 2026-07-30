@@ -50,3 +50,27 @@ func TestResendRedactsErrors(t *testing.T) {
 		t.Fatalf("secret leaked: %v", err)
 	}
 }
+
+func TestResendSupportsNonLessonIdempotency(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(
+		response http.ResponseWriter,
+		request *http.Request,
+	) {
+		if got := request.Header.Get("Idempotency-Key"); got != "learnloom/recap/r-1/2026-07-27" {
+			t.Errorf("unexpected idempotency key %q", got)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"id":"email-2"}`))
+	}))
+	defer server.Close()
+	resend, _ := NewResend(Config{
+		APIKey: "secret", From: "Learnloom <hello@example.com>", Endpoint: server.URL,
+	})
+	if _, err := resend.Deliver(context.Background(), Message{
+		IdempotencyKey: "recap/r-1/2026-07-27",
+		To:             "learner@example.com", Subject: "Weekly learning recap",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

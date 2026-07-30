@@ -26,12 +26,13 @@ type Resend struct {
 }
 
 type Message struct {
-	IssueID      string
-	GenerationID string
-	To           string
-	Subject      string
-	HTML         string
-	Text         string
+	IssueID        string
+	GenerationID   string
+	IdempotencyKey string
+	To             string
+	Subject        string
+	HTML           string
+	Text           string
 }
 
 type OutcomeUnknownError struct {
@@ -66,9 +67,18 @@ func NewResend(cfg Config) (*Resend, error) {
 }
 
 func (r *Resend) Deliver(ctx context.Context, message Message) (string, error) {
-	if strings.TrimSpace(message.IssueID) == "" ||
-		strings.TrimSpace(message.GenerationID) == "" {
+	idempotencyKey := strings.TrimSpace(message.IdempotencyKey)
+	if idempotencyKey == "" &&
+		(strings.TrimSpace(message.IssueID) == "" ||
+			strings.TrimSpace(message.GenerationID) == "") {
 		return "", errors.New("delivery identity is required")
+	}
+	if idempotencyKey == "" {
+		idempotencyKey = message.IssueID + "/" + message.GenerationID
+	}
+	if len(idempotencyKey) > 180 ||
+		strings.ContainsAny(idempotencyKey, "\r\n") {
+		return "", errors.New("delivery identity is invalid")
 	}
 	if strings.TrimSpace(message.To) == "" || !strings.Contains(message.To, "@") {
 		return "", errors.New("delivery recipient is invalid")
@@ -105,7 +115,7 @@ func (r *Resend) Deliver(ctx context.Context, message Message) (string, error) {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(
 		"Idempotency-Key",
-		"learnloom/"+message.IssueID+"/"+message.GenerationID,
+		"learnloom/"+idempotencyKey,
 	)
 	response, err := r.client.Do(request)
 	if err != nil {

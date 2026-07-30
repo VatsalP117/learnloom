@@ -239,6 +239,7 @@ func runWorker(
 			DailyGlobalLimit:    cfg.Worker.DailyGlobalLimit,
 			HistoryEntries:      cfg.Limits.HistoryEntries,
 			RootDomain:          cfg.HTTP.RootDomain,
+			AppOrigin:           cfg.HTTP.AppOrigin,
 			AttemptContext: store.IssueAttemptContext{
 				WorkerID:          workerIdentity(),
 				DeploymentVersion: cfg.ReleaseVersion,

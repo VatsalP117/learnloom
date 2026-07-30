@@ -26,12 +26,19 @@ export default function TodayPage() {
   }, []);
 
   const { primary, secondary, focus } = useMemo(
-    () => selectTodayFocus(workspace.lessons, workspace.reviews),
-    [workspace.lessons, workspace.reviews],
+    () => selectTodayFocus(
+      workspace.lessons,
+      workspace.reviews,
+      lessonState,
+      workspace.snapshot?.retention,
+    ),
+    [workspace.lessons, workspace.reviews, workspace.snapshot?.retention],
   );
   const primaryState = primary ? lessonState(primary.id) : null;
   const reviewFirst = focus === "review";
-  const sideLesson = reviewFirst ? primary : secondary;
+  const reentryFirst = focus === "reentry";
+  const specialFocus = reviewFirst || reentryFirst;
+  const sideLesson = specialFocus ? primary : secondary;
 
   return (
     <LearningShell active="today">
@@ -62,9 +69,31 @@ export default function TodayPage() {
           </section>
         ) : null}
 
-        {primary || reviewFirst ? (
+        {primary || specialFocus ? (
           <div className="today-grid">
-            {reviewFirst ? (
+            {reentryFirst ? (
+              <article className="today-feature today-feature-reentry glass-panel">
+                <div className="today-feature-top">
+                  <span className="atelier-chip"><Sparkles size={13} /> A gentle return</span>
+                  <span>No backlog to clear</span>
+                </div>
+                <div className="today-feature-copy">
+                  <p className="atelier-eyebrow">Welcome back</p>
+                  <h2>Begin with one useful step.</h2>
+                  <p>
+                    Your learning history is still here. Choose one action now;
+                    the rest can wait, and you can soften your rhythm whenever you like.
+                  </p>
+                </div>
+                <a
+                  className="atelier-primary"
+                  href={workspace.snapshot?.retention?.actionUrl ?? "/streams"}
+                >
+                  {workspace.snapshot?.retention?.actionLabel ?? "Choose your next step"}
+                  <ArrowRight size={16} />
+                </a>
+              </article>
+            ) : reviewFirst ? (
               <article className="today-feature today-feature-review glass-panel">
                 <div className="today-feature-top">
                   <span className="atelier-chip"><BrainCircuit size={13} /> Review due</span>
@@ -117,7 +146,9 @@ export default function TodayPage() {
               {sideLesson ? (
                 <article className="today-synthesis glass-panel">
                   <span className="atelier-icon"><BookOpen size={17} /></span>
-                  <p className="atelier-eyebrow">{reviewFirst ? "After review" : "Another thread"}</p>
+                  <p className="atelier-eyebrow">
+                    {reentryFirst ? "Ready when you are" : reviewFirst ? "After review" : "Another thread"}
+                  </p>
                   <h3>{sideLesson.newsletter.name}</h3>
                   <p>{sideLesson.title}</p>
                   <a href={`/issues/${encodeURIComponent(sideLesson.id)}`}>
@@ -197,6 +228,7 @@ export function selectTodayFocus(
   lessons,
   reviews = [],
   stateFor = lessonState,
+  retention = undefined,
 ) {
   const selected = selectTodayLessons(lessons, stateFor);
   const hasInProgressLesson = selected.primary
@@ -204,7 +236,13 @@ export function selectTodayFocus(
     : false;
   return {
     ...selected,
-    focus: reviews.length > 0 && !hasInProgressLesson ? "review" : "lesson",
+    focus: hasInProgressLesson
+      ? "lesson"
+      : retention?.inactive
+        ? "reentry"
+        : reviews.length > 0
+          ? "review"
+          : "lesson",
   };
 }
 

@@ -53,4 +53,15 @@ describe("Today lesson selection", () => {
 
     expect(selected.focus).toBe("lesson");
   });
+
+  it("collapses backlog pressure into one re-entry action", () => {
+    const selected = selectTodayFocus(
+      [{ id: "lesson-new", status: "generated", newsletter: stream }],
+      [{ id: "review-1", issueId: "lesson-complete" }],
+      () => ({ progress: 0, completed: false }),
+      { inactive: true, actionLabel: "Recall one idea", actionUrl: "/review" },
+    );
+
+    expect(selected.focus).toBe("reentry");
+  });
 });

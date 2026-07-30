@@ -65,7 +65,18 @@ export interface WorkspaceSnapshot {
     updatedAt?: string;
   }>;
   nextIssueCursor?: string;
+  retention?: RetentionState;
   [key: string]: any;
+}
+
+export interface RetentionState {
+  activatedAt?: string;
+  returnedAfterSevenDays: boolean;
+  lastActivityAt?: string;
+  inactive: boolean;
+  daysAway: number;
+  actionLabel?: string;
+  actionUrl?: string;
 }
 
 export interface LibraryLesson extends Issue {
@@ -97,7 +108,16 @@ export interface Profile {
   csrfToken?: string;
   capabilities?: { sourceDiscovery?: boolean; [key: string]: unknown };
   site?: Site | null;
+  notifications?: NotificationPreferences;
   [key: string]: any;
+}
+
+export interface NotificationPreferences {
+  configured?: boolean;
+  weeklyRecap: boolean;
+  reentryReminder: boolean;
+  timeZone: string;
+  updatedAt?: string;
 }
 
 export function errorMessage(error: unknown): string {

@@ -31,18 +31,66 @@ func (s *Server) handleControl(
 			methodNotAllowed(response, http.MethodGet)
 			return
 		}
-		site, err := s.store.GetSite(request.Context(), current.Account.ID)
-		if err != nil {
+		var (
+			site          *domain.PersonalSite
+			notifications store.NotificationPreferences
+		)
+		group, context := errgroup.WithContext(request.Context())
+		group.Go(func() error {
+			var err error
+			site, err = s.store.GetSite(context, current.Account.ID)
+			return err
+		})
+		group.Go(func() error {
+			var err error
+			notifications, err = s.store.GetNotificationPreferences(
+				context,
+				current.Account.ID,
+			)
+			return err
+		})
+		if err := group.Wait(); err != nil {
 			s.internalError(response, request, err)
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{
-			"csrfToken":    s.csrfToken(current.SessionID),
-			"site":         s.sitePayload(site),
-			"primaryEmail": current.Account.PrimaryEmail,
+			"csrfToken":     s.csrfToken(current.SessionID),
+			"site":          s.sitePayload(site),
+			"primaryEmail":  current.Account.PrimaryEmail,
+			"notifications": notifications,
 			"capabilities": map[string]bool{
 				"sourceDiscovery": s.cfg.SourceDiscovery,
 			},
+		})
+		return
+	}
+	if request.URL.Path == "/api/me/notifications" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		var body struct {
+			WeeklyRecap     bool   `json:"weeklyRecap"`
+			ReentryReminder bool   `json:"reentryReminder"`
+			TimeZone        string `json:"timeZone"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		preferences, err := s.store.UpdateNotificationPreferences(
+			request.Context(),
+			current.Account.ID,
+			body.WeeklyRecap,
+			body.ReentryReminder,
+			body.TimeZone,
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{
+			"notifications": preferences,
 		})
 		return
 	}
@@ -402,16 +450,26 @@ func (s *Server) workspaceSnapshot(
 	current session,
 ) {
 	var (
-		records  []store.NewsletterRecord
-		issues   []domain.Issue
-		next     *store.WorkspaceIssueCursor
-		reviews  []store.WorkspaceReview
-		progress []store.LessonProgress
+		records   []store.NewsletterRecord
+		issues    []domain.Issue
+		next      *store.WorkspaceIssueCursor
+		reviews   []store.WorkspaceReview
+		progress  []store.LessonProgress
+		retention store.RetentionState
 	)
 	group, context := errgroup.WithContext(request.Context())
 	group.Go(func() error {
 		var err error
 		records, err = s.store.ListNewsletters(context, current.Account.ID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		retention, err = s.store.GetRetentionState(
+			context,
+			current.Account.ID,
+			time.Now().UTC(),
+		)
 		return err
 	})
 	group.Go(func() error {
@@ -461,6 +519,7 @@ func (s *Server) workspaceSnapshot(
 		"nextIssueCursor": encodeIssueCursor(next),
 		"reviews":         reviews,
 		"lessonProgress":  progress,
+		"retention":       retention,
 	}
 	writePrivateCacheableJSON(
 		response,

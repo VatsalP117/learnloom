@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +33,12 @@ type Lifecycle interface {
 	LoadLearnerState(context.Context, string, string, int) (domain.LearnerState, error)
 	CompleteIssue(context.Context, string, store.CompleteIssueInput) error
 	FailIssue(context.Context, string, string, error, int, time.Time) error
+	DispatchWeeklyRecaps(context.Context, time.Time, int) (int, error)
+	ClaimNextWeeklyRecap(context.Context, time.Time, time.Duration, int) (*store.WeeklyRecapClaim, error)
+	RenewWeeklyRecapClaim(context.Context, string, string, time.Time) error
+	CompleteWeeklyRecap(context.Context, string, string, string, time.Time) error
+	FailWeeklyRecap(context.Context, string, string, error, int, time.Time) error
+	MarkWeeklyRecapUnknown(context.Context, string, string, error, time.Time) error
 	ClaimNextDelivery(context.Context, time.Time, time.Duration, int) (*store.DeliveryClaim, error)
 	RenewDeliveryClaim(context.Context, string, string, time.Time) error
 	CompleteDelivery(context.Context, string, string, string, time.Time) error
@@ -69,6 +77,7 @@ type Config struct {
 	DailyGlobalLimit    int
 	HistoryEntries      int
 	RootDomain          string
+	AppOrigin           string
 	AttemptContext      store.IssueAttemptContext
 }
 
@@ -212,6 +221,14 @@ func (w *Worker) Cycle(ctx context.Context) error {
 	if err := w.processDeliveries(ctx); err != nil {
 		return err
 	}
+	if dispatched, err := w.lifecycle.DispatchWeeklyRecaps(ctx, now, 100); err != nil {
+		return err
+	} else if dispatched > 0 {
+		w.logger.InfoContext(ctx, "dispatched weekly Recaps", "count", dispatched)
+	}
+	if err := w.processWeeklyRecaps(ctx); err != nil {
+		return err
+	}
 	if w.draining.Load() {
 		return nil
 	}
@@ -228,6 +245,193 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		w.lastCleanup = now
 	}
 	return nil
+}
+
+func (w *Worker) processWeeklyRecaps(ctx context.Context) error {
+	var wg sync.WaitGroup
+	errorsChannel := make(chan error, w.cfg.GlobalConcurrency)
+	for count := 0; count < w.cfg.GlobalConcurrency; count++ {
+		if w.draining.Load() {
+			break
+		}
+		claim, err := w.lifecycle.ClaimNextWeeklyRecap(
+			ctx,
+			w.now(),
+			w.cfg.ClaimDuration,
+			w.cfg.MaxDeliveryAttempts,
+		)
+		if err != nil {
+			return err
+		}
+		if claim == nil {
+			break
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := w.processWeeklyRecap(ctx, claim); err != nil {
+				errorsChannel <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errorsChannel)
+	return errors.Join(channelErrors(errorsChannel)...)
+}
+
+func (w *Worker) processWeeklyRecap(
+	ctx context.Context,
+	claim *store.WeeklyRecapClaim,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	renewed := make(chan error, 1)
+	go w.renewWeeklyRecapClaim(ctx, claim, cancel, renewed)
+	recapHTML, recapText := renderWeeklyRecap(claim.Payload, w.cfg.AppOrigin)
+	externalID, err := w.mailer.Deliver(ctx, delivery.Message{
+		IdempotencyKey: "recap/" + claim.ID + "/" + claim.WeekStart,
+		To:             claim.PrimaryEmail,
+		Subject:        "Your weekly learning recap",
+		HTML:           recapHTML,
+		Text:           recapText,
+	})
+	if err == nil {
+		if completeErr := w.lifecycle.CompleteWeeklyRecap(
+			ctx,
+			claim.ID,
+			claim.Token,
+			externalID,
+			w.now(),
+		); completeErr != nil {
+			err = &delivery.OutcomeUnknownError{Cause: completeErr}
+		}
+	}
+	cancel()
+	renewErr := <-renewed
+	if err == nil && renewErr != nil && !errors.Is(renewErr, context.Canceled) {
+		err = renewErr
+	}
+	if err == nil {
+		w.metrics.delivered.Add(1)
+		return nil
+	}
+	w.metrics.deliveryFailed.Add(1)
+	var unknown *delivery.OutcomeUnknownError
+	var transitionErr error
+	if errors.As(err, &unknown) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		transitionErr = w.lifecycle.MarkWeeklyRecapUnknown(
+			context.Background(),
+			claim.ID,
+			claim.Token,
+			err,
+			w.now(),
+		)
+	} else {
+		transitionErr = w.lifecycle.FailWeeklyRecap(
+			context.Background(),
+			claim.ID,
+			claim.Token,
+			err,
+			w.cfg.MaxDeliveryAttempts,
+			w.now(),
+		)
+	}
+	if transitionErr != nil && !errors.Is(transitionErr, store.ErrClaimLost) {
+		return errors.Join(err, transitionErr)
+	}
+	return fmt.Errorf("deliver weekly Recap %s: %w", claim.ID, err)
+}
+
+func (w *Worker) renewWeeklyRecapClaim(
+	ctx context.Context,
+	claim *store.WeeklyRecapClaim,
+	cancel context.CancelFunc,
+	result chan<- error,
+) {
+	interval := min(w.cfg.ClaimDuration/3, 30*time.Second)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	currentExpiry := claim.ExpiresAt
+	for {
+		select {
+		case <-ctx.Done():
+			result <- ctx.Err()
+			return
+		case <-ticker.C:
+			expires := w.now().Add(w.cfg.ClaimDuration)
+			err := w.lifecycle.RenewWeeklyRecapClaim(
+				ctx,
+				claim.ID,
+				claim.Token,
+				expires,
+			)
+			if err != nil {
+				w.metrics.renewalFailures.Add(1)
+				if errors.Is(err, store.ErrClaimLost) ||
+					!w.now().Before(currentExpiry) {
+					cancel()
+					result <- err
+					return
+				}
+				continue
+			}
+			currentExpiry = expires
+		}
+	}
+}
+
+func renderWeeklyRecap(
+	payload store.WeeklyRecapPayload,
+	appOrigin string,
+) (string, string) {
+	concepts := payload.Concepts
+	if len(concepts) == 0 {
+		concepts = []string{"Your recent learning thread"}
+	}
+	var htmlBody strings.Builder
+	var textBody strings.Builder
+	actionURL := payload.ActionURL
+	if strings.HasPrefix(actionURL, "/") && strings.TrimSpace(appOrigin) != "" {
+		actionURL = strings.TrimRight(appOrigin, "/") + actionURL
+	}
+	fmt.Fprintf(
+		&htmlBody,
+		"<h1>Your week in learning</h1><p>You completed %d lesson%s.</p><h2>Concepts learned</h2><ul>",
+		payload.LessonsCompleted,
+		map[bool]string{true: "", false: "s"}[payload.LessonsCompleted == 1],
+	)
+	fmt.Fprintf(
+		&textBody,
+		"Your week in learning\n\nYou completed %d lesson(s).\n\nConcepts learned:\n",
+		payload.LessonsCompleted,
+	)
+	for _, concept := range concepts {
+		fmt.Fprintf(&htmlBody, "<li>%s</li>", html.EscapeString(concept))
+		fmt.Fprintf(&textBody, "- %s\n", concept)
+	}
+	fmt.Fprintf(
+		&htmlBody,
+		"</ul><h2>One useful connection</h2><p>%s</p>",
+		html.EscapeString(payload.Connection),
+	)
+	fmt.Fprintf(&textBody, "\nOne useful connection:\n%s\n", payload.Connection)
+	if payload.ReviewPrompt != "" {
+		fmt.Fprintf(
+			&htmlBody,
+			"<h2>Try one retrieval</h2><p>%s</p>",
+			html.EscapeString(payload.ReviewPrompt),
+		)
+		fmt.Fprintf(&textBody, "\nTry one retrieval:\n%s\n", payload.ReviewPrompt)
+	}
+	fmt.Fprintf(
+		&htmlBody,
+		`<p><a href="%s">%s</a></p>`,
+		html.EscapeString(actionURL),
+		html.EscapeString(payload.ActionLabel),
+	)
+	fmt.Fprintf(&textBody, "\n%s: %s\n", payload.ActionLabel, actionURL)
+	return htmlBody.String(), textBody.String()
 }
 
 func (w *Worker) processIssues(ctx context.Context) error {

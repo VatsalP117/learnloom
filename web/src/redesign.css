@@ -412,6 +412,11 @@
     radial-gradient(circle at 82% 18%, rgb(130 102 255 / 18%), transparent 34%),
     var(--atelier-panel);
 }
+.today-feature-reentry {
+  background:
+    radial-gradient(circle at 82% 18%, rgb(85 139 110 / 18%), transparent 34%),
+    var(--atelier-panel);
+}
 .today-side { display: grid; align-content: start; gap: 14px; }
 .today-synthesis { min-height: 210px; padding: 21px; }
 .today-synthesis h3 {
@@ -1215,6 +1220,31 @@
   color: var(--atelier-muted);
   font-size: 8px;
 }
+.settings-page { max-width: 850px; margin: 0 auto; }
+.settings-panel { display: grid; gap: 0; padding: 8px 24px 24px; }
+.settings-panel > label {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--atelier-line);
+}
+.settings-panel > label > span:first-child {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  background: var(--atelier-paper-soft);
+}
+.settings-panel label strong,
+.settings-panel label small { display: block; }
+.settings-panel label strong { font-family: var(--atelier-display); font-size: 15px; }
+.settings-panel label small { margin-top: 3px; color: var(--atelier-muted); font-size: 9px; line-height: 1.5; }
+.settings-panel .settings-timezone { grid-template-columns: 1fr minmax(220px, .7fr); }
+.settings-timezone input { padding: 10px; border: 1px solid var(--atelier-line); }
+.settings-panel > div { display: flex; align-items: center; gap: 12px; padding-top: 20px; }
+.settings-saved { display: inline-flex; align-items: center; gap: 5px; color: #276749; font-size: 9px; }
 .create-page .topic-ideas button:hover,
 .create-page .add-source:hover { border-color: rgba(21, 23, 25, 0.35); background: white; }
 .create-page .intent-grid,

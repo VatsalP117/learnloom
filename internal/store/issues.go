@@ -377,10 +377,23 @@ func (s *Store) RecoverExpiredClaims(
 	if err != nil {
 		return 0, fmt.Errorf("recover Delivery Receipt Claims: %w", err)
 	}
+	recaps, err := tx.Exec(ctx, `
+		UPDATE weekly_recaps SET
+			status = 'unknown',
+			claim_token = NULL,
+			claim_expires_at = NULL,
+			error = 'Worker claim expired before completion',
+			completed_at = $1,
+			updated_at = $1
+		WHERE status = 'delivering' AND claim_expires_at <= $1
+	`, now)
+	if err != nil {
+		return 0, fmt.Errorf("recover weekly Recap Claims: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return issues + deliveries.RowsAffected(), nil
+	return issues + deliveries.RowsAffected() + recaps.RowsAffected(), nil
 }
 
 func (s *Store) ClaimNextIssue(

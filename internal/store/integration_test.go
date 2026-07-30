@@ -451,6 +451,42 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	); err != nil {
 		t.Fatalf("record lesson opened: %v", err)
 	}
+	if err := database.RecordOwnedLessonEvent(
+		ctx,
+		account.ID,
+		issue.ID,
+		ProductEventReviewAttempted,
+		now.Add(39*time.Second),
+	); err != nil {
+		t.Fatalf("record first retrieval: %v", err)
+	}
+	retention, err := database.GetRetentionState(
+		ctx,
+		account.ID,
+		now.Add(8*24*time.Hour),
+	)
+	if err != nil || retention.ActivatedAt == nil || !retention.Inactive ||
+		retention.ActionURL == "" || retention.ReturnedAfterSevenDays {
+		t.Fatalf("inactive retention=%#v err=%v", retention, err)
+	}
+	if err := database.RecordProductEvent(
+		ctx,
+		account.ID,
+		ProductEventReviewAttempted,
+		"review",
+		"return-review",
+		now.Add(8*24*time.Hour),
+	); err != nil {
+		t.Fatalf("record seven-day return: %v", err)
+	}
+	retention, err = database.GetRetentionState(
+		ctx,
+		account.ID,
+		now.Add(8*24*time.Hour+time.Minute),
+	)
+	if err != nil || !retention.ReturnedAfterSevenDays || retention.Inactive {
+		t.Fatalf("returned retention=%#v err=%v", retention, err)
+	}
 	var eventCount int
 	if err := database.pool.QueryRow(ctx, `
 		SELECT count(*)
@@ -465,6 +501,58 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	}
 	if eventCount != 5 {
 		t.Fatalf("activation milestone count=%d, want 5", eventCount)
+	}
+	preferences, err := database.UpdateNotificationPreferences(
+		ctx,
+		account.ID,
+		true,
+		true,
+		"UTC",
+		now.Add(40*time.Second),
+	)
+	if err != nil || !preferences.WeeklyRecap || !preferences.ReentryReminder {
+		t.Fatalf("notification preferences=%#v err=%v", preferences, err)
+	}
+	completedAt := now.Add(38 * time.Second)
+	dispatchAt := time.Date(
+		completedAt.UTC().Year(),
+		completedAt.UTC().Month(),
+		completedAt.UTC().Day(),
+		9, 0, 0, 0,
+		time.UTC,
+	)
+	daysUntilMonday := (8 - int(dispatchAt.Weekday())) % 7
+	if daysUntilMonday == 0 {
+		daysUntilMonday = 7
+	}
+	dispatchAt = dispatchAt.AddDate(0, 0, daysUntilMonday)
+	dispatchedRecaps, err := database.DispatchWeeklyRecaps(ctx, dispatchAt, 10)
+	if err != nil || dispatchedRecaps != 1 {
+		t.Fatalf("dispatched Recaps=%d err=%v", dispatchedRecaps, err)
+	}
+	dispatchedRecaps, err = database.DispatchWeeklyRecaps(ctx, dispatchAt, 10)
+	if err != nil || dispatchedRecaps != 0 {
+		t.Fatalf("duplicate Recaps=%d err=%v", dispatchedRecaps, err)
+	}
+	recapClaim, err := database.ClaimNextWeeklyRecap(
+		ctx,
+		dispatchAt,
+		5*time.Minute,
+		6,
+	)
+	if err != nil || recapClaim == nil ||
+		recapClaim.Payload.LessonsCompleted != 1 ||
+		len(recapClaim.Payload.Concepts) == 0 {
+		t.Fatalf("weekly Recap claim=%#v err=%v", recapClaim, err)
+	}
+	if err := database.CompleteWeeklyRecap(
+		ctx,
+		recapClaim.ID,
+		recapClaim.Token,
+		"resend-recap-test",
+		dispatchAt.Add(time.Second),
+	); err != nil {
+		t.Fatal(err)
 	}
 	progress, err := database.ListLessonProgress(ctx, account.ID)
 	if err != nil || len(progress) != 1 || progress[0].IssueID != issue.ID {

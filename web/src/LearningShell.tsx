@@ -7,6 +7,7 @@ import {
   LogOut,
   Menu,
   Plus,
+  Settings,
   Sparkles,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const navigation = [
   { href: "/library", label: "Library", icon: LibraryBig, key: "library" },
   { href: "/review", label: "Review", icon: BrainCircuit, key: "review" },
   { href: "/publishing", label: "Publishing", icon: Globe2, key: "publishing" },
+  { href: "/settings", label: "Settings", icon: Settings, key: "settings" },
 ];
 
 export default function LearningShell({

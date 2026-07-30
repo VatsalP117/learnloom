@@ -11,6 +11,7 @@ import type { Site } from "./types";
 const IssueDetail = lazy(() => import("./IssueDetail"));
 const NewsletterCreate = lazy(() => import("./NewsletterCreate"));
 const NewsletterDetail = lazy(() => import("./NewsletterDetail"));
+const SettingsPage = lazy(() => import("./SettingsPage"));
 
 interface AppProps {
   capabilities?: { sourceDiscovery?: boolean };
@@ -87,6 +88,7 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }: Ap
   if (path === "/publishing") {
     return routePage(<PublishingPage site={site} onSiteUpdate={onSiteUpdate} />);
   }
+  if (path === "/settings") return routePage(<SettingsPage />);
   return routePage(<TodayPage />);
 }
 

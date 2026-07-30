@@ -405,7 +405,7 @@ export function lessonPresentation(state: { progress: number; completed: boolean
 function noticeFromLocation() {
   const params = new URLSearchParams(window.location.search);
   return params.has("created")
-    ? "Your learning stream is ready. Prepare the first lesson now or let it begin on schedule."
+    ? "Your stream is ready and the first lesson is queued. You can safely leave while it is prepared."
     : "";
 }
 

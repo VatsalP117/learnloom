@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -89,6 +90,22 @@ func TestInterruptedDeliveryBecomesUnknown(t *testing.T) {
 		}
 	default:
 		t.Fatal("interrupted delivery was not moved to unknown")
+	}
+}
+
+func TestWeeklyRecapRenderingUsesAbsoluteSafeLinks(t *testing.T) {
+	t.Parallel()
+	htmlBody, textBody := renderWeeklyRecap(store.WeeklyRecapPayload{
+		LessonsCompleted: 2,
+		Concepts:         []string{"Evidence < confidence"},
+		Connection:       "Connect evidence to calibration.",
+		ActionLabel:      "Review now",
+		ActionURL:        "/review",
+	}, "https://app.learnloom.blog")
+	if !strings.Contains(htmlBody, "Evidence &lt; confidence") ||
+		!strings.Contains(htmlBody, `href="https://app.learnloom.blog/review"`) ||
+		!strings.Contains(textBody, "https://app.learnloom.blog/review") {
+		t.Fatalf("unsafe or incomplete Recap: html=%s text=%s", htmlBody, textBody)
 	}
 }
 
