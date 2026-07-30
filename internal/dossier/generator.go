@@ -539,6 +539,7 @@ func (g *Generator) Generate(
 		SourceTitles:      mapSourceTitles(enriched),
 		LessonSummary:     truncate(stripMarkdown(editorial.Lesson), 800),
 		RecallQuestions:   extractQuestions(finalPractice),
+		RetrievalPrompts:  slices.Clone(learning.Retrieval),
 		LearningObjective: blueprint.LearningObjective,
 		Concepts:          blueprintConcepts(blueprint),
 	}

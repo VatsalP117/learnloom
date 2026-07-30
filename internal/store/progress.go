@@ -66,8 +66,13 @@ func (s *Store) CompleteLesson(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return LessonProgress{}, err
+	}
+	defer rollback(tx)
 	var result LessonProgress
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO lesson_progress (
 			account_id, issue_id, progress, completed_at, updated_at
 		)
@@ -93,6 +98,19 @@ func (s *Store) CompleteLesson(
 	}
 	if err != nil {
 		return LessonProgress{}, fmt.Errorf("complete lesson: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE review_items
+		SET due_at = COALESCE(due_at, $3),
+		    updated_at = $3
+		WHERE account_id = $1
+		  AND issue_id = $2
+		  AND retired_at IS NULL
+	`, accountID, issueID, now); err != nil {
+		return LessonProgress{}, fmt.Errorf("activate lesson reviews: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return LessonProgress{}, fmt.Errorf("commit lesson completion: %w", err)
 	}
 	_ = s.RecordProductEvent(
 		ctx,

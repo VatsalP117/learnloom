@@ -42,9 +42,15 @@ export interface Issue {
 }
 
 export interface Review {
+  id: string;
   issueId: string;
-  objective?: string;
-  questions?: string[];
+  objective: string;
+  prompt: string;
+  answerRubric: string;
+  correctiveExplanation: string;
+  stage: number;
+  dueAt: string;
+  lastReviewedAt?: string;
   [key: string]: any;
 }
 

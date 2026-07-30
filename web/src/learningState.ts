@@ -7,14 +7,8 @@ interface LessonProgress {
   completedAt?: string;
 }
 
-interface ReviewProgress {
-  status: string;
-  reviewedAt?: string;
-}
-
 interface LearningState {
   lessons?: Record<string, Partial<LessonProgress>>;
-  reviews?: Record<string, Partial<ReviewProgress>>;
 }
 
 function readState(): LearningState {
@@ -71,19 +65,4 @@ export function syncLessonProgress(
     };
   }
   writeState({ ...state, lessons });
-}
-export function reviewState(reviewId: string): ReviewProgress {
-  return { status: "due", ...readState().reviews?.[reviewId] };
-}
-
-export function updateReviewState(reviewId: string, patch: Partial<ReviewProgress>) {
-  const state = readState();
-  const current = state.reviews?.[reviewId] ?? {};
-  writeState({
-    ...state,
-    reviews: {
-      ...state.reviews,
-      [reviewId]: { ...current, ...patch },
-    },
-  });
 }

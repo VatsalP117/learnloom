@@ -246,13 +246,18 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
     const reviews = issues
       .filter((issue) => issue.status === "generated")
       .slice(0, 8)
-      .map((issue) => {
+      .flatMap((issue) => {
         const dossier = dossierByIssue[issue.id] ?? dossierByIssue["urban-systems-issue-1"];
-        return {
+        return dossier.retrieval.slice(0, 1).map((prompt, index) => ({
+          id: `${issue.id}-review-${index + 1}`,
           issueId: issue.id,
           objective: dossier.objective,
-          questions: dossier.retrieval,
-        };
+          prompt,
+          answerRubric: "Name the mechanism, the evidence, and an important limit.",
+          correctiveExplanation: "Reopen the lesson and trace the mechanism once more.",
+          stage: 0,
+          dueAt: createdAt(0),
+        }));
       });
     return {
       summary: {

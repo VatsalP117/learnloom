@@ -269,6 +269,23 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		History: domain.LearningHistoryEntry{
 			Date: "2026-07-19", GeneratedAt: now,
 			LessonSummary: "Summary", LearningObjective: "Objective",
+			RetrievalPrompts: []domain.RetrievalPrompt{
+				{
+					ID: "retrieval-1", Prompt: "What is the mechanism?",
+					AnswerRubric:          "Explain the mechanism and its limits.",
+					CorrectiveExplanation: "Trace the mechanism step by step.",
+				},
+				{
+					ID: "retrieval-2", Prompt: "What evidence supports it?",
+					AnswerRubric:          "Name the relevant evidence.",
+					CorrectiveExplanation: "Return to the cited evidence.",
+				},
+				{
+					ID: "retrieval-3", Prompt: "When does it fail?",
+					AnswerRubric:          "Name an important boundary condition.",
+					CorrectiveExplanation: "Review the skeptical section.",
+				},
+			},
 		},
 		HistoryLimit: 14, CompletedAt: now.Add(37 * time.Second),
 	})
@@ -283,9 +300,9 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || len(history) != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
-	reviews, err := database.ListWorkspaceReviews(ctx, account.ID, 8)
-	if err != nil || len(reviews) != 1 || reviews[0].IssueID != issue.ID {
-		t.Fatalf("workspace reviews=%#v err=%v", reviews, err)
+	reviews, err := database.ListWorkspaceReviews(ctx, account.ID, 8, now.Add(37*time.Second))
+	if err != nil || len(reviews) != 0 {
+		t.Fatalf("reviews should wait for lesson completion: %#v err=%v", reviews, err)
 	}
 	partialProgress, err := database.SaveLessonProgress(
 		ctx,
@@ -318,6 +335,40 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	)
 	if err != nil || completedLesson.Progress != 100 || completedLesson.CompletedAt == nil {
 		t.Fatalf("completed lesson=%#v err=%v", completedLesson, err)
+	}
+	reviews, err = database.ListWorkspaceReviews(ctx, account.ID, 8, now.Add(38*time.Second))
+	if err != nil || len(reviews) != 3 || reviews[0].IssueID != issue.ID {
+		t.Fatalf("activated workspace reviews=%#v err=%v", reviews, err)
+	}
+	assessmentKey := uuid.NewString()
+	assessed, err := database.AssessReview(
+		ctx,
+		account.ID,
+		reviews[0].ID,
+		assessmentKey,
+		ReviewSolid,
+		now.Add(39*time.Second),
+	)
+	if err != nil || assessed.Stage != 2 ||
+		!assessed.DueAt.Equal(now.Add(39*time.Second+7*24*time.Hour)) {
+		t.Fatalf("assessed review=%#v err=%v", assessed, err)
+	}
+	if _, err := database.AssessReview(
+		ctx,
+		account.ID,
+		reviews[0].ID,
+		assessmentKey,
+		ReviewSolid,
+		now.Add(40*time.Second),
+	); err != nil {
+		t.Fatalf("idempotent Review Attempt failed: %v", err)
+	}
+	var attemptCount int
+	if err := database.pool.QueryRow(ctx, `
+		SELECT count(*) FROM review_attempts
+		WHERE account_id = $1 AND idempotency_key = $2
+	`, account.ID, assessmentKey).Scan(&attemptCount); err != nil || attemptCount != 1 {
+		t.Fatalf("Review Attempt count=%d err=%v", attemptCount, err)
 	}
 	difficulty := "right"
 	relevance := "very_relevant"

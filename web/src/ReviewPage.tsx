@@ -7,42 +7,58 @@ import {
 import { useMemo, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
 import { apiJSON } from "./api";
-import { reviewState, updateReviewState } from "./learningState";
-import { useWorkspace } from "./useWorkspace";
+import { invalidateWorkspaceCache, useWorkspace } from "./useWorkspace";
 
 export default function ReviewPage() {
   const workspace = useWorkspace();
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextOpen, setContextOpen] = useState(false);
-  const [, refreshState] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [assessmentError, setAssessmentError] = useState("");
 
   const queue = useMemo(
     () => {
       const lessonsByID = new Map(workspace.lessons.map((lesson) => [lesson.id, lesson]));
-      return workspace.reviews.flatMap((review) => {
+      return workspace.reviews.map((review) => {
         const lesson = lessonsByID.get(review.issueId);
-        return (review.questions ?? []).map((question, index) => ({
-          id: `${review.issueId}:${index}`,
+        return {
+          ...review,
           issueId: review.issueId,
-          question,
-          objective: review.objective,
           newsletter: lesson?.newsletter,
           issue: lesson,
-        }));
+        };
       });
     },
     [workspace.lessons, workspace.reviews],
   );
-  const due = queue.filter((item) => reviewState(item.id).status !== "mastered");
+  const due = queue;
   const active = due[activeIndex % Math.max(due.length, 1)];
-  const mastered = queue.length - due.length;
 
-  function assess(status) {
-    if (!active) return;
-    updateReviewState(active.id, { status, reviewedAt: new Date().toISOString() });
-    setContextOpen(false);
-    setActiveIndex(0);
-    refreshState((value) => value + 1);
+  async function assess(assessment) {
+    if (!active || busy) return;
+    setBusy(true);
+    setAssessmentError("");
+    try {
+      await apiJSON(`/api/reviews/${encodeURIComponent(active.id)}/assess`, {
+        method: "POST",
+        body: {
+          assessment,
+          idempotencyKey: crypto.randomUUID(),
+        },
+      });
+      setContextOpen(false);
+      setActiveIndex(0);
+      invalidateWorkspaceCache();
+      await workspace.reload();
+    } catch (requestError) {
+      setAssessmentError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The review could not be saved.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -74,7 +90,7 @@ export default function ReviewPage() {
                 <span>{due.length} prompt{due.length === 1 ? "" : "s"} due</span>
               </div>
               <p className="atelier-eyebrow">{active.newsletter?.name ?? "Recent lesson"}</p>
-              <h2>{active.question}</h2>
+              <h2>{active.prompt}</h2>
               <p className="review-instruction">
                 Explain it aloud or in your own notes. Then reveal the lesson context
                 and rate your recall.
@@ -99,17 +115,25 @@ export default function ReviewPage() {
                 <div className="review-context">
                   <span>Learning objective</span>
                   <p>{active.objective}</p>
+                  <div className="review-rubric">
+                    <span>Useful answer</span>
+                    <p>{active.answerRubric}</p>
+                  </div>
                   <a href={`/issues/${encodeURIComponent(active.issueId)}`}>
                     Reopen the lesson <ArrowRight size={14} />
                   </a>
                   <div className="review-assessment">
-                    <button type="button" onClick={() => assess("needs-work")}>
+                    <button type="button" disabled={busy} onClick={() => assess("needs_work")}>
                       <RotateCcw size={14} /> Needs another pass
                     </button>
-                    <button type="button" onClick={() => assess("mastered")}>
-                      <Check size={14} /> Recalled it
+                    <button type="button" disabled={busy} onClick={() => assess("partial")}>
+                      Partial
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => assess("solid")}>
+                      <Check size={14} /> Recalled solidly
                     </button>
                   </div>
+                  {assessmentError ? <p role="alert">{assessmentError}</p> : null}
                 </div>
               )}
             </article>
@@ -126,8 +150,8 @@ export default function ReviewPage() {
               </article>
               <article className="glass-panel">
                 <p className="atelier-eyebrow">This session</p>
-                <strong>{mastered} recalled</strong>
-                <span>{due.length} still worth revisiting</span>
+                <strong>{due.length} due now</strong>
+                <span>Each answer schedules its own next review.</span>
               </article>
             </aside>
           </div>

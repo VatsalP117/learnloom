@@ -378,13 +378,14 @@ type Dossier struct {
 }
 
 type LearningHistoryEntry struct {
-	Date              string    `json:"date"`
-	GeneratedAt       time.Time `json:"generatedAt"`
-	SourceTitles      []string  `json:"sourceTitles"`
-	LessonSummary     string    `json:"lessonSummary"`
-	RecallQuestions   []string  `json:"recallQuestions"`
-	LearningObjective string    `json:"learningObjective"`
-	Concepts          []string  `json:"concepts"`
+	Date              string            `json:"date"`
+	GeneratedAt       time.Time         `json:"generatedAt"`
+	SourceTitles      []string          `json:"sourceTitles"`
+	LessonSummary     string            `json:"lessonSummary"`
+	RecallQuestions   []string          `json:"recallQuestions"`
+	RetrievalPrompts  []RetrievalPrompt `json:"retrievalPrompts,omitempty"`
+	LearningObjective string            `json:"learningObjective"`
+	Concepts          []string          `json:"concepts"`
 }
 
 type DossierArtifact struct {

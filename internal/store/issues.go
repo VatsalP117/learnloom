@@ -42,9 +42,15 @@ type CompleteIssueInput struct {
 }
 
 type WorkspaceReview struct {
-	IssueID         string   `json:"issueId"`
-	Objective       string   `json:"objective"`
-	RecallQuestions []string `json:"questions"`
+	ID                    string     `json:"id"`
+	IssueID               string     `json:"issueId"`
+	Objective             string     `json:"objective"`
+	Prompt                string     `json:"prompt"`
+	AnswerRubric          string     `json:"answerRubric"`
+	CorrectiveExplanation string     `json:"correctiveExplanation"`
+	Stage                 int        `json:"stage"`
+	DueAt                 time.Time  `json:"dueAt"`
+	LastReviewedAt        *time.Time `json:"lastReviewedAt,omitempty"`
 }
 
 type WorkspaceIssueCursor struct {
@@ -692,6 +698,21 @@ func (s *Store) CompleteIssue(
 	`, newsletterID, issueID, input.History.Date, history, input.CompletedAt); err != nil {
 		return fmt.Errorf("append Learning History: %w", err)
 	}
+	for _, prompt := range input.History.RetrievalPrompts {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO review_items (
+				account_id, issue_id, prompt_key, prompt, answer_rubric,
+				corrective_explanation, objective, scheduler_version,
+				stage, created_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 0, $8, $8)
+			ON CONFLICT (issue_id, prompt_key) DO NOTHING
+		`, accountID, issueID, prompt.ID, prompt.Prompt, prompt.AnswerRubric,
+			prompt.CorrectiveExplanation, input.History.LearningObjective,
+			input.CompletedAt); err != nil {
+			return fmt.Errorf("create Review Item: %w", err)
+		}
+	}
 	if input.HistoryLimit >= 0 {
 		if _, err := tx.Exec(ctx, `
 			DELETE FROM learning_history
@@ -1054,44 +1075,46 @@ func (s *Store) ListWorkspaceReviews(
 	ctx context.Context,
 	accountID string,
 	limit int,
+	now time.Time,
 ) ([]WorkspaceReview, error) {
 	if limit < 1 || limit > 100 {
 		limit = 8
 	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT h.issue_id::text, h.entry
-		FROM newsletters n
-		CROSS JOIN LATERAL (
-			SELECT candidate.issue_id, candidate.entry, candidate.created_at
-			FROM learning_history candidate
-			WHERE candidate.newsletter_id = n.id
-			ORDER BY candidate.created_at DESC
-			LIMIT $2
-		) h
-		WHERE n.owner_account_id = $1
-		ORDER BY h.created_at DESC
+		SELECT id::text, issue_id::text, objective, prompt, answer_rubric,
+		       corrective_explanation, stage, due_at, last_reviewed_at
+		FROM review_items
+		WHERE account_id = $1
+		  AND due_at IS NOT NULL
+		  AND due_at <= $3
+		  AND retired_at IS NULL
+		ORDER BY due_at, created_at
 		LIMIT $2
-	`, accountID, limit)
+	`, accountID, limit, now)
 	if err != nil {
 		return nil, fmt.Errorf("list workspace reviews: %w", err)
 	}
 	defer rows.Close()
 	reviews := make([]WorkspaceReview, 0)
 	for rows.Next() {
-		var issueID string
-		var raw []byte
-		if err := rows.Scan(&issueID, &raw); err != nil {
+		var review WorkspaceReview
+		if err := rows.Scan(
+			&review.ID,
+			&review.IssueID,
+			&review.Objective,
+			&review.Prompt,
+			&review.AnswerRubric,
+			&review.CorrectiveExplanation,
+			&review.Stage,
+			&review.DueAt,
+			&review.LastReviewedAt,
+		); err != nil {
 			return nil, err
 		}
-		var entry domain.LearningHistoryEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			return nil, fmt.Errorf("decode workspace review: %w", err)
-		}
-		reviews = append(reviews, WorkspaceReview{
-			IssueID:         issueID,
-			Objective:       entry.LearningObjective,
-			RecallQuestions: entry.RecallQuestions,
-		})
+		reviews = append(reviews, review)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

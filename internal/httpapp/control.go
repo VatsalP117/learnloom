@@ -163,6 +163,34 @@ func (s *Server) handleControl(
 		s.listWorkspaceIssues(response, request, current)
 		return
 	}
+	if len(route) == 4 && route[0] == "api" && route[1] == "reviews" &&
+		route[3] == "assess" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		var body struct {
+			Assessment     store.ReviewAssessment `json:"assessment"`
+			IdempotencyKey string                 `json:"idempotencyKey"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		review, err := s.store.AssessReview(
+			request.Context(),
+			current.Account.ID,
+			route[2],
+			body.IdempotencyKey,
+			body.Assessment,
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, review)
+		return
+	}
 	if len(route) >= 3 && route[0] == "api" && route[1] == "newsletters" {
 		newsletterID := route[2]
 		if len(route) == 3 {
@@ -284,7 +312,12 @@ func (s *Server) workspaceSnapshot(
 	})
 	group.Go(func() error {
 		var err error
-		reviews, err = s.store.ListWorkspaceReviews(context, current.Account.ID, 8)
+		reviews, err = s.store.ListWorkspaceReviews(
+			context,
+			current.Account.ID,
+			8,
+			time.Now().UTC(),
+		)
 		return err
 	})
 	group.Go(func() error {
