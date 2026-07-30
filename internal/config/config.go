@@ -43,6 +43,7 @@ type SourceIntelligence struct {
 
 type HTTP struct {
 	Address         string
+	MetricsAddress  string
 	RootDomain      string
 	ApexOrigin      string
 	AppOrigin       string
@@ -130,6 +131,7 @@ func Load() (Config, error) {
 		),
 		HTTP: HTTP{
 			Address:         env("HTTP_ADDR", ":3000"),
+			MetricsAddress:  env("WEB_METRICS_ADDR", ":9091"),
 			RootDomain:      strings.ToLower(env("LEARNLOOM_ROOT_DOMAIN", "learnloom.blog")),
 			AppOrigin:       env("LEARNLOOM_APP_ORIGIN", "https://app.learnloom.blog"),
 			CSRFSecret:      os.Getenv("CSRF_SECRET"),

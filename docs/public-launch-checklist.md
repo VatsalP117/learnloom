@@ -24,6 +24,8 @@ release.
   privacy-minimal receipt.
 - [x] Health/readiness, metrics, structured logs, migrations, and an operations
   runbook exist.
+- [x] Web metrics run on a separate operations listener and CI exercises the
+  canonical artifact lifecycle against a pinned S3-compatible service.
 
 ## Required staging evidence
 

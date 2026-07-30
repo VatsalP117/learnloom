@@ -66,6 +66,7 @@ services:
     environment:
       <<: [*runtime, *object-store]
       HTTP_ADDR: :3000
+      WEB_METRICS_ADDR: :9091
       LEARNLOOM_APP_ORIGIN: ${LEARNLOOM_APP_ORIGIN:-https://app.learnloom.blog}
       FEATURED_SITE_USERNAMES: ${FEATURED_SITE_USERNAMES:-}
       CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
@@ -82,6 +83,7 @@ services:
         condition: service_completed_successfully
     expose:
       - "3000"
+      - "9091"
     labels: &web-traefik-labels
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"

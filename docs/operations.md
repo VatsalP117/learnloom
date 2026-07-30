@@ -7,7 +7,11 @@
 3. Configure a verified Resend sender and OpenAI-compatible model endpoint.
 4. Run the immutable image as `migrate`; only then roll out `web` and `worker`.
 5. Route apex, app, and wildcard learner DNS through TLS to `web`.
-6. Verify `/healthz`, `/readyz`, and `/metrics` before shifting traffic.
+6. Verify public `/healthz` and `/readyz`, then scrape `/metrics` from the
+   private web operations listener (`WEB_METRICS_ADDR`, default `:9091`) and
+   worker operations listener (`WORKER_METRICS_ADDR`, default `:9090`) before
+   shifting traffic. Do not route either metrics listener through the public
+   ingress.
 
 For the self-contained VM deployment, follow the
 [Dokploy deployment guide](dokploy-deployment.md).
@@ -27,6 +31,11 @@ Worker metrics also expose active Issues, drain state, recovered Claims,
 renewal failures, and Claims explicitly released during shutdown. A draining
 worker returns `503` from its readiness endpoint so deployment traffic and new
 work move elsewhere while existing Claims continue.
+
+Web operations metrics expose Issue, delivery, recap, and deletion queue depth;
+oldest Issue and delivery age; and Postgres acquired, idle, total, and maximum
+connections plus aggregate acquisition wait. Alert from these bounded,
+content-free signals rather than from learner text or query strings.
 
 ## Backup and restore
 

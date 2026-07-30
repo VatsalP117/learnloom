@@ -26,6 +26,6 @@ COPY --from=service --chown=nonroot:nonroot /learnloom /learnloom
 COPY --from=web --chown=nonroot:nonroot /src/web/dist /app/web/dist
 USER nonroot:nonroot
 ENV FRONTEND_DIR=/app/web/dist
-EXPOSE 3000 9090
+EXPOSE 3000 9090 9091
 ENTRYPOINT ["/learnloom"]
 CMD ["web"]

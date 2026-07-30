@@ -742,6 +742,11 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	operations, err := database.OperationalSnapshot(ctx, time.Now().UTC())
+	if err != nil || operations.QueuedIssues < 1 ||
+		operations.DatabaseMax < 1 || operations.DatabaseTotal < 1 {
+		t.Fatalf("operational snapshot=%#v err=%v", operations, err)
+	}
 	expiredDeliveryToken := uuid.New()
 	expiredDeliveryAt := now.Add(40 * time.Second)
 	if _, err := database.pool.Exec(ctx, `

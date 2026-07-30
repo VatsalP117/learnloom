@@ -137,7 +137,42 @@ func runWeb(
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    32 << 10,
 	}
-	return runHTTPServer(ctx, server, logger, "web")
+	operations := &http.Server{
+		Addr:              cfg.HTTP.MetricsAddress,
+		Handler:           handler.OperationalHandler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
+	return runWebServers(ctx, server, operations, logger)
+}
+
+func runWebServers(
+	ctx context.Context,
+	public, operations *http.Server,
+	logger *slog.Logger,
+) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan error, 2)
+	go func() {
+		results <- runHTTPServer(runCtx, public, logger, "web")
+	}()
+	go func() {
+		results <- runHTTPServer(runCtx, operations, logger, "web operations")
+	}()
+	first := <-results
+	cancel()
+	second := <-results
+	for _, err := range []error{first, second} {
+		if err != nil && !errors.Is(err, context.Canceled) &&
+			!errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+	}
+	return nil
 }
 
 func runWorker(

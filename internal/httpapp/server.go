@@ -344,9 +344,6 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 	case "/readyz":
 		s.handleReady(response, request)
 		return
-	case "/metrics":
-		s.handleMetrics(response)
-		return
 	case "/webhooks/clerk":
 		s.handleClerkWebhook(response, request)
 		return
@@ -540,7 +537,25 @@ func (s *Server) handleReady(response http.ResponseWriter, request *http.Request
 	writeJSON(response, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-func (s *Server) handleMetrics(response http.ResponseWriter) {
+func (s *Server) OperationalHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(response http.ResponseWriter, _ *http.Request) {
+		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /readyz", s.handleReady)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
+	return mux
+}
+
+func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Request) {
+	ctx, cancel := context.WithTimeout(request.Context(), 3*time.Second)
+	defer cancel()
+	operations, err := s.store.OperationalSnapshot(ctx, time.Now().UTC())
+	if err != nil {
+		s.logger.ErrorContext(ctx, "operational snapshot failed", "error", err)
+		response.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	response.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	response.Header().Set("Cache-Control", "no-store")
 	_, _ = fmt.Fprintf(
@@ -551,6 +566,34 @@ func (s *Server) handleMetrics(response http.ResponseWriter) {
 		s.metrics.total.Load(),
 		s.metrics.errors.Load(),
 		s.metrics.rateLimited.Load(),
+	)
+	_, _ = fmt.Fprintf(
+		response,
+		"# TYPE learnloom_queue_issues gauge\nlearnloom_queue_issues %d\n"+
+			"# TYPE learnloom_queue_oldest_issue_seconds gauge\nlearnloom_queue_oldest_issue_seconds %.3f\n"+
+			"# TYPE learnloom_queue_deliveries gauge\nlearnloom_queue_deliveries %d\n"+
+			"# TYPE learnloom_queue_oldest_delivery_seconds gauge\nlearnloom_queue_oldest_delivery_seconds %.3f\n"+
+			"# TYPE learnloom_queue_weekly_recaps gauge\nlearnloom_queue_weekly_recaps %d\n"+
+			"# TYPE learnloom_queue_account_deletions gauge\nlearnloom_queue_account_deletions %d\n"+
+			"# TYPE learnloom_database_connections gauge\n"+
+			"learnloom_database_connections{state=\"acquired\"} %d\n"+
+			"learnloom_database_connections{state=\"idle\"} %d\n"+
+			"learnloom_database_connections{state=\"total\"} %d\n"+
+			"# TYPE learnloom_database_connection_limit gauge\nlearnloom_database_connection_limit %d\n"+
+			"# TYPE learnloom_database_acquires_total counter\nlearnloom_database_acquires_total %d\n"+
+			"# TYPE learnloom_database_acquire_seconds_total counter\nlearnloom_database_acquire_seconds_total %.6f\n",
+		operations.QueuedIssues,
+		operations.OldestQueuedIssueAge.Seconds(),
+		operations.PendingDeliveries,
+		operations.OldestDeliveryAge.Seconds(),
+		operations.PendingWeeklyRecaps,
+		operations.PendingDeletions,
+		operations.DatabaseAcquired,
+		operations.DatabaseIdle,
+		operations.DatabaseTotal,
+		operations.DatabaseMax,
+		operations.DatabaseAcquireCount,
+		float64(operations.DatabaseAcquireNanos)/float64(time.Second),
 	)
 }
 
