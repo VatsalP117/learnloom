@@ -38,6 +38,8 @@ type NewsletterInput struct {
 	EmailEnabled         bool
 	AIExplorationEnabled bool
 	SiteVisible          bool
+	TemplateID           string
+	TemplateVersion      int
 }
 
 type CreateNewsletterResult struct {
@@ -101,16 +103,22 @@ func (s *Store) CreateNewsletter(
 		return CreateNewsletterResult{}, err
 	}
 	id := uuid.New()
+	var templateID, templateVersion any
+	if normalized.TemplateID != "" {
+		templateID = normalized.TemplateID
+		templateVersion = normalized.TemplateVersion
+	}
 	row := tx.QueryRow(ctx, `
 		INSERT INTO newsletters (
 			id, owner_account_id, name, topic, learner_level, learner_goal,
 			lesson_minutes, source_mode, sources, schedule_hour, schedule_minute,
 			time_zone, active, next_run_at, email_enabled, ai_exploration_enabled,
-			public_slug, site_visible, created_at, updated_at
+			public_slug, site_visible, stream_template_id,
+			stream_template_version, created_at, updated_at
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
-			$12, $13, $14, $15, $16, $17, $18, $19, $19
+			$12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $21
 		)
 		RETURNING id::text, owner_account_id::text, name, topic, learner_level,
 		          learner_goal, lesson_minutes, source_mode, sources, schedule_hour,
@@ -121,7 +129,8 @@ func (s *Store) CreateNewsletter(
 		normalized.LearnerGoal, normalized.LessonMinutes, normalized.SourceMode,
 		sources, normalized.ScheduleHour, normalized.ScheduleMinute, normalized.TimeZone,
 		normalized.Active, next, normalized.EmailEnabled,
-		normalized.AIExplorationEnabled, publicSlug, normalized.SiteVisible, now)
+		normalized.AIExplorationEnabled, publicSlug, normalized.SiteVisible,
+		templateID, templateVersion, now)
 	record, err := scanNewsletterRecord(row)
 	if err != nil {
 		return CreateNewsletterResult{}, fmt.Errorf("create Newsletter: %w", err)
@@ -572,6 +581,14 @@ func normalizeNewsletterInput(input NewsletterInput) (NewsletterInput, error) {
 	if input.LessonMinutes < 5 || input.LessonMinutes > 90 {
 		return NewsletterInput{}, errors.New("lesson minutes must be from 5 to 90")
 	}
+	if input.TemplateID == "" {
+		if input.TemplateVersion != 0 {
+			return NewsletterInput{}, errors.New("template version requires a template ID")
+		}
+	} else if !streamTemplateIDPattern.MatchString(input.TemplateID) ||
+		input.TemplateVersion < 1 {
+		return NewsletterInput{}, errors.New("stream template attribution is invalid")
+	}
 	if input.ScheduleHour < 0 || input.ScheduleHour > 23 ||
 		input.ScheduleMinute < 0 || input.ScheduleMinute > 59 {
 		return NewsletterInput{}, errors.New("Newsletter schedule is invalid")
@@ -713,7 +730,10 @@ func allocateNewsletterSlug(
 	return "", errors.New("could not allocate a unique Newsletter slug")
 }
 
-var repeatedHyphens = regexp.MustCompile(`-+`)
+var (
+	repeatedHyphens         = regexp.MustCompile(`-+`)
+	streamTemplateIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,79}$`)
+)
 
 func slugify(value string) string {
 	var output strings.Builder

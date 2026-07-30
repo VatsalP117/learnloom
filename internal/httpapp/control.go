@@ -1,6 +1,7 @@
 package httpapp
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -131,6 +132,14 @@ func (s *Server) handleControl(
 		}
 		return
 	}
+	if request.URL.Path == "/api/sources/validate" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		s.validateSources(response, request)
+		return
+	}
 	if request.URL.Path == "/api/workspace" {
 		if request.Method != http.MethodGet {
 			methodNotAllowed(response, http.MethodGet)
@@ -234,6 +243,111 @@ func (s *Server) handleControl(
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+type sourceValidationResult struct {
+	Name         string   `json:"name"`
+	URL          string   `json:"url"`
+	Status       string   `json:"status"`
+	ItemCount    int      `json:"itemCount"`
+	SampleTitles []string `json:"sampleTitles,omitempty"`
+	Message      string   `json:"message,omitempty"`
+}
+
+func (s *Server) validateSources(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	validator := s.sourceValidator()
+	if validator == nil {
+		writeProblem(
+			response,
+			http.StatusServiceUnavailable,
+			"source_validation_unavailable",
+			"Source validation is temporarily unavailable.",
+		)
+		return
+	}
+	if !s.allowAction(response, request, "source-validation", time.Hour, 20) {
+		return
+	}
+	var body struct {
+		Sources []domain.SourceDefinition `json:"sources"`
+	}
+	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+		return
+	}
+	if len(body.Sources) < 1 || len(body.Sources) > 6 {
+		writeProblem(
+			response,
+			http.StatusBadRequest,
+			"invalid_sources",
+			"Validate from one to six sources at a time.",
+		)
+		return
+	}
+	results := runSourceValidation(request.Context(), validator, body.Sources)
+	writeJSON(response, http.StatusOK, map[string]any{"sources": results})
+}
+
+func runSourceValidation(
+	ctx context.Context,
+	validator SourceValidator,
+	definitions []domain.SourceDefinition,
+) []sourceValidationResult {
+	results := make([]sourceValidationResult, len(definitions))
+	group, ctx := errgroup.WithContext(ctx)
+	group.SetLimit(3)
+	for index, definition := range definitions {
+		index, definition := index, definition
+		group.Go(func() error {
+			result := sourceValidationResult{
+				Name: definition.Name,
+				URL:  definition.URL,
+			}
+			items, warnings, err := validator(ctx, definition)
+			if err != nil {
+				result.Status = "unavailable"
+				result.Message = sourceValidationMessage(err, warnings)
+				results[index] = result
+				return nil
+			}
+			result.Status = "ready"
+			result.ItemCount = len(items)
+			for _, item := range items {
+				if len(result.SampleTitles) == 2 {
+					break
+				}
+				if title := strings.TrimSpace(item.Title); title != "" {
+					result.SampleTitles = append(result.SampleTitles, title)
+				}
+			}
+			if len(warnings) > 0 {
+				result.Message = sourceValidationMessage(nil, warnings)
+			}
+			results[index] = result
+			return nil
+		})
+	}
+	_ = group.Wait()
+	return results
+}
+
+func sourceValidationMessage(err error, warnings []string) string {
+	message := ""
+	if err != nil {
+		message = err.Error()
+	} else if len(warnings) > 0 {
+		message = warnings[0]
+	}
+	message = strings.TrimSpace(message)
+	if len(message) > 240 {
+		message = message[:237] + "..."
+	}
+	if message == "" {
+		return "No recent items were found."
+	}
+	return message
 }
 
 func (s *Server) recordWebVital(
@@ -1134,6 +1248,8 @@ func (s *Server) decodeNewsletterInput(
 		EmailEnabled         *bool                     `json:"emailEnabled"`
 		AIExplorationEnabled *bool                     `json:"aiExplorationEnabled"`
 		SiteVisible          *bool                     `json:"siteVisible"`
+		TemplateID           string                    `json:"templateId"`
+		TemplateVersion      int                       `json:"templateVersion"`
 	}
 	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 		return store.NewsletterInput{}, false
@@ -1163,6 +1279,8 @@ func (s *Server) decodeNewsletterInput(
 		TimeZone: body.TimeZone, Active: active, EmailEnabled: boolValue(body.EmailEnabled),
 		AIExplorationEnabled: boolValue(body.AIExplorationEnabled),
 		SiteVisible:          boolValue(body.SiteVisible),
+		TemplateID:           body.TemplateID,
+		TemplateVersion:      body.TemplateVersion,
 	}, true
 }
 

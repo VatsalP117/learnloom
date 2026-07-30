@@ -17,6 +17,8 @@ const defaults = {
   aiExplorationEnabled: false,
   siteVisible: false,
   sources: [],
+  templateId: undefined,
+  templateVersion: undefined,
 };
 
 describe("Newsletter source mode payloads", () => {
@@ -51,5 +53,19 @@ describe("Newsletter source mode payloads", () => {
       url: "https://www.example.com/guide",
       limit: 8,
     }]);
+  });
+
+  it("preserves versioned template attribution", () => {
+    const payload = buildNewsletterPayload({
+      ...defaults,
+      sourceMode: "provided",
+      templateId: "ai-systems-evidence",
+      templateVersion: 2,
+      sources: [{ name: "Evidence", url: "https://example.com/feed", limit: 8 }],
+    });
+    expect(payload).toMatchObject({
+      templateId: "ai-systems-evidence",
+      templateVersion: 2,
+    });
   });
 });

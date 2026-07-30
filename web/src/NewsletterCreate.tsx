@@ -18,6 +18,7 @@ import {
   canSubmitNewsletter,
   usableSources,
 } from "./newsletterForm";
+import { streamTemplates, type StreamTemplate } from "./streamTemplates";
 
 const defaultSource = () => ({ name: "", url: "", limit: 8 });
 const topicIdeas = [
@@ -31,6 +32,12 @@ const steps = [
   { number: 3, label: "Your rhythm" },
 ];
 
+interface SourceValidation {
+  status: "ready" | "unavailable";
+  itemCount: number;
+  message?: string;
+}
+
 export default function NewsletterCreate({ sourceDiscovery = false }) {
   const [step, setStep] = useState(1);
   const [sourceMode, setSourceMode] = useState(
@@ -40,6 +47,9 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
     sourceDiscovery ? [] : [defaultSource()],
   );
   const [busy, setBusy] = useState(false);
+  const [validatingSources, setValidatingSources] = useState(false);
+  const [sourceValidation, setSourceValidation] = useState<SourceValidation[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<StreamTemplate | null>(null);
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -65,14 +75,17 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   }, [step]);
 
   function addSource() {
+    setSourceValidation([]);
     setSources((current) => [...current, defaultSource()]);
   }
 
   function removeSource(index) {
+    setSourceValidation([]);
     setSources((current) => current.filter((_, position) => position !== index));
   }
 
   function updateSource(index, field, value) {
+    setSourceValidation([]);
     setSources((current) =>
       current.map((source, position) =>
         position === index ? { ...source, [field]: value } : source,
@@ -81,6 +94,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   }
 
   function handleModeChange(mode) {
+    setSourceValidation([]);
     setSourceMode(mode);
     if (mode === "discovered") {
       setSources([]);
@@ -89,17 +103,54 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
     }
   }
 
-  function continueSetup() {
-    if (stepReady) {
-      setError("");
-      setStep((current) => Math.min(3, current + 1));
+  function applyTemplate(template) {
+    setSelectedTemplate(template);
+    setName(template.name);
+    setTopic(template.topic);
+    setLearnerGoal(template.learnerGoal);
+    setLearnerLevel(template.learnerLevel);
+    setLessonMinutes(template.lessonMinutes);
+    setSourceMode("provided");
+    setSources(template.sources.map((source) => ({ ...source })));
+    setSourceValidation([]);
+    setError("");
+  }
+
+  async function validateProvidedSources() {
+    if (!showSources) return true;
+    setValidatingSources(true);
+    setError("");
+    try {
+      const result = await apiJSON("/api/sources/validate", {
+        method: "POST",
+        body: { sources: validSources },
+      });
+      const validations = result.sources ?? [];
+      setSourceValidation(validations);
+      if (validations.some((validation) => validation.status !== "ready")) {
+        setError("One or more sources could not be read. Fix or replace them before continuing.");
+        return false;
+      }
+      return true;
+    } catch (requestError) {
+      setError(requestError.message);
+      return false;
+    } finally {
+      setValidatingSources(false);
     }
+  }
+
+  async function continueSetup() {
+    if (!stepReady) return;
+    if (step === 2 && !(await validateProvidedSources())) return;
+    setError("");
+    setStep((current) => Math.min(3, current + 1));
   }
 
   async function submit(event) {
     event.preventDefault();
     if (step < 3) {
-      continueSetup();
+      await continueSetup();
       return;
     }
 
@@ -119,6 +170,8 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
       siteVisible,
       sourceMode,
       sources: validSources,
+      templateId: selectedTemplate?.id,
+      templateVersion: selectedTemplate?.version,
     });
 
     try {
@@ -165,6 +218,34 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
             {step === 1 ? (
               <fieldset className="setup-panel">
                 <legend className="sr-only">Learning intent</legend>
+                <div className="template-picker">
+                  <div>
+                    <span className="atelier-eyebrow">Start with a focused path</span>
+                    <p>Choose a ready source environment, then make it yours.</p>
+                  </div>
+                  <div className="template-grid">
+                    {streamTemplates.map((template) => (
+                      <button type="button" key={template.id} onClick={() => applyTemplate(template)}>
+                        <strong>{template.name}</strong>
+                        <span>{template.outcome}</span>
+                        <small>{template.sources.length} credible sources · {template.lessonMinutes} min</small>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedTemplate ? (
+                    <article className="template-sample">
+                      <span className="atelier-eyebrow">A sample Dossier direction</span>
+                      <strong>{selectedTemplate.sample.objective}</strong>
+                      <div>
+                        {selectedTemplate.sample.concepts.map((concept) => (
+                          <span key={concept}>{concept}</span>
+                        ))}
+                      </div>
+                      <p><b>Retrieval:</b> {selectedTemplate.sample.retrievalPrompt}</p>
+                      <small>The actual lesson will use current items available when your stream runs.</small>
+                    </article>
+                  ) : null}
+                </div>
                 <label className="hero-field">
                   <span>Subject or question</span>
                   <textarea
@@ -249,14 +330,26 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                     </div>
                     <div className="source-editor">
                       {sources.map((source, index) => (
-                        <div className="source-row guided-source-row" key={index}>
-                          <span className="source-number">{index + 1}</span>
-                          <label><span>Source URL</span><input aria-label={`Source ${index + 1} URL`} required type="url" placeholder="https://publication.com or feed.xml" value={source.url} onChange={(event) => updateSource(index, "url", event.target.value)} /></label>
-                          <label><span>Label <em>Optional</em></span><input aria-label={`Source ${index + 1} name`} maxLength={120} placeholder="Publication name" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} /></label>
-                          <button className="remove-source" type="button" aria-label={`Remove source ${index + 1}`} disabled={busy || sources.length === 1} onClick={() => removeSource(index)}><Trash2 size={16} /></button>
+                        <div key={index}>
+                          <div className="source-row guided-source-row">
+                            <span className="source-number">{index + 1}</span>
+                            <label><span>Source URL</span><input aria-label={`Source ${index + 1} URL`} required type="url" placeholder="https://publication.com or feed.xml" value={source.url} onChange={(event) => updateSource(index, "url", event.target.value)} /></label>
+                            <label><span>Label <em>Optional</em></span><input aria-label={`Source ${index + 1} name`} maxLength={120} placeholder="Publication name" value={source.name} onChange={(event) => updateSource(index, "name", event.target.value)} /></label>
+                            <button className="remove-source" type="button" aria-label={`Remove source ${index + 1}`} disabled={busy || sources.length === 1} onClick={() => removeSource(index)}><Trash2 size={16} /></button>
+                          </div>
+                          {sourceValidation[index] ? (
+                            <div className={`source-validation ${sourceValidation[index].status}`}>
+                              {sourceValidation[index].status === "ready"
+                                ? <><Check size={14} /><span>Ready · {sourceValidation[index].itemCount} recent items found</span></>
+                                : <><span aria-hidden="true">!</span><span>{sourceValidation[index].message}</span></>}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
+                    <p className="source-validation-note">
+                      Sources are checked safely before creation. Learnloom reads public feed metadata only.
+                    </p>
                   </div>
                 ) : null}
               </fieldset>
@@ -327,7 +420,9 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
               {step > 1 ? <button className="create-secondary" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={15} />Back</button> : <a className="create-secondary" href="/streams">Cancel</a>}
               <span>Step {step} of 3</span>
               {step < 3 ? (
-                <button className="atelier-primary" disabled={!stepReady} type="submit">Continue <ArrowRight size={16} /></button>
+                <button className="atelier-primary" disabled={!stepReady || validatingSources} type="submit">
+                  {validatingSources ? "Checking sources…" : "Continue"} <ArrowRight size={16} />
+                </button>
               ) : (
                 <button className="atelier-primary create-submit" disabled={busy || !sourceReady} type="submit"><Sparkles size={17} />{busy ? "Creating your stream…" : "Create learning stream"}</button>
               )}

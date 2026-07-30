@@ -21,6 +21,8 @@ func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
 		strings.NewReader(`{
 			"topic":"LLM inference",
 			"sourceMode":"discovered",
+			"templateId":"ai-systems-evidence",
+			"templateVersion":2,
 			"timeZone":"Asia/Kolkata"
 		}`),
 	)
@@ -32,6 +34,7 @@ func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
 	}
 	if input.SourceMode != domain.SourceModeDiscovered ||
 		input.ScheduleHour != 8 || input.ScheduleMinute != 0 ||
+		input.TemplateID != "ai-systems-evidence" || input.TemplateVersion != 2 ||
 		!input.Active || input.SiteVisible || len(input.Sources) != 0 {
 		t.Fatalf("input=%#v", input)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/artifact"
 	"github.com/VatsalP117/learnloom/internal/config"
 	"github.com/VatsalP117/learnloom/internal/delivery"
+	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/dossier"
 	"github.com/VatsalP117/learnloom/internal/execution"
 	"github.com/VatsalP117/learnloom/internal/httpapp"
@@ -91,6 +92,12 @@ func runWeb(
 	if _, err := fs.Stat(static, "index.html"); err != nil {
 		return fmt.Errorf("frontend build is unavailable at %s: %w", cfg.HTTP.StaticDirectory, err)
 	}
+	sourceValidator := source.New(source.Config{
+		FeedTimeout:    8 * time.Second,
+		MaxFeedBytes:   cfg.Limits.MaxFeedBytes,
+		MaxConcurrency: 3,
+		MaxRedirects:   3,
+	})
 	handler, err := httpapp.NewServer(
 		httpapp.Config{
 			RootDomain: cfg.HTTP.RootDomain, ApexOrigin: cfg.HTTP.ApexOrigin,
@@ -115,6 +122,12 @@ func runWeb(
 	if err != nil {
 		return err
 	}
+	handler.SetSourceValidator(func(
+		ctx context.Context,
+		definition domain.SourceDefinition,
+	) ([]domain.SourceItem, []string, error) {
+		return sourceValidator.Fetch(ctx, []domain.SourceDefinition{definition}, 3)
+	})
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
 		Handler:           handler,

@@ -18,6 +18,8 @@ export interface NewsletterFormValues {
   siteVisible: boolean;
   sourceMode: string;
   sources: NewsletterSourceInput[];
+  templateId?: string;
+  templateVersion?: number;
 }
 
 export function usableSources(sources: NewsletterSourceInput[]) {
@@ -56,6 +58,8 @@ export function buildNewsletterPayload(values: NewsletterFormValues) {
     siteVisible: values.siteVisible,
     sourceMode: values.sourceMode,
     sources,
+    templateId: values.templateId,
+    templateVersion: values.templateVersion,
   };
 }
 

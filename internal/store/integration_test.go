@@ -86,12 +86,30 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 			}},
 			ScheduleHour: 9, TimeZone: "Asia/Kolkata", Active: true,
 			EmailEnabled: true, SiteVisible: true,
+			TemplateID: "ai-systems-evidence", TemplateVersion: 1,
 		},
 		10,
 		5,
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var templateID string
+	var templateVersion int
+	if err := database.pool.QueryRow(ctx, `
+		SELECT stream_template_id, stream_template_version
+		FROM newsletters
+		WHERE id = $1 AND owner_account_id = $2
+	`, newsletter.Newsletter.ID, account.ID).Scan(
+		&templateID,
+		&templateVersion,
+	); err != nil || templateID != "ai-systems-evidence" || templateVersion != 1 {
+		t.Fatalf(
+			"template attribution=%q v%d err=%v",
+			templateID,
+			templateVersion,
+			err,
+		)
 	}
 	if err := database.SetNewsletterActive(ctx, account.ID, newsletter.Newsletter.ID, false); err != nil {
 		t.Fatal(err)

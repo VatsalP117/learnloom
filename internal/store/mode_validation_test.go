@@ -53,6 +53,30 @@ func TestNewsletterSourceModeValidation(t *testing.T) {
 			valid: true,
 		},
 		{
+			name: "versioned template attribution is valid",
+			input: NewsletterInput{
+				Name: "Template", Topic: "AI", LearnerLevel: "intermediate",
+				LearnerGoal: "learn", LessonMinutes: 20,
+				SourceMode:   domain.SourceModeProvided,
+				Sources:      []domain.SourceDefinition{validSource},
+				ScheduleHour: validSchedule, TimeZone: validTimeZone,
+				TemplateID: "ai-systems-evidence", TemplateVersion: 1,
+			},
+			valid: true,
+		},
+		{
+			name: "template version without ID is invalid",
+			input: NewsletterInput{
+				Name: "Template", Topic: "AI", LearnerLevel: "intermediate",
+				LearnerGoal: "learn", LessonMinutes: 20,
+				SourceMode:   domain.SourceModeProvided,
+				Sources:      []domain.SourceDefinition{validSource},
+				ScheduleHour: validSchedule, TimeZone: validTimeZone,
+				TemplateVersion: 1,
+			},
+			valid: false,
+		},
+		{
 			name: "provided mode with empty sources is invalid",
 			input: NewsletterInput{
 				Name: "Provided", Topic: "AI", LearnerLevel: "intermediate",
