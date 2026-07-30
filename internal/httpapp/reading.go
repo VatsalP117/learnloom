@@ -213,37 +213,14 @@ func (s *Server) renderPublicDossier(
 	}
 	canonical := origin + canonicalPath
 	description := "A source-grounded Knowledge Dossier about " + issue.NewsletterName + "."
-	articleSchema, _ := json.Marshal(map[string]any{
-		"@context":         "https://schema.org",
-		"@type":            "Article",
-		"headline":         issue.Title,
-		"description":      description,
-		"datePublished":    issue.CompletedAt.Format(time.RFC3339),
-		"dateModified":     issue.CompletedAt.Format(time.RFC3339),
-		"mainEntityOfPage": canonical,
-		"articleSection":   issue.NewsletterName,
-		"author": map[string]any{
-			"@type": "Person",
-			"name":  site.DisplayName,
-			"url":   origin,
-		},
-		"publisher": map[string]any{
-			"@type": "Organization",
-			"name":  "Learnloom",
-			"url":   "https://learnloom.blog/",
-		},
-	})
-	metadata := `<meta name="description" content="` + html.EscapeString(description) + `">` +
-		`<meta property="og:type" content="article">` +
-		`<meta property="og:site_name" content="Learnloom">` +
-		`<meta property="og:title" content="` + html.EscapeString(issue.Title) + `">` +
-		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
-		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		`<meta property="article:published_time" content="` + issue.CompletedAt.Format(time.RFC3339) + `">` +
-		`<meta name="twitter:card" content="summary">` +
-		`<meta name="twitter:title" content="` + html.EscapeString(issue.Title) + `">` +
-		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
-		`<script type="application/ld+json">` + string(articleSchema) + `</script>`
+	metadata := renderPublicDossierMetadata(
+		site,
+		issue,
+		canonical,
+		origin,
+		s.cfg.ApexOrigin,
+		description,
+	)
 	document := strings.Replace(
 		artifactValue.HTML,
 		"</head>",
@@ -264,6 +241,46 @@ func (s *Server) renderPublicDossier(
 	if request.Method != http.MethodHead {
 		_, _ = response.Write([]byte(document))
 	}
+}
+
+func renderPublicDossierMetadata(
+	site domain.PersonalSite,
+	issue store.PublicIssue,
+	canonical, authorOrigin, apexOrigin, description string,
+) string {
+	// PersonalSite and PublicIssue are the store's publication-safe projections.
+	// Do not accept an account, artifact body, source excerpt, or draft issue here.
+	articleSchema, _ := json.Marshal(map[string]any{
+		"@context":         "https://schema.org",
+		"@type":            "Article",
+		"headline":         issue.Title,
+		"description":      description,
+		"datePublished":    issue.CompletedAt.Format(time.RFC3339),
+		"dateModified":     issue.CompletedAt.Format(time.RFC3339),
+		"mainEntityOfPage": canonical,
+		"articleSection":   issue.NewsletterName,
+		"author": map[string]any{
+			"@type": "Person",
+			"name":  site.DisplayName,
+			"url":   authorOrigin,
+		},
+		"publisher": map[string]any{
+			"@type": "Organization",
+			"name":  "Learnloom",
+			"url":   "https://learnloom.blog/",
+		},
+	})
+	return `<meta name="description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:type" content="article">` +
+		`<meta property="og:site_name" content="Learnloom">` +
+		`<meta property="og:title" content="` + html.EscapeString(issue.Title) + `">` +
+		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
+		`<meta property="article:published_time" content="` + issue.CompletedAt.Format(time.RFC3339) + `">` +
+		renderSocialImageMetadata(apexOrigin) +
+		`<meta name="twitter:title" content="` + html.EscapeString(issue.Title) + `">` +
+		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
+		`<script type="application/ld+json">` + string(articleSchema) + `</script>`
 }
 
 func (s *Server) renderSitemap(
@@ -340,7 +357,7 @@ func (s *Server) sendReadingPage(
 		`<meta property="og:title" content="` + html.EscapeString(title) + ` · Learnloom">` +
 		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
 		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		`<meta name="twitter:card" content="summary">` +
+		renderSocialImageMetadata(s.cfg.ApexOrigin) +
 		`<meta name="twitter:title" content="` + html.EscapeString(title) + ` · Learnloom">` +
 		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
 		`<style>` + readingCSS + `</style></head><body>` + body + `</body></html>`

@@ -309,7 +309,12 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	body.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8">`)
 	body.WriteString(`<meta name="viewport" content="width=device-width,initial-scale=1">`)
 	body.WriteString(`<link rel="icon" href="/favicon.svg" type="image/svg+xml">`)
-	body.WriteString(renderSEOHead(page.Title+" | Learnloom", page.Description, canonical))
+	body.WriteString(renderSEOHead(
+		page.Title+" | Learnloom",
+		page.Description,
+		canonical,
+		strings.TrimSuffix(canonical, page.Path),
+	))
 	body.WriteString(`<style>` + seoCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
 	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
@@ -353,7 +358,7 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	return body.String()
 }
 
-func renderSEOHead(title, description, canonical string) string {
+func renderSEOHead(title, description, canonical, apexOrigin string) string {
 	schema := map[string]any{
 		"@context": "https://schema.org",
 		"@graph": []any{
@@ -386,7 +391,7 @@ func renderSEOHead(title, description, canonical string) string {
 		`<meta property="og:title" content="` + html.EscapeString(title) + `">` +
 		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
 		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		`<meta name="twitter:card" content="summary">` +
+		renderSocialImageMetadata(apexOrigin) +
 		`<meta name="twitter:title" content="` + html.EscapeString(title) + `">` +
 		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
 		`<script type="application/ld+json">` + string(encoded) + `</script>`
@@ -409,7 +414,7 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 		`content="`+html.EscapeString(description)+`"`,
 		1,
 	)
-	head := renderSEOHead(title, description, canonical)
+	head := renderSEOHead(title, description, canonical, apexOrigin)
 	head = strings.Replace(head, "<title>"+html.EscapeString(title)+"</title>", "", 1)
 	head = strings.Replace(head, `<meta name="description" content="`+html.EscapeString(description)+`">`, "", 1)
 	document = strings.Replace(

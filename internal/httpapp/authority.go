@@ -411,7 +411,11 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 	body.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8">`)
 	body.WriteString(`<meta name="viewport" content="width=device-width,initial-scale=1">`)
 	body.WriteString(`<link rel="icon" href="/favicon.svg" type="image/svg+xml">`)
-	body.WriteString(renderAuthorityHead(page, canonical))
+	body.WriteString(renderAuthorityHead(
+		page,
+		canonical,
+		strings.TrimSuffix(canonical, page.Path),
+	))
 	body.WriteString(`<style>` + seoCSS + authorityCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
 	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
@@ -460,7 +464,7 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 	return body.String()
 }
 
-func renderAuthorityHead(page authorityPage, canonical string) string {
+func renderAuthorityHead(page authorityPage, canonical, apexOrigin string) string {
 	citations := make([]string, 0, len(page.References))
 	for _, reference := range page.References {
 		citations = append(citations, reference.URL)
@@ -501,7 +505,7 @@ func renderAuthorityHead(page authorityPage, canonical string) string {
 		`<meta property="og:title" content="` + html.EscapeString(title) + `">` +
 		`<meta property="og:description" content="` + html.EscapeString(page.Description) + `">` +
 		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		`<meta name="twitter:card" content="summary">` +
+		renderSocialImageMetadata(apexOrigin) +
 		`<meta name="twitter:title" content="` + html.EscapeString(title) + `">` +
 		`<meta name="twitter:description" content="` + html.EscapeString(page.Description) + `">` +
 		`<script type="application/ld+json">` + string(encoded) + `</script>`

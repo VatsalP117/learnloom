@@ -259,6 +259,10 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
 		return
 	}
+	if request.URL.Path == socialImagePath {
+		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
+		return
+	}
 	if isFaviconPath(request.URL.Path) {
 		s.serveStatic(response, request, strings.TrimPrefix(request.URL.Path, "/"))
 		return
@@ -480,7 +484,9 @@ func (s *Server) serveStatic(
 ) {
 	clean := path.Clean(name)
 	if clean != name ||
-		(clean != "favicon.svg" && clean != "favicon-leaf.svg" && !strings.HasPrefix(clean, "assets/")) {
+		(clean != "favicon.svg" && clean != "favicon-leaf.svg" &&
+			clean != strings.TrimPrefix(socialImagePath, "/") &&
+			!strings.HasPrefix(clean, "assets/")) {
 		writeProblem(response, http.StatusNotFound, "not_found", "Asset not found.")
 		return
 	}

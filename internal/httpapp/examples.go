@@ -82,7 +82,14 @@ func renderExamplesDocument(
 	body.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8">`)
 	body.WriteString(`<meta name="viewport" content="width=device-width,initial-scale=1">`)
 	body.WriteString(`<link rel="icon" href="/favicon.svg" type="image/svg+xml">`)
-	body.WriteString(renderExamplesHead(examples, title, description, canonical, rootDomain))
+	body.WriteString(renderExamplesHead(
+		examples,
+		title,
+		description,
+		canonical,
+		rootDomain,
+		strings.TrimSuffix(canonical, "/examples"),
+	))
 	body.WriteString(`<style>` + seoCSS + examplesCSS + `</style></head><body>`)
 	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
 	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
@@ -125,7 +132,7 @@ func renderExamplesDocument(
 
 func renderExamplesHead(
 	examples []featuredExample,
-	title, description, canonical, rootDomain string,
+	title, description, canonical, rootDomain, apexOrigin string,
 ) string {
 	parts := make([]map[string]any, 0, len(examples))
 	for _, example := range examples {
@@ -152,7 +159,7 @@ func renderExamplesHead(
 		`<meta property="og:title" content="` + html.EscapeString(title) + `">` +
 		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
 		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		`<meta name="twitter:card" content="summary">` +
+		renderSocialImageMetadata(apexOrigin) +
 		`<meta name="twitter:title" content="` + html.EscapeString(title) + `">` +
 		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
 		`<script type="application/ld+json">` + string(encoded) + `</script>`
