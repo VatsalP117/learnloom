@@ -24,8 +24,8 @@ func TestEmbeddedMigrationLedgerIsContiguous(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 11 {
-		t.Fatalf("embedded migration version = %d, want 11", version)
+	if version != 12 {
+		t.Fatalf("embedded migration version = %d, want 12", version)
 	}
 }
 

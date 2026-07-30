@@ -31,7 +31,7 @@ export default function LibraryPage() {
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Your lasting archive</p>
           <h1>Library</h1>
-          <p>Find a lesson again by title, stream, or subject.</p>
+          <p>Find a lesson by title, concept, source, retrieval question, or stream.</p>
         </header>
 
         <div className="contextual-toolbar">
@@ -54,10 +54,10 @@ export default function LibraryPage() {
           </div>
           <label className="contextual-search">
             <Search size={15} />
-            <span className="sr-only">Search lessons and topics</span>
+            <span className="sr-only">Search lessons, concepts, sources, and retrieval prompts</span>
             <input
               type="search"
-              placeholder="Search lessons and topics"
+              placeholder="Search concepts, sources, or questions"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -95,6 +95,13 @@ export default function LibraryPage() {
                 </div>
                 <h2>{lesson.title}</h2>
                 <p>{lesson.newsletter.topic}</p>
+                {lesson.concepts?.length ? (
+                  <div className="library-concepts">
+                    {lesson.concepts.slice(0, 3).map((concept) => (
+                      <span key={concept}>{concept}</span>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="lesson-library-footer">
                   <span><Clock3 size={13} />{lesson.newsletter.lessonMinutes} min</span>
                   <span><BookOpen size={13} />{formatShortDate(lesson.createdAt)}</span>

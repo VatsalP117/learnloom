@@ -76,6 +76,8 @@ type LibraryLesson struct {
 	CreatedAt        time.Time       `json:"createdAt"`
 	Newsletter       LibraryStream   `json:"newsletter"`
 	Progress         *LessonProgress `json:"progress,omitempty"`
+	Concepts         []string        `json:"concepts,omitempty"`
+	SourceTitles     []string        `json:"sourceTitles,omitempty"`
 }
 
 type LibraryStream struct {
@@ -711,6 +713,33 @@ func (s *Store) CompleteIssue(
 	`, newsletterID, issueID, input.History.Date, history, input.CompletedAt); err != nil {
 		return fmt.Errorf("append Learning History: %w", err)
 	}
+	retrievalPrompts := make([]string, 0, len(input.History.RetrievalPrompts))
+	for _, prompt := range input.History.RetrievalPrompts {
+		retrievalPrompts = append(retrievalPrompts, prompt.Prompt)
+	}
+	searchText := strings.Join([]string{
+		input.Title,
+		strings.Join(input.History.Concepts, " "),
+		strings.Join(input.History.SourceTitles, " "),
+		strings.Join(retrievalPrompts, " "),
+	}, " ")
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO lesson_search_documents (
+			issue_id, account_id, newsletter_id, title, concepts,
+			source_titles, retrieval_prompts, search_text, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (issue_id) DO UPDATE SET
+			title = EXCLUDED.title,
+			concepts = EXCLUDED.concepts,
+			source_titles = EXCLUDED.source_titles,
+			retrieval_prompts = EXCLUDED.retrieval_prompts,
+			search_text = EXCLUDED.search_text
+	`, issueID, accountID, newsletterID, input.Title, input.History.Concepts,
+		input.History.SourceTitles, retrievalPrompts, searchText,
+		input.CompletedAt); err != nil {
+		return fmt.Errorf("project Lesson search document: %w", err)
+	}
 	for _, concept := range input.History.ConceptStates {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO issue_concepts (
@@ -1033,16 +1062,23 @@ func (s *Store) ListLibraryLessonsPage(
 			lp.issue_id::text,
 			COALESCE(lp.progress, 0),
 			lp.completed_at,
-			lp.updated_at
+			lp.updated_at,
+			COALESCE(search.concepts, '{}'),
+			COALESCE(search.source_titles, '{}')
 		FROM issues i
 		JOIN newsletters n ON n.id = i.newsletter_id
+		LEFT JOIN lesson_search_documents search ON search.issue_id = i.id
 		LEFT JOIN lesson_progress lp
 		  ON lp.account_id = n.owner_account_id AND lp.issue_id = i.id
 		WHERE n.owner_account_id = $1
 		  AND i.status = 'generated'
 		  AND (
 			$2 = '' OR
-			strpos(lower(concat_ws(' ', i.dossier_title, n.name, n.topic)), lower($2)) > 0
+			search.document @@ websearch_to_tsquery('english', $2) OR
+			strpos(
+			  lower(concat_ws(' ', i.dossier_title, n.name, n.topic, search.search_text)),
+			  lower($2)
+			) > 0
 		  )
 		  AND (
 			$3 = 'all' OR
@@ -1086,6 +1122,8 @@ func (s *Store) ListLibraryLessonsPage(
 			&progress,
 			&completedAt,
 			&updatedAt,
+			&lesson.Concepts,
+			&lesson.SourceTitles,
 		); err != nil {
 			return nil, nil, err
 		}

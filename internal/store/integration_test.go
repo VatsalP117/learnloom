@@ -287,6 +287,8 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		History: domain.LearningHistoryEntry{
 			Date: "2026-07-19", GeneratedAt: now,
 			LessonSummary: "Summary", LearningObjective: "Objective",
+			Concepts:     []string{"causal mechanism", "evidence quality"},
+			SourceTitles: []string{"Systems evidence review"},
 			RetrievalPrompts: []domain.RetrievalPrompt{
 				{
 					ID: "retrieval-1", Prompt: "What is the mechanism?",
@@ -324,6 +326,30 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	history, err := database.LoadLearningHistory(ctx, newsletter.Newsletter.ID, 14)
 	if err != nil || len(history) != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
+	}
+	for _, search := range []string{
+		"causal mechanism",
+		"Systems evidence",
+		"does it fail",
+	} {
+		matches, cursor, err := database.ListLibraryLessonsPage(
+			ctx,
+			account.ID,
+			search,
+			LibraryAll,
+			24,
+			nil,
+		)
+		if err != nil || len(matches) != 1 || matches[0].ID != issue.ID ||
+			len(matches[0].Concepts) != 2 || cursor != nil {
+			t.Fatalf(
+				"Library search %q=%#v cursor=%#v err=%v",
+				search,
+				matches,
+				cursor,
+				err,
+			)
+		}
 	}
 	reviews, err := database.ListWorkspaceReviews(ctx, account.ID, 8, now.Add(37*time.Second))
 	if err != nil || len(reviews) != 0 {

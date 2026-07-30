@@ -565,6 +565,14 @@
   color: var(--atelier-muted);
   font-size: 9px;
 }
+.library-concepts { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 12px; }
+.library-concepts span {
+  padding: 4px 7px;
+  color: var(--atelier-muted);
+  font-size: 8px;
+  background: var(--atelier-paper-soft);
+  border: 1px solid var(--atelier-line);
+}
 .lesson-library-footer span { display: flex; align-items: center; gap: 5px; }
 .library-progress { position: absolute; inset: auto 0 0; height: 3px; background: rgba(21, 23, 25, 0.1); }
 .library-progress i { height: 100%; display: block; background: var(--atelier-ink); }

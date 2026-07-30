@@ -87,6 +87,8 @@ export interface LibraryLesson extends Issue {
     completedAt?: string;
     updatedAt?: string;
   };
+  concepts?: string[];
+  sourceTitles?: string[];
 }
 
 export interface LibrarySnapshot {
