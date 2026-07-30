@@ -286,6 +286,14 @@ func (s *Server) handleControl(
 				s.issueNotes(response, request, current, route[2])
 				return
 			}
+			if route[3] == "corrections" {
+				s.issueCorrections(response, request, current, route[2])
+				return
+			}
+			if route[3] == "moderation" {
+				s.issueModeration(response, request, current, route[2])
+				return
+			}
 			if route[3] == "export" {
 				s.issueExport(response, request, current, route[2])
 				return
@@ -308,6 +316,15 @@ func (s *Server) handleControl(
 			return
 		}
 		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if len(route) == 3 && route[0] == "api" && route[1] == "corrections" {
+		s.correctionAction(response, request, current, route[2])
+		return
+	}
+	if len(route) == 4 && route[0] == "api" && route[1] == "reports" &&
+		route[3] == "resolve" {
+		s.reportResolution(response, request, current, route[2])
 		return
 	}
 	if len(route) == 2 && route[0] == "issues" && request.Method == http.MethodGet {

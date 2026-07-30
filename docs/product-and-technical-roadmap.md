@@ -167,6 +167,8 @@ Acceptance:
 
 ## Phase 5 — Trust, retrieval, and library depth
 
+Status: implemented in migrations 012 through 014.
+
 Product:
 
 - Add inline citation interactions, copyable citations, and “question this

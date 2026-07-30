@@ -13,10 +13,11 @@ import {
   Map,
   MessageCircleQuestion,
   NotebookPen,
+  ShieldCheck,
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CalmLoader from "./CalmLoader";
 import { AtelierError } from "./LearningShell";
 import { apiFetch, apiJSON } from "./api";
@@ -407,10 +408,188 @@ function LessonReader({
               draft={noteDraft}
               setDraft={setNoteDraft}
             />
+            <PublisherTrustPanel issue={issue} />
           </aside>
         </div>
       </article>
     </div>
+  );
+}
+
+function PublisherTrustPanel({ issue }) {
+  const [moderation, setModeration] = useState(null);
+  const [correction, setCorrection] = useState("");
+  const [holdReason, setHoldReason] = useState("");
+  const [resolutionReasons, setResolutionReasons] = useState({});
+  const [status, setStatus] = useState("");
+
+  const refresh = useCallback(async () => {
+    const next = await apiJSON(
+      `/api/issues/${encodeURIComponent(issue.id)}/moderation`,
+    );
+    setModeration(next);
+    setHoldReason(next.reason ?? "");
+  }, [issue.id]);
+
+  useEffect(() => {
+    void refresh().catch((requestError) => setStatus(requestError.message));
+  }, [refresh]);
+
+  if (!moderation) {
+    return (
+      <section className="reader-trust">
+        <p className="atelier-eyebrow"><ShieldCheck size={13} /> Publishing trust</p>
+        <small>{status || "Loading publishing controls…"}</small>
+      </section>
+    );
+  }
+
+  async function publishCorrection(event) {
+    event.preventDefault();
+    setStatus("");
+    try {
+      await apiJSON(`/api/issues/${encodeURIComponent(issue.id)}/corrections`, {
+        method: "POST",
+        body: { body: correction },
+      });
+      setCorrection("");
+      await refresh();
+      setStatus("Correction published.");
+    } catch (requestError) {
+      setStatus(requestError.message);
+    }
+  }
+
+  async function setModerationState(state) {
+    setStatus("");
+    try {
+      await apiJSON(`/api/issues/${encodeURIComponent(issue.id)}/moderation`, {
+        method: "POST",
+        body: {
+          state,
+          reason: state === "held" ? holdReason : "Review completed.",
+        },
+      });
+      await refresh();
+      setStatus(state === "held" ? "Public page held." : "Public page cleared.");
+    } catch (requestError) {
+      setStatus(requestError.message);
+    }
+  }
+
+  async function resolveReport(report, nextStatus) {
+    const reason = (resolutionReasons[report.id] ?? "").trim();
+    if (!reason) {
+      setStatus("Add a resolution reason first.");
+      return;
+    }
+    setStatus("");
+    try {
+      await apiJSON(`/api/reports/${encodeURIComponent(report.id)}/resolve`, {
+        method: "POST",
+        body: { status: nextStatus, reason },
+      });
+      await refresh();
+      setStatus(nextStatus === "resolved" ? "Report resolved." : "Report dismissed.");
+    } catch (requestError) {
+      setStatus(requestError.message);
+    }
+  }
+
+  return (
+    <section className="reader-trust">
+      <p className="atelier-eyebrow"><ShieldCheck size={13} /> Publishing trust</p>
+      <p>
+        {moderation.state === "held"
+          ? "This page is held from public reading and search."
+          : issue.publicationState === "published"
+            ? "This lesson is public and eligible for reading."
+            : "Publish this lesson before sharing corrections publicly."}
+      </p>
+      <label>
+        Moderation reason
+        <textarea
+          maxLength={1000}
+          rows={3}
+          placeholder="Why should this page be held?"
+          value={holdReason}
+          onChange={(event) => setHoldReason(event.target.value)}
+        />
+      </label>
+      <div className="reader-trust-actions">
+        {moderation.state === "held" ? (
+          <button type="button" onClick={() => setModerationState("clear")}>
+            Clear hold
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={!holdReason.trim()}
+            onClick={() => setModerationState("held")}
+          >
+            Hold public page
+          </button>
+        )}
+      </div>
+
+      <form onSubmit={publishCorrection}>
+        <label>
+          Public correction
+          <textarea
+            maxLength={2000}
+            rows={4}
+            placeholder="State what changed and what readers should know."
+            value={correction}
+            onChange={(event) => setCorrection(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={!correction.trim()}>Publish correction</button>
+      </form>
+      {moderation.corrections?.map((item) => (
+        <article className="reader-correction" key={item.id}>
+          <p>{item.body}</p>
+          <button
+            type="button"
+            onClick={async () => {
+              await apiJSON(`/api/corrections/${encodeURIComponent(item.id)}`, {
+                method: "DELETE",
+              });
+              await refresh();
+              setStatus("Correction retracted.");
+            }}
+          >
+            Retract
+          </button>
+        </article>
+      ))}
+
+      {moderation.reports?.filter((report) => report.status === "open").map((report) => (
+        <article className="reader-report" key={report.id}>
+          <strong>{report.category}</strong>
+          <p>{report.details || "No additional details supplied."}</p>
+          <textarea
+            aria-label={`Resolution reason for ${report.category} report`}
+            maxLength={1000}
+            rows={3}
+            placeholder="Record what you checked and decided."
+            value={resolutionReasons[report.id] ?? ""}
+            onChange={(event) => setResolutionReasons((current) => ({
+              ...current,
+              [report.id]: event.target.value,
+            }))}
+          />
+          <div>
+            <button type="button" onClick={() => resolveReport(report, "resolved")}>
+              Resolve
+            </button>
+            <button type="button" onClick={() => resolveReport(report, "dismissed")}>
+              Dismiss
+            </button>
+          </div>
+        </article>
+      ))}
+      {status ? <small role="status">{status}</small> : null}
+    </section>
   );
 }
 

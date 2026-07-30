@@ -38,7 +38,9 @@ func (s *Store) ListPublicNewsletters(
 	rows, err := s.pool.Query(ctx, `
 		SELECT n.id::text, n.name, n.topic, n.public_slug,
 		       count(i.id) FILTER (
-		         WHERE i.status = 'generated' AND i.publication_state = 'published'
+		         WHERE i.status = 'generated'
+		           AND i.publication_state = 'published'
+		           AND i.moderation_state = 'clear'
 		       )::int
 		FROM newsletters n
 		JOIN accounts a ON a.id = n.owner_account_id
@@ -89,6 +91,7 @@ func (s *Store) ListPublicIssues(
 		WHERE s.username = $1 AND s.visibility = 'public'
 		  AND a.status = 'active' AND n.site_visible
 		  AND i.status = 'generated' AND i.publication_state = 'published'
+		  AND i.moderation_state = 'clear'
 		  AND ($2 = '' OR n.public_slug = $2)
 		ORDER BY i.completed_at DESC, i.id
 		LIMIT $3
@@ -138,6 +141,7 @@ func (s *Store) GetPublicIssue(
 		  AND a.status = 'active' AND n.site_visible
 		  AND i.public_id = $2 AND i.status = 'generated'
 		  AND i.publication_state = 'published'
+		  AND i.moderation_state = 'clear'
 	`, strings.ToLower(username), rawID)
 	var issue PublicIssue
 	err := row.Scan(

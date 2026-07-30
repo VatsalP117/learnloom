@@ -618,6 +618,103 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || len(publicIssues) != 1 {
 		t.Fatalf("publicIssues=%#v err=%v", publicIssues, err)
 	}
+	historyBeforeModeration := 0
+	if err := database.pool.QueryRow(
+		ctx,
+		"SELECT count(*) FROM learning_history WHERE issue_id = $1",
+		issue.ID,
+	).Scan(&historyBeforeModeration); err != nil {
+		t.Fatal(err)
+	}
+	reportID, err := database.CreatePublicContentReport(
+		ctx,
+		site.Username,
+		publicIssues[0].PublicID,
+		"citation",
+		"The cited source does not support this sentence.",
+		strings.Repeat("f", 64),
+		now.Add(41*time.Second),
+	)
+	if err != nil || reportID == "" {
+		t.Fatalf("create public content report id=%q err=%v", reportID, err)
+	}
+	correction, err := database.AddPublicCorrection(
+		ctx,
+		account.ID,
+		issue.ID,
+		"The source supports a narrower claim; the public wording has been corrected here.",
+		now.Add(42*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("add public correction: %v", err)
+	}
+	if err := database.SetIssueModerationState(
+		ctx,
+		account.ID,
+		issue.ID,
+		"held",
+		"Reviewing the citation report.",
+		now.Add(43*time.Second),
+	); err != nil {
+		t.Fatalf("hold public issue: %v", err)
+	}
+	publicIssues, err = database.ListPublicIssues(ctx, site.Username, "", 10)
+	if err != nil || len(publicIssues) != 0 {
+		t.Fatalf("held issue remained index eligible: %#v %v", publicIssues, err)
+	}
+	if err := database.ResolvePublicContentReport(
+		ctx,
+		account.ID,
+		reportID,
+		"resolved",
+		"Published a correction and verified the cited source.",
+		now.Add(44*time.Second),
+	); err != nil {
+		t.Fatalf("resolve public content report: %v", err)
+	}
+	if err := database.SetIssueModerationState(
+		ctx,
+		account.ID,
+		issue.ID,
+		"clear",
+		"Correction published and source verified.",
+		now.Add(45*time.Second),
+	); err != nil {
+		t.Fatalf("clear public issue: %v", err)
+	}
+	moderation, err := database.GetIssueModeration(ctx, account.ID, issue.ID)
+	if err != nil || moderation.State != "clear" ||
+		len(moderation.Corrections) != 1 || len(moderation.Reports) != 1 ||
+		len(moderation.Actions) < 4 {
+		t.Fatalf("issue moderation=%#v err=%v", moderation, err)
+	}
+	historyAfterModeration := 0
+	if err := database.pool.QueryRow(
+		ctx,
+		"SELECT count(*) FROM learning_history WHERE issue_id = $1",
+		issue.ID,
+	).Scan(&historyAfterModeration); err != nil {
+		t.Fatal(err)
+	}
+	if historyAfterModeration != historyBeforeModeration {
+		t.Fatalf(
+			"public correction mutated private history: before=%d after=%d",
+			historyBeforeModeration,
+			historyAfterModeration,
+		)
+	}
+	if err := database.RetractPublicCorrection(
+		ctx,
+		account.ID,
+		correction.ID,
+		now.Add(46*time.Second),
+	); err != nil {
+		t.Fatalf("retract public correction: %v", err)
+	}
+	publicIssues, err = database.ListPublicIssues(ctx, site.Username, "", 10)
+	if err != nil || len(publicIssues) != 1 {
+		t.Fatalf("cleared issue did not regain eligibility: %#v %v", publicIssues, err)
+	}
 	deliveryClaim, err := database.ClaimNextDelivery(
 		ctx,
 		now.Add(38*time.Second),

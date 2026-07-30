@@ -18,6 +18,13 @@ func (s *Server) handleReading(
 	request *http.Request,
 	host RequestHost,
 ) {
+	if request.Method == http.MethodPost {
+		route := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
+		if len(route) == 2 && route[0] == "report" {
+			s.handlePublicContentReport(response, request, host, route[1])
+			return
+		}
+	}
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		methodNotAllowed(response, http.MethodGet, http.MethodHead)
 		return
@@ -245,6 +252,12 @@ func (s *Server) renderPublicDossier(
 		1,
 	)
 	document = decoratePublicDossier(document, site, issue)
+	corrections, err := s.store.ListPublicCorrections(request.Context(), issue.ID)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	document = decoratePublicModeration(document, issue, corrections)
 	s.applyReadingHeaders(response, site.SearchIndexing)
 	response.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -343,7 +356,7 @@ func (s *Server) applyReadingHeaders(response http.ResponseWriter, indexable boo
 	response.Header().Set(
 		"Content-Security-Policy",
 		"default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; "+
-			"font-src 'self'; base-uri 'none'; form-action 'none'; "+
+			"font-src 'self'; base-uri 'none'; form-action 'self'; "+
 			"frame-ancestors 'none'; object-src 'none'",
 	)
 	if indexable {
