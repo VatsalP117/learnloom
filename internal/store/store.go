@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const currentSchemaVersion = 4
-
 var (
 	ErrNotFound         = errors.New("not found")
 	ErrConflict         = errors.New("conflict")
@@ -82,11 +80,15 @@ func (s *Store) Ready(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if version != currentSchemaVersion {
+	expectedVersion, err := expectedSchemaVersion()
+	if err != nil {
+		return err
+	}
+	if version != expectedVersion {
 		return fmt.Errorf(
 			"database schema is version %d; expected %d",
 			version,
-			currentSchemaVersion,
+			expectedVersion,
 		)
 	}
 	return nil

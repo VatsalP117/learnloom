@@ -31,7 +31,14 @@ export default function IssueDetail({ issueId }) {
     apiJSON(`/api/issues/${encodeURIComponent(issueId)}`, {
       signal: controller.signal,
     })
-      .then(setSnapshot)
+      .then((nextSnapshot) => {
+        setSnapshot(nextSnapshot);
+        void apiJSON(`/api/issues/${encodeURIComponent(issueId)}/opened`, {
+          method: "POST",
+        }).catch(() => {
+          // Activation measurement must never interrupt reading.
+        });
+      })
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);
       });
@@ -145,6 +152,7 @@ function LessonReader({
   dossier,
   newsletter,
   sources,
+  feedback,
   progress,
   completionError,
   onComplete,
@@ -208,6 +216,8 @@ function LessonReader({
               <p>{dossier.application}</p>
             </section>
 
+            <LessonFeedbackPanel issueId={issue.id} initialFeedback={feedback} />
+
             <section className="reader-complete">
               <span><CheckCircle2 size={23} /></span>
               <h2>{completed ? "Lesson complete." : "Close the loop."}</h2>
@@ -267,6 +277,113 @@ function LessonReader({
         </div>
       </article>
     </div>
+  );
+}
+
+export function LessonFeedbackPanel({ issueId, initialFeedback }) {
+  const [values, setValues] = useState({
+    difficulty: initialFeedback?.difficulty ?? "",
+    relevance: initialFeedback?.relevance ?? "",
+    recallConfidence: initialFeedback?.recallConfidence ?? "",
+  });
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!values.difficulty && !values.relevance && !values.recallConfidence) return;
+    setSaving(true);
+    setStatus("");
+    try {
+      await apiJSON(`/api/issues/${encodeURIComponent(issueId)}/feedback`, {
+        method: "POST",
+        body: {
+          difficulty: values.difficulty || undefined,
+          relevance: values.relevance || undefined,
+          recallConfidence: values.recallConfidence || undefined,
+        },
+      });
+      setStatus("Saved to your learning history.");
+    } catch (requestError) {
+      setStatus(
+        requestError instanceof Error
+          ? requestError.message
+          : "Your reflection could not be saved.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="reader-feedback">
+      <p className="atelier-eyebrow">Shape what comes next</p>
+      <h2>How did this lesson fit you?</h2>
+      <p>These signals are private and record how the lesson fit you.</p>
+      <FeedbackChoice
+        label="Difficulty"
+        value={values.difficulty}
+        options={[
+          ["too_basic", "Too basic"],
+          ["right", "About right"],
+          ["too_advanced", "Too advanced"],
+        ]}
+        onChange={(difficulty) => setValues((current) => ({ ...current, difficulty }))}
+      />
+      <FeedbackChoice
+        label="Relevance"
+        value={values.relevance}
+        options={[
+          ["not_relevant", "Not relevant"],
+          ["somewhat_relevant", "Somewhat"],
+          ["very_relevant", "Very relevant"],
+        ]}
+        onChange={(relevance) => setValues((current) => ({ ...current, relevance }))}
+      />
+      <FeedbackChoice
+        label="Recall confidence"
+        value={values.recallConfidence}
+        options={[
+          ["low", "Needs work"],
+          ["medium", "Partial"],
+          ["high", "Solid"],
+        ]}
+        onChange={(recallConfidence) =>
+          setValues((current) => ({ ...current, recallConfidence }))}
+      />
+      <button
+        className="atelier-primary"
+        type="button"
+        disabled={
+          saving ||
+          (!values.difficulty && !values.relevance && !values.recallConfidence)
+        }
+        onClick={save}
+      >
+        {saving ? "Saving…" : "Save reflection"}
+      </button>
+      {status ? <span role="status">{status}</span> : null}
+    </section>
+  );
+}
+
+function FeedbackChoice({ label, value, options, onChange }) {
+  return (
+    <fieldset>
+      <legend>{label}</legend>
+      <div>
+        {options.map(([optionValue, optionLabel]) => (
+          <button
+            className={value === optionValue ? "selected" : ""}
+            type="button"
+            aria-pressed={value === optionValue}
+            onClick={() => onChange(optionValue)}
+            key={optionValue}
+          >
+            {optionLabel}
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

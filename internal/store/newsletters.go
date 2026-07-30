@@ -189,6 +189,14 @@ func (s *Store) CreateNewsletter(
 	if err := tx.Commit(ctx); err != nil {
 		return CreateNewsletterResult{}, fmt.Errorf("commit Newsletter: %w", err)
 	}
+	_ = s.RecordProductEvent(
+		ctx,
+		accountID,
+		ProductEventStreamCreated,
+		"stream",
+		record.ID,
+		now,
+	)
 	return CreateNewsletterResult{Newsletter: record, FirstIssue: issue}, nil
 }
 

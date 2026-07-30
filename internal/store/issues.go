@@ -636,10 +636,12 @@ func (s *Store) CompleteIssue(
 	}
 	defer rollback(tx)
 	var newsletterID string
+	var accountID string
 	var emailEnabled bool
 	var primaryEmail *string
 	err = tx.QueryRow(ctx, `
-		SELECT i.newsletter_id::text, n.email_enabled, a.primary_email
+		SELECT i.newsletter_id::text, n.owner_account_id::text,
+		       n.email_enabled, a.primary_email
 		FROM issues i
 		JOIN newsletters n ON n.id = i.newsletter_id
 		JOIN accounts a ON a.id = n.owner_account_id
@@ -648,6 +650,7 @@ func (s *Store) CompleteIssue(
 		FOR UPDATE OF i
 	`, issueID, input.ClaimToken, input.CompletedAt).Scan(
 		&newsletterID,
+		&accountID,
 		&emailEnabled,
 		&primaryEmail,
 	)
@@ -719,7 +722,18 @@ func (s *Store) CompleteIssue(
 			return fmt.Errorf("enqueue Delivery Receipt: %w", err)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	_ = s.RecordProductEvent(
+		ctx,
+		accountID,
+		ProductEventLessonGenerated,
+		"lesson",
+		issueID,
+		input.CompletedAt,
+	)
+	return nil
 }
 
 func (s *Store) FailIssue(

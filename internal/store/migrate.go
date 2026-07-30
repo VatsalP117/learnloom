@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -43,6 +44,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("read embedded migrations: %w", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	if _, err := migrationLedgerVersion(entries); err != nil {
+		return err
+	}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
 			continue
@@ -87,6 +91,43 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func expectedSchemaVersion() (int, error) {
+	entries, err := fs.ReadDir(migrationFiles, "migrations")
+	if err != nil {
+		return 0, fmt.Errorf("read embedded migrations: %w", err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	return migrationLedgerVersion(entries)
+}
+
+func migrationLedgerVersion(entries []fs.DirEntry) (int, error) {
+	expected := 1
+	found := false
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		found = true
+		version, err := migrationVersion(entry.Name())
+		if err != nil {
+			return 0, err
+		}
+		if version != expected {
+			return 0, fmt.Errorf(
+				"migration %q has version %d; expected contiguous version %d",
+				entry.Name(),
+				version,
+				expected,
+			)
+		}
+		expected++
+	}
+	if !found {
+		return 0, errors.New("no embedded migrations were found")
+	}
+	return expected - 1, nil
 }
 
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {

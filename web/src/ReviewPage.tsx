@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
+import { apiJSON } from "./api";
 import { reviewState, updateReviewState } from "./learningState";
 import { useWorkspace } from "./useWorkspace";
 
@@ -79,7 +80,19 @@ export default function ReviewPage() {
                 and rate your recall.
               </p>
               {!contextOpen ? (
-                <button className="atelier-primary" type="button" onClick={() => setContextOpen(true)}>
+                <button
+                  className="atelier-primary"
+                  type="button"
+                  onClick={() => {
+                    setContextOpen(true);
+                    void apiJSON(
+                      `/api/issues/${encodeURIComponent(active.issueId)}/review-attempted`,
+                      { method: "POST" },
+                    ).catch(() => {
+                      // Activation measurement must never interrupt review.
+                    });
+                  }}
+                >
                   Reveal lesson context
                 </button>
               ) : (

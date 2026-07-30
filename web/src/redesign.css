@@ -860,6 +860,54 @@
 .reader-complete > span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--atelier-ink); }
 .reader-complete > p { color: var(--atelier-muted); font-size: 11px; line-height: 1.6; }
 .reader-complete > a { display: flex; align-items: center; gap: 6px; margin-top: 18px; color: var(--atelier-ink); font-size: 10px; font-weight: 750; }
+.reader-feedback {
+  display: grid;
+  gap: 18px;
+  margin: 65px 0;
+  padding: 32px;
+  border: 1px solid var(--atelier-line);
+  background: #f7f3eb;
+}
+.reader-feedback h2 {
+  margin: -8px 0 0;
+  font-family: var(--atelier-display);
+  font-size: 30px;
+  line-height: 1.16;
+}
+.reader-feedback > p:not(.atelier-eyebrow) {
+  margin: -8px 0 0;
+  color: var(--atelier-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.reader-feedback fieldset { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.reader-feedback legend {
+  color: var(--atelier-muted);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.reader-feedback fieldset > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.reader-feedback fieldset button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--atelier-line);
+  border-radius: 999px;
+  color: var(--atelier-ink);
+  background: white;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.reader-feedback fieldset button.selected {
+  border-color: var(--atelier-ink);
+  color: white;
+  background: var(--atelier-ink);
+}
+.reader-feedback > .atelier-primary { justify-self: start; }
+.reader-feedback > span { color: var(--atelier-muted); font-size: 9px; }
 
 /* Create a learning stream */
 .create-page {
@@ -1487,6 +1535,7 @@
   .reader-section > p:not(.atelier-eyebrow) { font-size: 16px; }
   .reader-objective { grid-template-columns: 1fr; }
   .reader-retrieval { margin: 45px -8px; padding: 22px 14px; }
+  .reader-feedback { margin: 45px -8px; padding: 22px 14px; }
   .reader-retrieval article { grid-template-columns: 24px 1fr; }
   .reader-retrieval article button,
   .reader-retrieval article small { grid-column: 2; justify-self: start; }

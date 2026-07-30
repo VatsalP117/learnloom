@@ -319,6 +319,53 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || completedLesson.Progress != 100 || completedLesson.CompletedAt == nil {
 		t.Fatalf("completed lesson=%#v err=%v", completedLesson, err)
 	}
+	difficulty := "right"
+	relevance := "very_relevant"
+	recall := "medium"
+	feedback, err := database.SaveLessonFeedback(
+		ctx,
+		account.ID,
+		issue.ID,
+		LessonFeedbackInput{
+			Difficulty:       &difficulty,
+			Relevance:        &relevance,
+			RecallConfidence: &recall,
+		},
+		now.Add(38*time.Second),
+	)
+	if err != nil || feedback.Difficulty == nil || *feedback.Difficulty != difficulty {
+		t.Fatalf("lesson feedback=%#v err=%v", feedback, err)
+	}
+	feedbackSnapshot, err := database.GetLessonFeedback(ctx, account.ID, issue.ID)
+	if err != nil || feedbackSnapshot == nil ||
+		feedbackSnapshot.RecallConfidence == nil ||
+		*feedbackSnapshot.RecallConfidence != recall {
+		t.Fatalf("lesson feedback snapshot=%#v err=%v", feedbackSnapshot, err)
+	}
+	if err := database.RecordOwnedLessonEvent(
+		ctx,
+		account.ID,
+		issue.ID,
+		ProductEventLessonOpened,
+		now.Add(38*time.Second),
+	); err != nil {
+		t.Fatalf("record lesson opened: %v", err)
+	}
+	var eventCount int
+	if err := database.pool.QueryRow(ctx, `
+		SELECT count(*)
+		FROM product_events
+		WHERE account_id = $1
+		  AND event_name IN (
+		    'signup_completed', 'stream_created', 'lesson_generated',
+		    'lesson_opened', 'lesson_completed'
+		  )
+	`, account.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 5 {
+		t.Fatalf("activation milestone count=%d, want 5", eventCount)
+	}
 	progress, err := database.ListLessonProgress(ctx, account.ID)
 	if err != nil || len(progress) != 1 || progress[0].IssueID != issue.ID {
 		t.Fatalf("lesson progress=%#v err=%v", progress, err)

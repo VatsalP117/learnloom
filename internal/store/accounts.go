@@ -61,6 +61,14 @@ func (s *Store) EnsureAccount(
 	if account.Status != domain.AccountActive {
 		return domain.Account{}, ErrForbidden
 	}
+	_ = s.RecordProductEvent(
+		ctx,
+		account.ID,
+		ProductEventSignupCompleted,
+		"account",
+		account.ID,
+		now,
+	)
 	return account, nil
 }
 
@@ -136,6 +144,15 @@ func (s *Store) SyncAccountIdentity(
 		); err != nil {
 			return domain.Account{}, err
 		}
+	} else {
+		_ = s.RecordProductEvent(
+			ctx,
+			account.ID,
+			ProductEventSignupCompleted,
+			"account",
+			account.ID,
+			now,
+		)
 	}
 	return account, nil
 }
@@ -324,6 +341,16 @@ func (s *Store) UpdateSite(
 	}
 	if err != nil {
 		return domain.PersonalSite{}, fmt.Errorf("update Personal Site: %w", err)
+	}
+	if site.SearchIndexing {
+		_ = s.RecordProductEvent(
+			ctx,
+			accountID,
+			ProductEventSearchIndexingEnabled,
+			"site",
+			site.ID,
+			site.UpdatedAt,
+		)
 	}
 	return site, nil
 }

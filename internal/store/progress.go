@@ -94,6 +94,14 @@ func (s *Store) CompleteLesson(
 	if err != nil {
 		return LessonProgress{}, fmt.Errorf("complete lesson: %w", err)
 	}
+	_ = s.RecordProductEvent(
+		ctx,
+		accountID,
+		ProductEventLessonCompleted,
+		"lesson",
+		issueID,
+		now,
+	)
 	return result, nil
 }
 

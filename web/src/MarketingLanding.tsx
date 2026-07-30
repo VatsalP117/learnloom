@@ -166,7 +166,7 @@ export default function MarketingLanding() {
               skeptical review, and retrieval practice.
             </p>
             <ul>
-              <li><Check size={17} /> Sources stay attached to every claim</li>
+              <li><Check size={17} /> Sources remain visible for verification</li>
               <li><Check size={17} /> New ideas connect to your Learning History</li>
               <li><Check size={17} /> Questions turn reading into recall</li>
             </ul>

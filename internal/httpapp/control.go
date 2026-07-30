@@ -852,6 +852,55 @@ func (s *Server) issueAction(
 			return
 		}
 		writeJSON(response, http.StatusOK, progress)
+	case "opened":
+		if err := s.store.RecordOwnedLessonEvent(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			store.ProductEventLessonOpened,
+			time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]string{"status": "recorded"})
+	case "review-attempted":
+		if err := s.store.RecordOwnedLessonEvent(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			store.ProductEventReviewAttempted,
+			time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]string{"status": "recorded"})
+	case "feedback":
+		var body struct {
+			Difficulty       *string `json:"difficulty"`
+			Relevance        *string `json:"relevance"`
+			RecallConfidence *string `json:"recallConfidence"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		feedback, err := s.store.SaveLessonFeedback(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			store.LessonFeedbackInput{
+				Difficulty:       body.Difficulty,
+				Relevance:        body.Relevance,
+				RecallConfidence: body.RecallConfidence,
+			},
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, feedback)
 	case "progress":
 		var body struct {
 			Progress int `json:"progress"`
@@ -934,7 +983,16 @@ func (s *Server) issueDetail(
 		writeProblem(response, http.StatusConflict, "issue_not_generated", "The Issue has no generated Dossier.")
 		return
 	}
-	etag := issueDetailETag(issue)
+	feedback, err := s.store.GetLessonFeedback(
+		request.Context(),
+		current.Account.ID,
+		issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	etag := issueDetailETag(issue, feedback)
 	if requestETagMatches(request, etag) {
 		response.Header().Set("Cache-Control", "private, max-age=300, stale-while-revalidate=3600")
 		response.Header().Set("ETag", etag)
@@ -972,6 +1030,7 @@ func (s *Server) issueDetail(
 		"newsletter": issue.Newsletter,
 		"dossier":    artifactValue.Dossier,
 		"sources":    sources,
+		"feedback":   feedback,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -988,16 +1047,21 @@ func (s *Server) issueDetail(
 	)
 }
 
-func issueDetailETag(issue domain.Issue) string {
+func issueDetailETag(issue domain.Issue, feedback *store.LessonFeedback) string {
 	checksum := issue.ArtifactSHA256
 	if checksum == "" {
 		checksum = issue.ArtifactKey
+	}
+	feedbackVersion := ""
+	if feedback != nil {
+		feedbackVersion = feedback.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
 	value := strings.Join([]string{
 		checksum,
 		string(issue.PublicationState),
 		issue.Title,
 		issue.Newsletter.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		feedbackVersion,
 	}, "\x00")
 	sum := sha256.Sum256([]byte(value))
 	return fmt.Sprintf(`"%x"`, sum)

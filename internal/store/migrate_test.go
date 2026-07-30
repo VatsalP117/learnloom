@@ -18,6 +18,17 @@ func TestMigrationVersion(t *testing.T) {
 	}
 }
 
+func TestEmbeddedMigrationLedgerIsContiguous(t *testing.T) {
+	t.Parallel()
+	version, err := expectedSchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != 7 {
+		t.Fatalf("embedded migration version = %d, want 7", version)
+	}
+}
+
 func TestSearchIndexingMigrationDefaultsOffAndRequiresPublicVisibility(t *testing.T) {
 	t.Parallel()
 	sql, err := migrationFiles.ReadFile("migrations/005_site_search_indexing.sql")
