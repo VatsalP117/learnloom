@@ -69,7 +69,6 @@ func (s *Store) CreateNewsletter(
 	if err != nil {
 		return CreateNewsletterResult{}, err
 	}
-	sources, _ := json.Marshal(compatibilitySources(normalized.Sources))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return CreateNewsletterResult{}, err
@@ -111,23 +110,23 @@ func (s *Store) CreateNewsletter(
 	row := tx.QueryRow(ctx, `
 		INSERT INTO newsletters (
 			id, owner_account_id, name, topic, learner_level, learner_goal,
-			lesson_minutes, source_mode, sources, schedule_hour, schedule_minute,
+			lesson_minutes, source_mode, schedule_hour, schedule_minute,
 			time_zone, active, next_run_at, email_enabled, ai_exploration_enabled,
 			public_slug, site_visible, stream_template_id,
 			stream_template_version, created_at, updated_at
 		)
 		VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11,
-			$12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $21
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20
 		)
 		RETURNING id::text, owner_account_id::text, name, topic, learner_level,
-		          learner_goal, lesson_minutes, source_mode, sources, schedule_hour,
+		          learner_goal, lesson_minutes, source_mode, '[]'::jsonb, schedule_hour,
 		          schedule_minute, time_zone, active, next_run_at, email_enabled,
 		          ai_exploration_enabled, public_slug, site_visible, created_at,
 		          updated_at, 0, 0, 0
 	`, id, accountID, normalized.Name, normalized.Topic, normalized.LearnerLevel,
 		normalized.LearnerGoal, normalized.LessonMinutes, normalized.SourceMode,
-		sources, normalized.ScheduleHour, normalized.ScheduleMinute, normalized.TimeZone,
+		normalized.ScheduleHour, normalized.ScheduleMinute, normalized.TimeZone,
 		normalized.Active, next, normalized.EmailEnabled,
 		normalized.AIExplorationEnabled, publicSlug, normalized.SiteVisible,
 		templateID, templateVersion, now)
@@ -135,6 +134,7 @@ func (s *Store) CreateNewsletter(
 	if err != nil {
 		return CreateNewsletterResult{}, fmt.Errorf("create Newsletter: %w", err)
 	}
+	record.Sources = normalized.Sources
 
 	for index, source := range normalized.Sources {
 		scope := domain.SourceScopeExact
@@ -269,7 +269,6 @@ func (s *Store) UpdateNewsletter(
 	if err != nil {
 		return NewsletterRecord{}, err
 	}
-	sources, _ := json.Marshal(compatibilitySources(normalized.Sources))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return NewsletterRecord{}, err
@@ -278,14 +277,14 @@ func (s *Store) UpdateNewsletter(
 	tag, err := tx.Exec(ctx, `
 		UPDATE newsletters SET
 			name = $3, topic = $4, learner_level = $5, learner_goal = $6,
-			lesson_minutes = $7, source_mode = $8, sources = $9::jsonb, schedule_hour = $10,
-			schedule_minute = $11, time_zone = $12, active = $13,
-			next_run_at = $14, email_enabled = $15,
-			ai_exploration_enabled = $16, site_visible = $17, updated_at = now()
+			lesson_minutes = $7, source_mode = $8, schedule_hour = $9,
+			schedule_minute = $10, time_zone = $11, active = $12,
+			next_run_at = $13, email_enabled = $14,
+			ai_exploration_enabled = $15, site_visible = $16, updated_at = now()
 		WHERE owner_account_id = $1 AND id = $2
 	`, accountID, newsletterID, normalized.Name, normalized.Topic,
 		normalized.LearnerLevel, normalized.LearnerGoal, normalized.LessonMinutes,
-		normalized.SourceMode, sources, normalized.ScheduleHour, normalized.ScheduleMinute,
+		normalized.SourceMode, normalized.ScheduleHour, normalized.ScheduleMinute,
 		normalized.TimeZone, normalized.Active, next, normalized.EmailEnabled,
 		normalized.AIExplorationEnabled, normalized.SiteVisible)
 	if err != nil {
@@ -510,7 +509,8 @@ func (s *Store) updateNewsletterBoolean(
 const newsletterSelect = `
 	SELECT n.id::text, n.owner_account_id::text, n.name, n.topic,
 	       n.learner_level, n.learner_goal, n.lesson_minutes, n.source_mode,
-	       n.sources, n.schedule_hour, n.schedule_minute, n.time_zone, n.active,
+	       ` + providedSourcesProjection + `, n.schedule_hour, n.schedule_minute,
+	       n.time_zone, n.active,
 	       n.next_run_at, n.email_enabled, n.ai_exploration_enabled,
 	       n.public_slug, n.site_visible, n.created_at, n.updated_at,
 	       count(DISTINCT i.id)::int,
@@ -519,6 +519,23 @@ const newsletterSelect = `
 	FROM newsletters n
 	LEFT JOIN issues i ON i.newsletter_id = n.id
 	LEFT JOIN delivery_receipts d ON d.issue_id = i.id
+`
+
+const providedSourcesProjection = `
+	COALESCE((
+	  SELECT jsonb_agg(
+	    jsonb_build_object(
+	      'name', ss.display_name,
+	      'url', ss.input_url,
+	      'limit', ss.item_limit
+	    )
+	    ORDER BY ss.created_at, ss.id
+	  )
+	  FROM source_specs ss
+	  WHERE ss.newsletter_id = n.id
+	    AND ss.origin = 'provided'
+	    AND ss.state = 'active'
+	), '[]'::jsonb)
 `
 
 func scanNewsletterRecord(row scanner) (NewsletterRecord, error) {
@@ -672,13 +689,6 @@ func applyCreateDefaults(input NewsletterInput) NewsletterInput {
 		}
 	}
 	return input
-}
-
-func compatibilitySources(sources []domain.SourceDefinition) []domain.SourceDefinition {
-	if sources == nil {
-		return []domain.SourceDefinition{}
-	}
-	return sources
 }
 
 func NextOccurrence(after time.Time, zone string, hour, minute int) (time.Time, error) {

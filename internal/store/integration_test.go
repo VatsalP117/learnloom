@@ -31,6 +31,21 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err := database.Ready(ctx); err != nil {
 		t.Fatal(err)
 	}
+	var transitionalSourcesColumn bool
+	if err := database.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1
+		  FROM information_schema.columns
+		  WHERE table_schema = 'public'
+		    AND table_name = 'newsletters'
+		    AND column_name = 'sources'
+		)
+	`).Scan(&transitionalSourcesColumn); err != nil {
+		t.Fatal(err)
+	}
+	if transitionalSourcesColumn {
+		t.Fatal("transitional newsletters.sources column still exists")
+	}
 	identityTime := time.Now().UTC().UnixMilli()
 	account, err := database.SyncAccountIdentity(
 		ctx,
@@ -980,7 +995,7 @@ func TestSourceCatalogReconciliationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(updated.Sources, input.Sources) {
-		t.Fatalf("compatibility sources=%#v, want %#v", updated.Sources, input.Sources)
+		t.Fatalf("projected sources=%#v, want %#v", updated.Sources, input.Sources)
 	}
 	rows, err := database.pool.Query(ctx, `
 		SELECT canonical_url, display_name, item_limit, state

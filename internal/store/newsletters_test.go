@@ -32,9 +32,6 @@ func TestApplyCreateDefaultsSupportsTopicOnlyInput(t *testing.T) {
 		input.LessonMinutes != 20 {
 		t.Fatalf("defaults=%#v", input)
 	}
-	if encoded := compatibilitySources(nil); encoded == nil || len(encoded) != 0 {
-		t.Fatalf("compatibility sources=%#v, want non-nil empty array", encoded)
-	}
 }
 
 func mustLocation(t *testing.T, name string) *time.Location {
