@@ -83,7 +83,48 @@ func writeProblem(
 	status int,
 	code, message string,
 ) {
+	if !knownProblemCodes[code] {
+		status = http.StatusInternalServerError
+		code = "internal_error"
+		message = "An internal error occurred."
+	}
 	writeJSON(response, status, problem{Code: code, Message: message})
+}
+
+var knownProblemCodes = map[string]bool{
+	"account_unavailable":       true,
+	"artifact_unavailable":      true,
+	"authentication_required":   true,
+	"conflict":                  true,
+	"csrf_rejected":             true,
+	"forbidden":                 true,
+	"internal_error":            true,
+	"invalid_correction":        true,
+	"invalid_cursor":            true,
+	"invalid_export_format":     true,
+	"invalid_filter":            true,
+	"invalid_json":              true,
+	"invalid_limit":             true,
+	"invalid_metric":            true,
+	"invalid_moderation_state":  true,
+	"invalid_progress":          true,
+	"invalid_query":             true,
+	"invalid_report":            true,
+	"invalid_report_resolution": true,
+	"invalid_request":           true,
+	"invalid_schedule":          true,
+	"invalid_webhook":           true,
+	"invalid_webhook_signature": true,
+	"issue_not_generated":       true,
+	"method_not_allowed":        true,
+	"misdirected_request":       true,
+	"not_found":                 true,
+	"origin_rejected":           true,
+	"quota_exceeded":            true,
+	"rate_limited":              true,
+	"request_too_large":         true,
+	"unsupported_media_type":    true,
+	"verified_email_required":   true,
 }
 
 func decodeJSON(

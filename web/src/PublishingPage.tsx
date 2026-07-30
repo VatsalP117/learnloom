@@ -14,6 +14,10 @@ import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
 import { apiJSON } from "./api";
 import { personalSiteHost } from "./config";
 import { useWorkspace } from "./useWorkspace";
+import type {
+  SiteMutationResponse,
+  UsernameAvailabilityResponse,
+} from "./types";
 
 export default function PublishingPage({ site, onSiteUpdate }) {
   const workspace = useWorkspace();
@@ -39,9 +43,12 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     }
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      apiJSON(`/api/usernames/${encodeURIComponent(normalized)}`, {
+      apiJSON<UsernameAvailabilityResponse>(
+        `/api/usernames/${encodeURIComponent(normalized)}`,
+        {
         signal: controller.signal,
-      })
+        },
+      )
         .then((body) => setAvailability(Boolean(body.available)))
         .catch(() => setAvailability(null));
     }, 300);
@@ -56,7 +63,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     setBusy("claim");
     setError("");
     try {
-      const body = await apiJSON("/api/me/site/claim", {
+      const body = await apiJSON<SiteMutationResponse>("/api/me/site/claim", {
         method: "POST",
         body: { username, displayName },
       });
@@ -74,7 +81,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     setBusy("identity");
     setError("");
     try {
-      const body = await apiJSON("/api/me/site/settings", {
+      const body = await apiJSON<SiteMutationResponse>("/api/me/site/settings", {
         method: "POST",
         body: {
           visibility: site.visibility,
@@ -96,7 +103,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     setError("");
     const visibility = site.visibility === "public" ? "private" : "public";
     try {
-      const body = await apiJSON("/api/me/site/settings", {
+      const body = await apiJSON<SiteMutationResponse>("/api/me/site/settings", {
         method: "POST",
         body: { visibility },
       });
@@ -118,7 +125,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     setError("");
     const searchIndexing = !site.searchIndexing;
     try {
-      const body = await apiJSON("/api/me/site/settings", {
+      const body = await apiJSON<SiteMutationResponse>("/api/me/site/settings", {
         method: "POST",
         body: { visibility: site.visibility, searchIndexing },
       });

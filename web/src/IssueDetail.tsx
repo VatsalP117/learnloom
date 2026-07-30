@@ -23,6 +23,7 @@ import { AtelierError } from "./LearningShell";
 import { apiFetch, apiJSON } from "./api";
 import { normalizeDossier } from "./dossierView";
 import { lessonState, updateLessonState } from "./learningState";
+import type { IssueModerationResponse } from "./types";
 
 interface NoteDraft {
   kind: "note" | "question" | "highlight";
@@ -424,7 +425,7 @@ function PublisherTrustPanel({ issue }) {
   const [status, setStatus] = useState("");
 
   const refresh = useCallback(async () => {
-    const next = await apiJSON(
+    const next = await apiJSON<IssueModerationResponse>(
       `/api/issues/${encodeURIComponent(issue.id)}/moderation`,
     );
     setModeration(next);

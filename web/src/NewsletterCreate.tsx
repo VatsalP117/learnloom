@@ -13,6 +13,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import LearningShell from "./LearningShell";
 import { apiJSON } from "./api";
+import type {
+  NewsletterCreateResponse,
+  SourceValidationResponse,
+} from "./types";
 import {
   buildNewsletterPayload,
   canSubmitNewsletter,
@@ -121,7 +125,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
     setValidatingSources(true);
     setError("");
     try {
-      const result = await apiJSON("/api/sources/validate", {
+      const result = await apiJSON<SourceValidationResponse>("/api/sources/validate", {
         method: "POST",
         body: { sources: validSources },
       });
@@ -175,7 +179,10 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
     });
 
     try {
-      const result = await apiJSON("/api/newsletters", { method: "POST", body });
+      const result = await apiJSON<NewsletterCreateResponse>(
+        "/api/newsletters",
+        { method: "POST", body },
+      );
       window.location.assign(
         `/newsletters/${encodeURIComponent(result.newsletter.id)}?created=1`,
       );

@@ -52,3 +52,16 @@ func TestPrivateCacheableJSONSupportsConditionalRequests(t *testing.T) {
 		t.Fatalf("status=%d body=%q", secondResponse.Code, secondResponse.Body.String())
 	}
 }
+
+func TestWriteProblemRejectsUndeclaredRuntimeCodes(t *testing.T) {
+	t.Parallel()
+	response := httptest.NewRecorder()
+	writeProblem(response, http.StatusTeapot, "surprise_code", "internal detail")
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d", response.Code)
+	}
+	if body := response.Body.String(); !strings.Contains(body, `"code":"internal_error"`) ||
+		strings.Contains(body, "internal detail") {
+		t.Fatalf("unsafe problem response: %s", body)
+	}
+}

@@ -18,6 +18,25 @@ export function setCSRFToken(token?: string | null) {
   csrfToken = token ?? "";
 }
 
+export class APIError extends Error {
+  readonly status: number;
+  readonly code: APIProblemCode | "unknown_error";
+  readonly requestId: string;
+
+  constructor(
+    message: string,
+    status: number,
+    code: APIProblemCode | "unknown_error",
+    requestId = "",
+  ) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+  }
+}
+
 export async function apiFetch(path: string, options: APIRequestOptions = {}) {
   if (!tokenGetter) {
     throw new Error("Authentication is not ready.");
@@ -52,7 +71,7 @@ export async function apiFetch(path: string, options: APIRequestOptions = {}) {
   });
 }
 
-export async function apiJSON<T = any>(
+export async function apiJSON<T = unknown>(
   path: string,
   options: APIRequestOptions = {},
 ): Promise<T> {
@@ -63,7 +82,19 @@ export async function apiJSON<T = any>(
   const response = await apiFetch(path, options);
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(body?.message ?? "The request could not be completed.");
+    const code = isAPIProblemCode(body?.code) ? body.code : "unknown_error";
+    throw new APIError(
+      typeof body?.message === "string"
+        ? body.message
+        : "The request could not be completed.",
+      response.status,
+      code,
+      response.headers.get("x-request-id") ?? "",
+    );
   }
-  return body;
+  return body as T;
 }
+import {
+  isAPIProblemCode,
+  type APIProblemCode,
+} from "./api-contracts.generated";

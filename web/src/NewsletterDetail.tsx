@@ -20,6 +20,7 @@ import LearningShell, { AtelierError, formatShortDate } from "./LearningShell";
 import { apiJSON, demoMode } from "./api";
 import { lessonState, syncLessonProgress } from "./learningState";
 import { invalidateWorkspaceCache } from "./useWorkspace";
+import type { NewsletterDetailResponse } from "./types";
 
 export default function NewsletterDetail({ newsletterId }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -30,7 +31,7 @@ export default function NewsletterDetail({ newsletterId }) {
   const load = useCallback(async ({ signal }: { signal?: AbortSignal } = {}) => {
     setError("");
     try {
-      const nextSnapshot = await apiJSON(
+      const nextSnapshot = await apiJSON<NewsletterDetailResponse>(
         `/api/newsletters/${encodeURIComponent(newsletterId)}`,
         { signal },
       );

@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiJSON, configureAPI, setCSRFToken } from "./api";
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  setCSRFToken("");
-});
-
 describe("apiJSON", () => {
   it("attaches bearer and CSRF credentials to mutations", async () => {
     configureAPI(async () => "session-token");
@@ -39,5 +34,45 @@ describe("apiJSON", () => {
       })));
 
     await expect(apiJSON("/api/newsletters")).rejects.toThrow("Too many requests.");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCSRFToken("");
+  });
+
+  it("preserves declared problem codes, status, and request ID", async () => {
+    configureAPI(async () => "token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ code: "quota_exceeded", message: "Try later." }),
+      {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "request-123",
+        },
+      },
+    )));
+
+    await expect(apiJSON("/api/test")).rejects.toMatchObject({
+      name: "APIError",
+      code: "quota_exceeded",
+      status: 429,
+      requestId: "request-123",
+      message: "Try later.",
+    });
+  });
+
+  it("does not trust undeclared server problem codes", async () => {
+    configureAPI(async () => "token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ code: "provider_stack_trace", message: "Safe message." }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    )));
+
+    await expect(apiJSON("/api/test")).rejects.toMatchObject({
+      code: "unknown_error",
+      status: 500,
+    });
   });
 });

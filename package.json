@@ -14,11 +14,13 @@
     "url": "https://github.com/VatsalP117/learnloom/issues"
   },
   "scripts": {
+    "api:check": "node scripts/generate-api-contracts.mjs --check",
+    "api:generate": "node scripts/generate-api-contracts.mjs",
     "build": "vite build --config web/vite.config.ts",
     "dev": "vite --config web/vite.config.ts",
     "demo": "VITE_DEMO_MODE=true vite --config web/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "check": "eslint web/src && npm run typecheck && npm run build",
+    "check": "npm run api:check && eslint web/src && npm run typecheck && npm run build",
     "test": "vitest run --config web/vite.config.ts"
   },
   "engines": {
