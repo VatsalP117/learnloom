@@ -5,10 +5,15 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Copy,
   ExternalLink,
+  Highlighter,
   Lightbulb,
   Map,
+  MessageCircleQuestion,
+  NotebookPen,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import CalmLoader from "./CalmLoader";
@@ -16,6 +21,14 @@ import { AtelierError } from "./LearningShell";
 import { apiJSON } from "./api";
 import { normalizeDossier } from "./dossierView";
 import { lessonState, updateLessonState } from "./learningState";
+
+interface NoteDraft {
+  kind: "note" | "question" | "highlight";
+  anchorType: "lesson" | "claim" | "source" | "section";
+  anchorId: string;
+  body: string;
+  quotedText: string;
+}
 
 export default function IssueDetail({ issueId }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -153,12 +166,15 @@ function LessonReader({
   newsletter,
   sources,
   feedback,
+  notes: initialNotes = [],
   progress,
   completionError,
   onComplete,
 }) {
   const [completed, setCompleted] = useState(() => lessonState(issue.id).completed);
   const [completing, setCompleting] = useState(false);
+  const [notes, setNotes] = useState(initialNotes);
+  const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
 
   return (
     <div className="focus-reader">
@@ -256,6 +272,51 @@ function LessonReader({
               </section>
             ))}
 
+            {dossier.claims?.length ? (
+              <section className="reader-claims">
+                <p className="atelier-eyebrow">Evidence map</p>
+                <h2>Claims you can inspect</h2>
+                <div>
+                  {dossier.claims.map((claim) => {
+                    const claimSources = claim.sourceIds
+                      .map((sourceID) => sources.find((source) => source.id === sourceID))
+                      .filter(Boolean);
+                    const citation = [
+                      claim.text,
+                      ...claimSources.map((source) => `${source.name}: ${source.url}`),
+                    ].join("\n");
+                    return (
+                      <article key={claim.id}>
+                        <p>{claim.text}</p>
+                        <div>
+                          {claimSources.map((source) => (
+                            <a href={`#source-${source.id}`} key={source.id}>
+                              {source.id}
+                            </a>
+                          ))}
+                        </div>
+                        <footer>
+                          <CopyButton text={citation} label="Copy citation" />
+                          <button
+                            type="button"
+                            onClick={() => setNoteDraft({
+                              kind: "question",
+                              anchorType: "claim",
+                              anchorId: claim.id,
+                              quotedText: claim.text,
+                              body: "",
+                            })}
+                          >
+                            <MessageCircleQuestion size={13} /> Question this claim
+                          </button>
+                        </footer>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
             <RetrievalSection
               questions={dossier.retrievalItems?.length
                 ? dossier.retrievalItems
@@ -314,26 +375,173 @@ function LessonReader({
             <div className="reader-sources">
               <p className="atelier-eyebrow">Sources consulted</p>
               {sources.map((source, index) => (
-                <a
-                  id={`source-${source.id ?? `S${index + 1}`}`}
-                  href={source.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  key={`${source.id}-${source.name}`}
-                >
-                  <span><i>{index + 1}</i>{source.name}</span>
-                  <ExternalLink size={13} />
-                </a>
+                <div id={`source-${source.id ?? `S${index + 1}`}`} key={`${source.id}-${source.name}`}>
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span><i>{index + 1}</i>{source.name}</span>
+                    <ExternalLink size={13} />
+                  </a>
+                  <CopyButton
+                    text={`${source.name}. ${source.url}`}
+                    label={`Copy citation for ${source.name}`}
+                    compact
+                  />
+                </div>
               ))}
               <p>
                 These sources informed the lesson. Claim-level citation mapping is
                 shown only when it is available in the generated artifact.
               </p>
             </div>
+            <LessonNotes
+              issueId={issue.id}
+              notes={notes}
+              setNotes={setNotes}
+              draft={noteDraft}
+              setDraft={setNoteDraft}
+            />
           </aside>
         </div>
       </article>
     </div>
+  );
+}
+
+function CopyButton({ text, label, compact = false }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className={compact ? "reader-copy compact" : "reader-copy"}
+      type="button"
+      aria-label={label}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+          setCopied(false);
+        }
+      }}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+      {compact ? null : copied ? "Copied" : label}
+    </button>
+  );
+}
+
+function LessonNotes({ issueId, notes, setNotes, draft, setDraft }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function startNote() {
+    setDraft({
+      kind: "note",
+      anchorType: "lesson",
+      anchorId: "",
+      quotedText: "",
+      body: "",
+    });
+  }
+
+  function startHighlight() {
+    const quotedText = window.getSelection()?.toString().trim().slice(0, 1200) ?? "";
+    if (!quotedText) {
+      setError("Select a passage in the lesson first.");
+      return;
+    }
+    setError("");
+    setDraft({
+      kind: "highlight",
+      anchorType: "lesson",
+      anchorId: "",
+      quotedText,
+      body: "",
+    });
+  }
+
+  async function save() {
+    if (!draft?.body.trim() || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const note = await apiJSON(`/api/issues/${encodeURIComponent(issueId)}/notes`, {
+        method: "POST",
+        body: draft,
+      });
+      setNotes((current) => [note, ...current]);
+      setDraft(null);
+    } catch (requestError) {
+      setError(requestError instanceof Error
+        ? requestError.message
+        : "The note could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(noteId) {
+    setError("");
+    try {
+      await apiJSON(`/api/notes/${encodeURIComponent(noteId)}`, {
+        method: "DELETE",
+      });
+      setNotes((current) => current.filter((note) => note.id !== noteId));
+    } catch (requestError) {
+      setError(requestError instanceof Error
+        ? requestError.message
+        : "The note could not be deleted.");
+    }
+  }
+
+  return (
+    <section className="reader-notes" id="lesson-notes">
+      <p className="atelier-eyebrow"><NotebookPen size={13} /> Your notes</p>
+      <div className="reader-note-actions">
+        <button type="button" onClick={startNote}><NotebookPen size={13} /> Add note</button>
+        <button type="button" onClick={startHighlight}><Highlighter size={13} /> Save selection</button>
+      </div>
+      {draft ? (
+        <div className="reader-note-composer">
+          {draft.quotedText ? <blockquote>{draft.quotedText}</blockquote> : null}
+          <textarea
+            autoFocus
+            maxLength={4000}
+            rows={4}
+            placeholder={draft.kind === "question"
+              ? "What do you want to verify or connect?"
+              : draft.kind === "highlight"
+                ? "Why is this passage worth keeping?"
+                : "Capture an idea in your own words…"}
+            value={draft.body}
+            onChange={(event) => setDraft({ ...draft, body: event.target.value })}
+          />
+          <div>
+            <button type="button" onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" disabled={!draft.body.trim() || saving} onClick={save}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className="reader-note-list">
+        {notes.map((note) => (
+          <article key={note.id}>
+            <span>{note.kind}</span>
+            {note.quotedText ? <blockquote>{note.quotedText}</blockquote> : null}
+            <p>{note.body}</p>
+            <button type="button" aria-label="Delete note" onClick={() => remove(note.id)}>
+              <Trash2 size={12} />
+            </button>
+          </article>
+        ))}
+        {!notes.length && !draft ? <small>No notes yet. Keep only what will help you think later.</small> : null}
+      </div>
+      {error ? <p role="alert">{error}</p> : null}
+    </section>
   );
 }
 

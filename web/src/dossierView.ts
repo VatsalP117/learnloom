@@ -17,6 +17,12 @@ export interface RetrievalItem {
   correctiveExplanation?: string;
 }
 
+export interface EvidenceClaim {
+  id: string;
+  text: string;
+  sourceIds: string[];
+}
+
 export interface NormalizedDossier {
   readTime: number;
   deck: string;
@@ -28,6 +34,7 @@ export interface NormalizedDossier {
   retrieval: string[];
   retrievalItems: RetrievalItem[];
   application: string;
+  claims: EvidenceClaim[];
 }
 
 interface RawDossier {
@@ -42,6 +49,7 @@ interface RawDossier {
     continuityBridge?: string;
     concepts?: Array<{ label?: string }>;
     retrieval?: RetrievalItem[];
+    claims?: EvidenceClaim[];
     application?: string;
   };
   [key: string]: unknown;
@@ -154,5 +162,6 @@ export function normalizeDossier(
     application:
       dossier?.learning?.application ||
       sectionBody(dossier?.practice ?? "", "Application challenge"),
+    claims: dossier?.learning?.claims ?? [],
   };
 }

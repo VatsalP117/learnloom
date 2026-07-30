@@ -282,15 +282,87 @@ func (s *Server) handleControl(
 			return
 		}
 		if len(route) == 4 {
+			if route[3] == "notes" {
+				s.issueNotes(response, request, current, route[2])
+				return
+			}
 			s.issueAction(response, request, current, route[2], route[3])
 			return
 		}
+	}
+	if len(route) == 3 && route[0] == "api" && route[1] == "notes" {
+		if request.Method != http.MethodDelete {
+			methodNotAllowed(response, http.MethodDelete)
+			return
+		}
+		if err := s.store.DeleteLessonNote(
+			request.Context(),
+			current.Account.ID,
+			route[2],
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+		return
 	}
 	if len(route) == 2 && route[0] == "issues" && request.Method == http.MethodGet {
 		s.issuePreview(response, request, current, route[1])
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+func (s *Server) issueNotes(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+	issueID string,
+) {
+	switch request.Method {
+	case http.MethodGet:
+		notes, err := s.store.ListLessonNotes(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"notes": notes})
+	case http.MethodPost:
+		var body struct {
+			Kind       string `json:"kind"`
+			AnchorType string `json:"anchorType"`
+			AnchorID   string `json:"anchorId"`
+			Body       string `json:"body"`
+			QuotedText string `json:"quotedText"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		note, err := s.store.CreateLessonNote(
+			request.Context(),
+			current.Account.ID,
+			issueID,
+			store.LessonNoteInput{
+				Kind:       body.Kind,
+				AnchorType: body.AnchorType,
+				AnchorID:   body.AnchorID,
+				Body:       body.Body,
+				QuotedText: body.QuotedText,
+			},
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, note)
+	default:
+		methodNotAllowed(response, http.MethodGet, http.MethodPost)
+	}
 }
 
 type sourceValidationResult struct {
@@ -1209,7 +1281,16 @@ func (s *Server) issueDetail(
 		s.internalError(response, request, err)
 		return
 	}
-	etag := issueDetailETag(issue, feedback)
+	notes, err := s.store.ListLessonNotes(
+		request.Context(),
+		current.Account.ID,
+		issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	etag := issueDetailETag(issue, feedback, notes)
 	if requestETagMatches(request, etag) {
 		response.Header().Set("Cache-Control", "private, max-age=300, stale-while-revalidate=3600")
 		response.Header().Set("ETag", etag)
@@ -1253,6 +1334,7 @@ func (s *Server) issueDetail(
 		"dossier":    artifactValue.Dossier,
 		"sources":    sources,
 		"feedback":   feedback,
+		"notes":      notes,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1269,7 +1351,11 @@ func (s *Server) issueDetail(
 	)
 }
 
-func issueDetailETag(issue domain.Issue, feedback *store.LessonFeedback) string {
+func issueDetailETag(
+	issue domain.Issue,
+	feedback *store.LessonFeedback,
+	notes []store.LessonNote,
+) string {
 	checksum := issue.ArtifactSHA256
 	if checksum == "" {
 		checksum = issue.ArtifactKey
@@ -1278,12 +1364,17 @@ func issueDetailETag(issue domain.Issue, feedback *store.LessonFeedback) string 
 	if feedback != nil {
 		feedbackVersion = feedback.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
+	notesVersion := ""
+	if len(notes) > 0 {
+		notesVersion = notes[0].UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
 	value := strings.Join([]string{
 		checksum,
 		string(issue.PublicationState),
 		issue.Title,
 		issue.Newsletter.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		feedbackVersion,
+		notesVersion,
 	}, "\x00")
 	sum := sha256.Sum256([]byte(value))
 	return fmt.Sprintf(`"%x"`, sum)

@@ -351,6 +351,26 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 			)
 		}
 	}
+	note, err := database.CreateLessonNote(
+		ctx,
+		account.ID,
+		issue.ID,
+		LessonNoteInput{
+			Kind:       "question",
+			AnchorType: "claim",
+			AnchorID:   "claim-1",
+			Body:       "What evidence would change this conclusion?",
+			QuotedText: "A source-backed claim.",
+		},
+		now.Add(37*time.Second),
+	)
+	if err != nil || note.ID == "" {
+		t.Fatalf("create Lesson Note=%#v err=%v", note, err)
+	}
+	notes, err := database.ListLessonNotes(ctx, account.ID, issue.ID)
+	if err != nil || len(notes) != 1 || notes[0].AnchorID != "claim-1" {
+		t.Fatalf("Lesson Notes=%#v err=%v", notes, err)
+	}
 	reviews, err := database.ListWorkspaceReviews(ctx, account.ID, 8, now.Add(37*time.Second))
 	if err != nil || len(reviews) != 0 {
 		t.Fatalf("reviews should wait for lesson completion: %#v err=%v", reviews, err)
@@ -663,6 +683,23 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	}
 	if _, err := database.EnqueueManualIssue(ctx, other.ID, newsletter.Newsletter.ID, 5); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-Account Issue creation was not denied: %v", err)
+	}
+	if _, err := database.CreateLessonNote(
+		ctx,
+		other.ID,
+		issue.ID,
+		LessonNoteInput{
+			Kind: "note", AnchorType: "lesson", Body: "unauthorized",
+		},
+		now,
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-Account Lesson Note create was not denied: %v", err)
+	}
+	if err := database.DeleteLessonNote(ctx, other.ID, note.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-Account Lesson Note delete was not denied: %v", err)
+	}
+	if err := database.DeleteLessonNote(ctx, account.ID, note.ID); err != nil {
+		t.Fatalf("delete Lesson Note: %v", err)
 	}
 
 	window := time.Now().UTC()

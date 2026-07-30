@@ -34,6 +34,11 @@ describe("normalizeDossier", () => {
           prompt: "Why does retrieval help?",
           answerRubric: "It strengthens later access.",
         }],
+        claims: [{
+          id: "claim-1",
+          text: "Retrieval improves later access.",
+          sourceIds: ["S1"],
+        }],
         application: "Compare recall with rereading.",
       },
     }, { lessonMinutes: 10 });
@@ -42,6 +47,11 @@ describe("normalizeDossier", () => {
     expect(result.continuityBridge).toContain("recognition");
     expect(result.concepts).toEqual(["Retrieval strength"]);
     expect(result.retrievalItems[0].answerRubric).toContain("later access");
+    expect(result.claims[0]).toEqual({
+      id: "claim-1",
+      text: "Retrieval improves later access.",
+      sourceIds: ["S1"],
+    });
     expect(result.sections[0].paragraphs[0]).toEqual({
       text: "Retrieval changes later access.",
       sourceIds: ["S1", "S2"],
