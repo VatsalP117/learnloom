@@ -294,6 +294,17 @@ export default function NewsletterDetail({ newsletterId }) {
                         <p>{snapshot.curriculum.suggestedNextConcepts.join(" · ")}</p>
                       </section>
                     ) : null}
+                    {snapshot.curriculum.timeline?.length ? (
+                      <section className="curriculum-timeline">
+                        <p className="atelier-eyebrow">Capability timeline</p>
+                        {snapshot.curriculum.timeline.slice(0, 5).map((entry) => (
+                          <a href={`/issues/${encodeURIComponent(entry.issueId)}`} key={entry.issueId}>
+                            <strong>{entry.title}</strong>
+                            <small>{entry.concepts.join(" · ")}</small>
+                          </a>
+                        ))}
+                      </section>
+                    ) : null}
                   </article>
                 ) : null}
 

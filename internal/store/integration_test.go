@@ -435,6 +435,16 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 		concepts[0].ConfidenceScore != 85 {
 		t.Fatalf("Learner Concepts=%#v err=%v", concepts, err)
 	}
+	curriculum, err := database.GetCurriculum(
+		ctx,
+		account.ID,
+		newsletter.Newsletter.ID,
+	)
+	if err != nil || len(curriculum.Timeline) != 1 ||
+		curriculum.Timeline[0].IssueID != issue.ID ||
+		len(curriculum.Timeline[0].Concepts) != 2 {
+		t.Fatalf("Curriculum timeline=%#v err=%v", curriculum, err)
+	}
 	if _, err := database.AssessReview(
 		ctx,
 		account.ID,

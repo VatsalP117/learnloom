@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
+  Download,
   ExternalLink,
   Highlighter,
   Lightbulb,
@@ -18,7 +19,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import CalmLoader from "./CalmLoader";
 import { AtelierError } from "./LearningShell";
-import { apiJSON } from "./api";
+import { apiFetch, apiJSON } from "./api";
 import { normalizeDossier } from "./dossierView";
 import { lessonState, updateLessonState } from "./learningState";
 
@@ -186,7 +187,10 @@ function LessonReader({
           <ArrowLeft size={15} /> {newsletter.name}
         </a>
         <span>{Math.round(progress)}% read</span>
-        <a href="/library">Library <BookOpen size={14} /></a>
+        <div>
+          <LessonExportButton issueId={issue.id} />
+          <a href="/library">Library <BookOpen size={14} /></a>
+        </div>
       </header>
 
       <article className="reader-paper">
@@ -407,6 +411,36 @@ function LessonReader({
         </div>
       </article>
     </div>
+  );
+}
+
+function LessonExportButton({ issueId }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const response = await apiFetch(
+            `/api/issues/${encodeURIComponent(issueId)}/export?format=markdown`,
+          );
+          if (!response.ok) throw new Error("Export failed");
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "learnloom-lesson.md";
+          link.click();
+          URL.revokeObjectURL(url);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Download size={13} /> {busy ? "Exporting…" : "Export"}
+    </button>
   );
 }
 

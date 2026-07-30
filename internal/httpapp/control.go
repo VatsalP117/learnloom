@@ -286,6 +286,10 @@ func (s *Server) handleControl(
 				s.issueNotes(response, request, current, route[2])
 				return
 			}
+			if route[3] == "export" {
+				s.issueExport(response, request, current, route[2])
+				return
+			}
 			s.issueAction(response, request, current, route[2], route[3])
 			return
 		}
@@ -311,6 +315,89 @@ func (s *Server) handleControl(
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+func (s *Server) issueExport(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+	issueID string,
+) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(response, http.MethodGet)
+		return
+	}
+	issue, err := s.store.GetIssue(request.Context(), current.Account.ID, issueID)
+	if err != nil {
+		writeStoreError(response, err)
+		return
+	}
+	if issue.Status != domain.IssueGenerated || issue.ArtifactKey == "" {
+		writeProblem(response, http.StatusConflict, "issue_not_generated", "The Issue has no generated Dossier.")
+		return
+	}
+	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	notes, err := s.store.ListLessonNotes(
+		request.Context(),
+		current.Account.ID,
+		issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	response.Header().Set("Cache-Control", "private, no-store")
+	format := request.URL.Query().Get("format")
+	if format == "json" {
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Content-Disposition", `attachment; filename="learnloom-lesson.json"`)
+		writeJSON(response, http.StatusOK, map[string]any{
+			"version": 1,
+			"issue": map[string]any{
+				"id": issue.ID, "title": issue.Title, "createdAt": issue.CreatedAt,
+			},
+			"dossier": artifactValue.Dossier,
+			"notes":   notes,
+		})
+		return
+	}
+	if format != "" && format != "markdown" {
+		writeProblem(response, http.StatusBadRequest, "invalid_export_format", "Export format must be markdown or json.")
+		return
+	}
+	export := renderLessonExport(artifactValue.Markdown, notes)
+	response.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	response.Header().Set("Content-Disposition", `attachment; filename="learnloom-lesson.md"`)
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write([]byte(export))
+}
+
+func renderLessonExport(markdown string, notes []store.LessonNote) string {
+	var export strings.Builder
+	export.WriteString(markdown)
+	if len(notes) == 0 {
+		return export.String()
+	}
+	export.WriteString("\n\n---\n\n## Your notes\n")
+	for _, note := range notes {
+		title := "Note"
+		if note.Kind != "" {
+			title = strings.ToUpper(note.Kind[:1]) + note.Kind[1:]
+		}
+		export.WriteString("\n### " + title + "\n\n")
+		if note.QuotedText != "" {
+			for _, line := range strings.Split(note.QuotedText, "\n") {
+				export.WriteString("> " + line + "\n")
+			}
+			export.WriteString("\n")
+		}
+		export.WriteString(note.Body + "\n")
+	}
+	return export.String()
 }
 
 func (s *Server) issueNotes(

@@ -40,6 +40,27 @@ func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
 	}
 }
 
+func TestRenderLessonExportKeepsNotesSeparateFromArtifact(t *testing.T) {
+	t.Parallel()
+	export := renderLessonExport("# Frozen lesson\n", []store.LessonNote{{
+		Kind:       "question",
+		QuotedText: "Claim line one\nClaim line two",
+		Body:       "What evidence would change this?",
+	}})
+	for _, expected := range []string{
+		"# Frozen lesson",
+		"## Your notes",
+		"### Question",
+		"> Claim line one",
+		"> Claim line two",
+		"What evidence would change this?",
+	} {
+		if !strings.Contains(export, expected) {
+			t.Fatalf("export missing %q: %s", expected, export)
+		}
+	}
+}
+
 func TestSitePayloadIncludesSearchIndexingPreference(t *testing.T) {
 	t.Parallel()
 	server := &Server{cfg: Config{RootDomain: "learnloom.blog"}}

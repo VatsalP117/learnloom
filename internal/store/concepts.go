@@ -26,8 +26,16 @@ type LearnerConceptState struct {
 }
 
 type CurriculumProjection struct {
-	Concepts              []LearnerConceptState `json:"concepts"`
-	SuggestedNextConcepts []string              `json:"suggestedNextConcepts"`
+	Concepts              []LearnerConceptState  `json:"concepts"`
+	SuggestedNextConcepts []string               `json:"suggestedNextConcepts"`
+	Timeline              []ConceptTimelineEntry `json:"timeline"`
+}
+
+type ConceptTimelineEntry struct {
+	IssueID     string    `json:"issueId"`
+	Title       string    `json:"title"`
+	CompletedAt time.Time `json:"completedAt"`
+	Concepts    []string  `json:"concepts"`
 }
 
 func (s *Store) ListLearnerConcepts(
@@ -142,6 +150,10 @@ func (s *Store) GetCurriculum(
 	if err != nil {
 		return CurriculumProjection{}, err
 	}
+	timeline, err := s.listConceptTimeline(ctx, accountID, newsletterID, 12)
+	if err != nil {
+		return CurriculumProjection{}, err
+	}
 	var raw []byte
 	err = s.pool.QueryRow(ctx, `
 		SELECT history.entry
@@ -154,7 +166,7 @@ func (s *Store) GetCurriculum(
 	`, newsletterID, accountID).Scan(&raw)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return CurriculumProjection{Concepts: concepts}, nil
+			return CurriculumProjection{Concepts: concepts, Timeline: timeline}, nil
 		}
 		return CurriculumProjection{}, fmt.Errorf("load Curriculum direction: %w", err)
 	}
@@ -165,7 +177,49 @@ func (s *Store) GetCurriculum(
 	return CurriculumProjection{
 		Concepts:              concepts,
 		SuggestedNextConcepts: history.SuggestedNextConcepts,
+		Timeline:              timeline,
 	}, nil
+}
+
+func (s *Store) listConceptTimeline(
+	ctx context.Context,
+	accountID, newsletterID string,
+	limit int,
+) ([]ConceptTimelineEntry, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT issue.id::text, COALESCE(issue.dossier_title, ''),
+		       progress.completed_at,
+		       array_agg(concept.label ORDER BY concept.role, concept.label)
+		FROM lesson_progress progress
+		JOIN issues issue ON issue.id = progress.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		JOIN issue_concepts concept ON concept.issue_id = issue.id
+		WHERE progress.account_id = $1
+		  AND issue.newsletter_id = $2
+		  AND newsletter.owner_account_id = $1
+		  AND progress.completed_at IS NOT NULL
+		GROUP BY issue.id, progress.completed_at
+		ORDER BY progress.completed_at DESC, issue.id
+		LIMIT $3
+	`, accountID, newsletterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list Concept timeline: %w", err)
+	}
+	defer rows.Close()
+	timeline := make([]ConceptTimelineEntry, 0)
+	for rows.Next() {
+		var entry ConceptTimelineEntry
+		if err := rows.Scan(
+			&entry.IssueID,
+			&entry.Title,
+			&entry.CompletedAt,
+			&entry.Concepts,
+		); err != nil {
+			return nil, err
+		}
+		timeline = append(timeline, entry)
+	}
+	return timeline, rows.Err()
 }
 
 func stringValue(value *string) string {
