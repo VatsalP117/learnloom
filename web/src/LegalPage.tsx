@@ -98,7 +98,7 @@ function PrivacyContent() {
       </LegalSection>
 
       <LegalSection title="6. Retention and deletion">
-        <p>We retain account information and learning content while your account is active. We may retain limited backups, security logs, delivery records, or information required by law for a reasonable period after deletion. You can request account deletion by contacting us.</p>
+        <p>We retain account information and learning content while your account is active. After a verified deletion, Learnloom disables access immediately, removes stored lesson files, and erases active database learning content. We retain a one-way identity tombstone to prevent stale identity events from recreating the account and a minimal erasure receipt for up to 400 days. Provider backups, security logs, or records required by law may persist for their limited retention periods before expiring.</p>
       </LegalSection>
 
       <LegalSection title="7. Security">

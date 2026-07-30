@@ -138,7 +138,27 @@ func (s *Store) CompleteAccountDeletion(
 	accountID, token string,
 	now time.Time,
 ) error {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	var clerkUserID string
+	var identityEventAt int64
+	err = tx.QueryRow(ctx, `
+		SELECT a.clerk_user_id, a.identity_event_at
+		FROM accounts a
+		JOIN account_deletion_queue q ON q.account_id = a.id
+		WHERE a.id = $1 AND a.status = 'deleted' AND q.claim_token = $2
+		FOR UPDATE OF a, q
+	`, accountID, token).Scan(&clerkUserID, &identityEventAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrClaimLost
+	}
+	if err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
 		UPDATE account_deletion_queue SET
 			completed_at = $3, claim_token = NULL, claim_expires_at = NULL,
 			error = NULL
@@ -150,7 +170,33 @@ func (s *Store) CompleteAccountDeletion(
 	if tag.RowsAffected() != 1 {
 		return ErrClaimLost
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO deleted_identity_tombstones (
+		  identity_fingerprint, identity_event_at, deleted_at
+		) VALUES ($1, $2, $3)
+		ON CONFLICT (identity_fingerprint) DO UPDATE SET
+		  identity_event_at = GREATEST(
+		    deleted_identity_tombstones.identity_event_at,
+		    EXCLUDED.identity_event_at
+		  ),
+		  deleted_at = LEAST(deleted_identity_tombstones.deleted_at, EXCLUDED.deleted_at)
+	`, identityFingerprint(clerkUserID), identityEventAt, now); err != nil {
+		return fmt.Errorf("record deleted identity tombstone: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM accounts WHERE id = $1 AND status = 'deleted'
+	`, accountID); err != nil {
+		return fmt.Errorf("erase Account database state: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO privacy_erasure_receipts (
+		  id, account_fingerprint, artifact_erasure_completed,
+		  database_erasure_completed, completed_at
+		) VALUES ($1, $2, true, true, $3)
+	`, uuid.NewString(), identityFingerprint(accountID), now); err != nil {
+		return fmt.Errorf("record privacy erasure receipt: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) FailAccountDeletion(
@@ -224,10 +270,18 @@ func (s *Store) CleanupOperationalState(
 	if err != nil {
 		return 0, fmt.Errorf("clean deletion queue: %w", err)
 	}
+	receiptTag, err := tx.Exec(ctx, `
+		DELETE FROM privacy_erasure_receipts
+		WHERE completed_at < $1::timestamptz - interval '370 days'
+	`, before)
+	if err != nil {
+		return 0, fmt.Errorf("clean privacy erasure receipts: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("commit operational cleanup: %w", err)
 	}
 	return rateTag.RowsAffected() +
 		webhookTag.RowsAffected() +
-		deletionTag.RowsAffected(), nil
+		deletionTag.RowsAffected() +
+		receiptTag.RowsAffected(), nil
 }

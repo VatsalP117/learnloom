@@ -19,7 +19,9 @@ release.
 - [x] Clerk bearer authentication, signed lifecycle webhooks, exact-host
   routing, exact-Origin CSRF checks, and JSON-only mutations fail closed.
 - [x] Username, creation, and manual-generation limits are durable.
-- [x] Account deletion disables access and work before queued S3 cleanup.
+- [x] Account deletion disables access and work before queued S3 cleanup,
+  then transactionally erases active database learning data and records a
+  privacy-minimal receipt.
 - [x] Health/readiness, metrics, structured logs, migrations, and an operations
   runbook exist.
 
@@ -34,7 +36,8 @@ release.
 - [ ] Prove request limits return stable `429` responses without creating work,
   and demonstrate fair worker progress across Accounts.
 - [ ] Delete and suspend a real staging Clerk user; verify immediate access
-  revocation, public-site removal, stopped work, and eventual artifact cleanup.
+  revocation, public-site removal, stopped work, artifact cleanup, relational
+  erasure, and a non-identifying erasure receipt.
 - [ ] Exercise expired Issue and delivery Claims and confirm automatic recovery.
 - [ ] Resolve an intentionally ambiguous provider response into
   `outcome_unknown` without an automatic duplicate email.

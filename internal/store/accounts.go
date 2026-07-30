@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -30,6 +32,13 @@ func (s *Store) EnsureAccount(
 	if clerkUserID == "" || len(clerkUserID) > 200 {
 		return domain.Account{}, errors.New("Clerk user ID is invalid")
 	}
+	deletedAt, err := s.deletedIdentityAt(ctx, clerkUserID)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	if deletedAt != nil {
+		return domain.Account{}, ErrForbidden
+	}
 	account, err := s.accountByClerkUserID(ctx, clerkUserID)
 	if err == nil {
 		if account.Status != domain.AccountActive {
@@ -46,14 +55,27 @@ func (s *Store) EnsureAccount(
 		INSERT INTO accounts (
 			id, clerk_user_id, status, created_at, updated_at
 		)
-		VALUES ($1, $2, 'active', $3, $3)
+		SELECT $1, $2, 'active', $3, $3
+		WHERE NOT EXISTS (
+		  SELECT 1 FROM deleted_identity_tombstones
+		  WHERE identity_fingerprint = $4
+		)
 		ON CONFLICT (clerk_user_id) DO NOTHING
 		RETURNING id::text, clerk_user_id, COALESCE(primary_email, ''),
 		          status, created_at, updated_at, deleted_at
-	`, uuid.New(), clerkUserID, now)
+	`, uuid.New(), clerkUserID, now, identityFingerprint(clerkUserID))
 	account, err = scanAccount(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		account, err = s.accountByClerkUserID(ctx, clerkUserID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			deletedAt, tombstoneErr := s.deletedIdentityAt(ctx, clerkUserID)
+			if tombstoneErr != nil {
+				return domain.Account{}, tombstoneErr
+			}
+			if deletedAt != nil {
+				return domain.Account{}, ErrForbidden
+			}
+		}
 	}
 	if err != nil {
 		return domain.Account{}, fmt.Errorf("ensure Account: %w", err)
@@ -97,6 +119,17 @@ func (s *Store) SyncAccountIdentity(
 	if identityEventAt < 1 {
 		return domain.Account{}, errors.New("Clerk event timestamp is invalid")
 	}
+	tombstoneDeletedAt, err := s.deletedIdentityAt(ctx, clerkUserID)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	if tombstoneDeletedAt != nil {
+		return domain.Account{
+			ClerkUserID: clerkUserID,
+			Status:      domain.AccountDeleted,
+			DeletedAt:   tombstoneDeletedAt,
+		}, nil
+	}
 	now := time.Now().UTC()
 	var deletedAt *time.Time
 	if status == domain.AccountDeleted {
@@ -107,7 +140,11 @@ func (s *Store) SyncAccountIdentity(
 			id, clerk_user_id, primary_email, status,
 			identity_event_at, created_at, updated_at, deleted_at
 		)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $6, $7)
+		SELECT $1, $2, NULLIF($3, ''), $4, $5, $6, $6, $7
+		WHERE NOT EXISTS (
+		  SELECT 1 FROM deleted_identity_tombstones
+		  WHERE identity_fingerprint = $8
+		)
 		ON CONFLICT (clerk_user_id) DO UPDATE SET
 			primary_email = COALESCE(NULLIF(EXCLUDED.primary_email, ''), accounts.primary_email),
 			status = CASE
@@ -124,7 +161,7 @@ func (s *Store) SyncAccountIdentity(
 		RETURNING id::text, clerk_user_id, COALESCE(primary_email, ''),
 		          status, created_at, updated_at, deleted_at
 	`, uuid.New(), clerkUserID, strings.TrimSpace(primaryEmail), status,
-		identityEventAt, now, deletedAt)
+		identityEventAt, now, deletedAt, identityFingerprint(clerkUserID))
 	account, err := scanAccount(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		account, err = scanAccount(s.pool.QueryRow(ctx, `
@@ -132,6 +169,19 @@ func (s *Store) SyncAccountIdentity(
 			       status, created_at, updated_at, deleted_at
 			FROM accounts WHERE clerk_user_id = $1
 		`, clerkUserID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			tombstoneDeletedAt, tombstoneErr := s.deletedIdentityAt(ctx, clerkUserID)
+			if tombstoneErr != nil {
+				return domain.Account{}, tombstoneErr
+			}
+			if tombstoneDeletedAt != nil {
+				return domain.Account{
+					ClerkUserID: clerkUserID,
+					Status:      domain.AccountDeleted,
+					DeletedAt:   tombstoneDeletedAt,
+				}, nil
+			}
+		}
 	}
 	if err != nil {
 		return domain.Account{}, fmt.Errorf("sync Account identity: %w", err)
@@ -155,6 +205,30 @@ func (s *Store) SyncAccountIdentity(
 		)
 	}
 	return account, nil
+}
+
+func (s *Store) deletedIdentityAt(
+	ctx context.Context,
+	clerkUserID string,
+) (*time.Time, error) {
+	var tombstoneDeletedAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT deleted_at
+		FROM deleted_identity_tombstones
+		WHERE identity_fingerprint = $1
+	`, identityFingerprint(clerkUserID)).Scan(&tombstoneDeletedAt)
+	if err == nil {
+		return &tombstoneDeletedAt, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("check deleted identity: %w", err)
+	}
+	return nil, nil
+}
+
+func identityFingerprint(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Store) stopAccountWork(

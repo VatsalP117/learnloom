@@ -883,6 +883,50 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil || deletion == nil || deletion.AccountID != account.ID {
 		t.Fatalf("artifact deletion was not queued: %#v %v", deletion, err)
 	}
+	erasedAt := time.Now().UTC()
+	if err := database.CompleteAccountDeletion(
+		ctx,
+		deletion.AccountID,
+		deletion.Token,
+		erasedAt,
+	); err != nil {
+		t.Fatalf("complete Account erasure: %v", err)
+	}
+	var accountsRemaining, newslettersRemaining, receipts int
+	if err := database.pool.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM accounts WHERE id = $1),
+		  (SELECT count(*) FROM newsletters WHERE owner_account_id = $1),
+		  (SELECT count(*) FROM privacy_erasure_receipts
+		   WHERE account_fingerprint = $2)
+	`, account.ID, identityFingerprint(account.ID)).Scan(
+		&accountsRemaining,
+		&newslettersRemaining,
+		&receipts,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if accountsRemaining != 0 || newslettersRemaining != 0 || receipts != 1 {
+		t.Fatalf(
+			"erasure result accounts=%d newsletters=%d receipts=%d",
+			accountsRemaining,
+			newslettersRemaining,
+			receipts,
+		)
+	}
+	postErasure, err := database.SyncAccountIdentity(
+		ctx,
+		account.ClerkUserID,
+		"learner@example.com",
+		domain.AccountActive,
+		identityTime+20,
+	)
+	if err != nil || postErasure.Status != domain.AccountDeleted {
+		t.Fatalf("deleted identity was recreated after erasure: %#v %v", postErasure, err)
+	}
+	if _, err := database.EnsureAccount(ctx, account.ClerkUserID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("deleted identity regained authenticated access after erasure: %v", err)
+	}
 }
 
 func TestSourceCatalogReconciliationIntegration(t *testing.T) {
