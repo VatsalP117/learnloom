@@ -133,7 +133,7 @@ Difficulty is relative.
 | Branch protection/deploy trigger/image registry? | CI has no deploy | GitHub/Dokploy settings external | settings export/screenshots/API |
 | Clerk cookie/session/MFA/bot settings? | SDK integration | provider settings external | Clerk production instance review |
 | R2 encryption/versioning/lifecycle/CORS/token scope? | endpoint/template | bucket settings external | Cloudflare bucket/API-token audit |
-| Model provider actually used and data retention terms? | defaults/examples differ (`deepseek-chat` vs `deepseek-v4-flash`) | runtime env/legal agreement external | deployed env names (not secrets), DPA/provider config |
+| Model provider actually used and data retention terms? | runtime `MODEL_BASE_URL` and `MODEL_NAME` remain deployment-controlled | runtime env/legal agreement external | deployed env names (not secrets), DPA/provider config |
 | Source copyright/robots policy? | safe HTTP technical policy only | product/legal choice unrecorded | legal/product ADR |
 | Expected data-deletion semantics? | artifacts deleted, DB retained | intent not recorded; high privacy consequence | product/legal requirement and ADR |
 | Cost per lesson/capacity budget? | token/concurrency limits | no telemetry/rates | stage token/cost metrics and provider plan |

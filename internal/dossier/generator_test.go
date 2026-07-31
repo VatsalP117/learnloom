@@ -112,7 +112,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 		"editor":      string(editor),
 	}, requests: &requests}
 	generator, err := NewGenerator(fakeSources{}, &model, GenerationConfig{
-		ModelName: "deepseek-chat",
+		ModelName: "deepseek-v4-flash",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestGeneratorPreservesExaminerPracticeWhenEditorDamagesAnswerKey(t *testing
 		"editor":     string(editor),
 	}}
 	generator, err := NewGenerator(fakeSources{}, &model, GenerationConfig{
-		ModelName: "deepseek-chat",
+		ModelName: "deepseek-v4-flash",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +413,7 @@ func TestGeneratorPreservesValidatedDraftsWhenEditorNeverSatisfiesContract(t *te
 		"editor":     string(brokenEditor),
 	}}
 	generator, err := NewGenerator(fakeSources{}, &model, GenerationConfig{
-		ModelName: "deepseek-chat",
+		ModelName: "deepseek-v4-flash",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -167,7 +167,7 @@ it. The separate Vite key is what the browser uses: duplication can drift.
 | `ARTIFACT_CACHE_BYTES` | 64 MiB | web/worker | no | per-process LRU; 0 effectively disables |
 | `MODEL_BASE_URL` | `https://api.deepseek.com` | worker | no | HTTPS origin, `/chat/completions` and `/models` |
 | `MODEL_API_KEY` | none | worker required | **yes** | redact/rotate at provider |
-| `MODEL_NAME` | `deepseek-chat` | worker | no | fingerprint and request |
+| `MODEL_NAME` | `deepseek-v4-flash` | worker | no | fingerprint and request |
 | `MODEL_STRUCTURED_OUTPUT` | true | worker | no | asks `json_object`; local validation still mandatory |
 | `MODEL_TIMEOUT` | 10m | worker | no | per HTTP client/request |
 | `MODEL_RETRIES` | 2 | worker | no | 0–5, timeout/429/5xx retry |

@@ -160,7 +160,7 @@ func Load() (Config, error) {
 		Model: Model{
 			BaseURL:          env("MODEL_BASE_URL", "https://api.deepseek.com"),
 			APIKey:           os.Getenv("MODEL_API_KEY"),
-			Name:             env("MODEL_NAME", "deepseek-chat"),
+			Name:             env("MODEL_NAME", "deepseek-v4-flash"),
 			StructuredOutput: envBool("MODEL_STRUCTURED_OUTPUT", true),
 			Timeout:          envDuration("MODEL_TIMEOUT", 10*time.Minute),
 			Retries:          envInt("MODEL_RETRIES", 2),
