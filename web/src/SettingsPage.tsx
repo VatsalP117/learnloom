@@ -62,7 +62,7 @@ export default function SettingsPage() {
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Your learning rhythm</p>
           <h1>Prompts & recaps</h1>
-          <p>Choose the prompts that help. Learnloom will not turn an unfinished queue into pressure.</p>
+          <p>Choose the small signals that keep your learning moving, without turning an unfinished queue into pressure.</p>
         </header>
 
         {loading ? <AtelierLoading label="Loading your preferences…" /> : null}
@@ -70,11 +70,16 @@ export default function SettingsPage() {
 
         {!loading ? (
           <section className="settings-panel glass-panel">
-            <label>
+            <div className="settings-panel-intro">
+              <p className="atelier-eyebrow">Your preferences</p>
+              <h2>Stay connected without the pressure</h2>
+              <p>Weekly recaps keep the thread visible. Re-entry mode makes it easier to return after time away.</p>
+            </div>
+            <label className="settings-toggle">
               <span><Mail size={18} /></span>
               <span>
                 <strong>Weekly learning recap</strong>
-                <small>Concepts learned, one connection, one retrieval prompt, and the best next action.</small>
+                <small>A weekly email with concepts learned, one connection, a retrieval prompt, and a next action.</small>
               </span>
               <input
                 type="checkbox"
@@ -85,11 +90,25 @@ export default function SettingsPage() {
                 })}
               />
             </label>
-            <label>
+            <label className="settings-timezone">
+              <span>
+                <strong>Recap time zone</strong>
+                <small>Used to schedule your weekly recap.</small>
+              </span>
+              <input
+                aria-label="Recap time zone"
+                value={preferences.timeZone}
+                onChange={(event) => setPreferences({
+                  ...preferences,
+                  timeZone: event.target.value,
+                })}
+              />
+            </label>
+            <label className="settings-toggle">
               <span><BellRing size={18} /></span>
               <span>
                 <strong>Gentle re-entry mode</strong>
-                <small>After time away, Today offers one useful action without listing a backlog.</small>
+                <small>When you return after a break, Today offers one useful next step instead of a backlog.</small>
               </span>
               <input
                 type="checkbox"
@@ -100,17 +119,7 @@ export default function SettingsPage() {
                 })}
               />
             </label>
-            <label className="settings-timezone">
-              <span>Recap time zone</span>
-              <input
-                value={preferences.timeZone}
-                onChange={(event) => setPreferences({
-                  ...preferences,
-                  timeZone: event.target.value,
-                })}
-              />
-            </label>
-            <div>
+            <div className="settings-actions">
               <button className="atelier-primary" type="button" disabled={busy} onClick={save}>
                 {busy ? "Saving…" : "Save preferences"}
               </button>

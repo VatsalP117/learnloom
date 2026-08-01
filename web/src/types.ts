@@ -75,16 +75,20 @@ export interface RetentionState {
   actionUrl?: string;
 }
 
-export interface LibraryLesson extends Issue {
-  newsletter: Newsletter;
+export interface LibraryLesson {
+  id: string;
+  title: string;
+  createdAt: string;
+  newsletter: {
+    name: string;
+    lessonMinutes: number;
+  };
   progress?: {
     issueId: string;
     progress: number;
     completedAt?: string;
     updatedAt?: string;
   };
-  concepts?: string[];
-  sourceTitles?: string[];
 }
 
 export interface LibrarySnapshot {

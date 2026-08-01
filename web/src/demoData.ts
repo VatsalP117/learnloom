@@ -214,25 +214,33 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
         updatedAt: createdAt(1),
       },
     };
-    const lessons = newsletters
+    const libraryLessons = newsletters
       .flatMap((newsletter) =>
         (issuesByNewsletter[newsletter.id] ?? []).map((issue) => ({
-          ...issue,
-          newsletterId: newsletter.id,
-          newsletter,
-          progress: progressByIssue[issue.id],
+          lesson: {
+            id: issue.id,
+            title: issue.title,
+            createdAt: issue.createdAt,
+            newsletter: {
+              name: newsletter.name,
+              lessonMinutes: newsletter.lessonMinutes,
+            },
+            progress: progressByIssue[issue.id],
+          },
+          searchText: `${issue.title} ${newsletter.name} ${newsletter.topic}`.toLowerCase(),
         })),
       )
-      .filter((lesson) => {
-        const text = `${lesson.title} ${lesson.newsletter.name} ${lesson.newsletter.topic}`.toLowerCase();
+    const lessons = libraryLessons
+      .filter(({ lesson, searchText }) => {
         const progress = lesson.progress;
         const matchesFilter =
           filter === "all" ||
           (filter === "completed" && Boolean(progress?.completedAt)) ||
           (filter === "in-progress" && Boolean(progress?.progress && !progress.completedAt)) ||
           (filter === "unread" && !progress?.progress);
-        return matchesFilter && text.includes(query);
-      });
+        return matchesFilter && searchText.includes(query);
+      })
+      .map(({ lesson }) => lesson);
     return { lessons, nextCursor: "" };
   }
 

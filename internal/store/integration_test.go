@@ -380,8 +380,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 			24,
 			nil,
 		)
-		if err != nil || len(matches) != 1 || matches[0].ID != issue.ID ||
-			len(matches[0].Concepts) != 2 || cursor != nil {
+		if err != nil || len(matches) != 1 || matches[0].ID != issue.ID || cursor != nil {
 			t.Fatalf(
 				"Library search %q=%#v cursor=%#v err=%v",
 				search,

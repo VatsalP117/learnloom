@@ -1,29 +1,20 @@
 import {
-  BookOpen,
-  CheckCircle2,
+  CalendarDays,
   Clock3,
   Search,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import LearningShell, {
   AtelierError,
   AtelierLoading,
   formatShortDate,
 } from "./LearningShell";
-import { lessonState } from "./learningState";
 import { type LibraryFilter, useLibrary } from "./useLibrary";
 
 export default function LibraryPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
-  const [, refreshState] = useState(0);
   const library = useLibrary(query, filter);
-
-  useEffect(() => {
-    const refresh = () => refreshState((value) => value + 1);
-    window.addEventListener("learnloom:state", refresh);
-    return () => window.removeEventListener("learnloom:state", refresh);
-  }, []);
 
   return (
     <LearningShell active="library">
@@ -75,43 +66,22 @@ export default function LibraryPage() {
         ) : null}
 
         <div className="lesson-library-grid">
-          {library.lessons.map((lesson) => {
-            const state = lessonState(lesson.id);
-            return (
-              <a
-                className="lesson-library-card glass-panel"
-                href={`/issues/${encodeURIComponent(lesson.id)}`}
-                key={lesson.id}
-              >
-                <div className="lesson-library-meta">
-                  <span className="atelier-chip">{lesson.newsletter.name}</span>
-                  {state.completed ? (
-                    <span><CheckCircle2 size={14} /> Completed</span>
-                  ) : state.progress ? (
-                    <span>{Math.round(state.progress)}% read</span>
-                  ) : (
-                    <span>Unread</span>
-                  )}
-                </div>
-                <h2>{lesson.title}</h2>
-                <p>{lesson.newsletter.topic}</p>
-                {lesson.concepts?.length ? (
-                  <div className="library-concepts">
-                    {lesson.concepts.slice(0, 3).map((concept) => (
-                      <span key={concept}>{concept}</span>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="lesson-library-footer">
-                  <span><Clock3 size={13} />{lesson.newsletter.lessonMinutes} min</span>
-                  <span><BookOpen size={13} />{formatShortDate(lesson.createdAt)}</span>
-                </div>
-                {state.progress && !state.completed ? (
-                  <div className="library-progress"><i style={{ width: `${state.progress}%` }} /></div>
-                ) : null}
-              </a>
-            );
-          })}
+          {library.lessons.map((lesson) => (
+            <a
+              className="lesson-library-card glass-panel"
+              href={`/issues/${encodeURIComponent(lesson.id)}`}
+              key={lesson.id}
+            >
+              <div className="lesson-library-meta">
+                <span className="atelier-chip">{lesson.newsletter.name}</span>
+              </div>
+              <h2>{lesson.title}</h2>
+              <div className="lesson-library-footer">
+                <span><Clock3 size={13} />{lesson.newsletter.lessonMinutes} min</span>
+                <span><CalendarDays size={13} />Generated {formatShortDate(lesson.createdAt)}</span>
+              </div>
+            </a>
+          ))}
         </div>
         {library.hasMore ? (
           <div className="library-load-more">

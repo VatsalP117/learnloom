@@ -68,23 +68,15 @@ const (
 )
 
 type LibraryLesson struct {
-	ID               string          `json:"id"`
-	NewsletterID     string          `json:"newsletterId"`
-	Title            string          `json:"title"`
-	Status           string          `json:"status"`
-	PublicationState string          `json:"publicationState"`
-	CreatedAt        time.Time       `json:"createdAt"`
-	Newsletter       LibraryStream   `json:"newsletter"`
-	Progress         *LessonProgress `json:"progress,omitempty"`
-	Concepts         []string        `json:"concepts,omitempty"`
-	SourceTitles     []string        `json:"sourceTitles,omitempty"`
+	ID         string          `json:"id"`
+	Title      string          `json:"title"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	Newsletter LibraryStream   `json:"newsletter"`
+	Progress   *LessonProgress `json:"progress,omitempty"`
 }
 
 type LibraryStream struct {
-	ID            string `json:"id"`
 	Name          string `json:"name"`
-	Topic         string `json:"topic"`
-	LearnerLevel  string `json:"learnerLevel"`
 	LessonMinutes int    `json:"lessonMinutes"`
 }
 
@@ -1083,22 +1075,14 @@ func (s *Store) ListLibraryLessonsPage(
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 			i.id::text,
-			i.newsletter_id::text,
 			COALESCE(i.dossier_title, ''),
-			i.status,
-			i.publication_state,
 			i.created_at,
-			n.id::text,
 			n.name,
-			n.topic,
-			n.learner_level,
 			n.lesson_minutes,
 			lp.issue_id::text,
 			COALESCE(lp.progress, 0),
 			lp.completed_at,
-			lp.updated_at,
-			COALESCE(search.concepts, '{}'),
-			COALESCE(search.source_titles, '{}')
+			lp.updated_at
 		FROM issues i
 		JOIN newsletters n ON n.id = i.newsletter_id
 		LEFT JOIN lesson_search_documents search ON search.issue_id = i.id
@@ -1142,22 +1126,14 @@ func (s *Store) ListLibraryLessonsPage(
 		)
 		if err := rows.Scan(
 			&lesson.ID,
-			&lesson.NewsletterID,
 			&lesson.Title,
-			&lesson.Status,
-			&lesson.PublicationState,
 			&lesson.CreatedAt,
-			&lesson.Newsletter.ID,
 			&lesson.Newsletter.Name,
-			&lesson.Newsletter.Topic,
-			&lesson.Newsletter.LearnerLevel,
 			&lesson.Newsletter.LessonMinutes,
 			&progressID,
 			&progress,
 			&completedAt,
 			&updatedAt,
-			&lesson.Concepts,
-			&lesson.SourceTitles,
 		); err != nil {
 			return nil, nil, err
 		}
