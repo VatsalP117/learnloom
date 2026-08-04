@@ -1,0 +1,41 @@
+name: learnloom-monitoring
+
+services:
+  alloy:
+    image: grafana/alloy:v1.18.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    environment:
+      GRAFANA_CLOUD_METRICS_URL: ${GRAFANA_CLOUD_METRICS_URL:?set GRAFANA_CLOUD_METRICS_URL}
+      GRAFANA_CLOUD_METRICS_USER: ${GRAFANA_CLOUD_METRICS_USER:?set GRAFANA_CLOUD_METRICS_USER}
+      GRAFANA_CLOUD_LOGS_URL: ${GRAFANA_CLOUD_LOGS_URL:?set GRAFANA_CLOUD_LOGS_URL}
+      GRAFANA_CLOUD_LOGS_USER: ${GRAFANA_CLOUD_LOGS_USER:?set GRAFANA_CLOUD_LOGS_USER}
+      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:?set GRAFANA_CLOUD_TOKEN}
+      MONITORING_HOST: ${MONITORING_HOST:?set MONITORING_HOST}
+    privileged: true
+    volumes:
+      - ./infra/monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/sys:ro
+      - /var/run:/var/run:rw
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    expose:
+      - "12345"
+    networks:
+      - learnloom-backend
+    restart: unless-stopped
+
+volumes:
+  alloy-data:
+    name: learnloom-alloy-data
+
+networks:
+  learnloom-backend:
+    external: true
+    name: learnloom-backend

@@ -20,7 +20,9 @@ Dossier artifacts. Clerk owns identity, and Resend is the email boundary.
 
 See [architecture](docs/architecture.md), [architecture decisions](docs/adr),
 the [production runbook](docs/operations.md), and the
-[Dokploy deployment guide](docs/dokploy-deployment.md).
+[Dokploy deployment guide](docs/dokploy-deployment.md). Production metrics,
+logs, dashboards, alerts, and external checks are covered by the
+[Grafana Cloud monitoring guide](docs/grafana-cloud-monitoring.md).
 
 ## Development
 

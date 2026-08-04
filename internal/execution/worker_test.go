@@ -15,7 +15,29 @@ import (
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/dossier"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/VatsalP117/learnloom/internal/telemetry"
 )
+
+func TestWorkerDurationMetricsRecordOutcome(t *testing.T) {
+	worker := &Worker{metrics: workerMetrics{
+		durations: telemetry.NewHistogramFamily([]float64{1, 5}),
+	}}
+	worker.observeDuration("issue_total", 2*time.Second, nil)
+	worker.observeDuration("issue_total", 3*time.Second, errors.New("failed"))
+
+	var output strings.Builder
+	if err := worker.WriteDurationMetrics(&output); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		`learnloom_worker_operation_duration_seconds_count{operation="issue_total",outcome="success"} 1`,
+		`learnloom_worker_operation_duration_seconds_count{operation="issue_total",outcome="failure"} 1`,
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("missing %q in:\n%s", expected, output.String())
+		}
+	}
+}
 
 func TestAcceptedDeliveryWithReceiptFailureBecomesUnknown(t *testing.T) {
 	receiptFailure := errors.New("database unavailable after provider accepted email")

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/dossier"
 	"github.com/VatsalP117/learnloom/internal/source"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/VatsalP117/learnloom/internal/telemetry"
 	"github.com/google/uuid"
 )
 
@@ -108,7 +110,9 @@ type workerMetrics struct {
 	renewalFailures   atomic.Uint64
 	releasedClaims    atomic.Uint64
 	activeIssues      atomic.Int64
+	activeDeliveries  atomic.Int64
 	lastCycleUnixNano atomic.Int64
+	durations         *telemetry.HistogramFamily
 }
 
 type Snapshot struct {
@@ -122,6 +126,7 @@ type Snapshot struct {
 	RenewalFailures  uint64    `json:"renewalFailures"`
 	ReleasedClaims   uint64    `json:"releasedClaims"`
 	ActiveIssues     int64     `json:"activeIssues"`
+	ActiveDeliveries int64     `json:"activeDeliveries"`
 	Draining         bool      `json:"draining"`
 	LastCycleAt      time.Time `json:"lastCycleAt"`
 }
@@ -159,6 +164,12 @@ func New(
 		lifecycle: lifecycle, producer: producer, artifacts: artifacts,
 		mailer: mailer, sourceSvc: sourceSvc, cfg: cfg, logger: logger,
 		now: func() time.Time { return time.Now().UTC() },
+		metrics: workerMetrics{
+			durations: telemetry.NewHistogramFamily([]float64{
+				0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30,
+				60, 120, 300, 600, 1200, 1800, 2700,
+			}),
+		},
 	}, nil
 }
 
@@ -575,6 +586,7 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 					usage dossier.ModelUsage,
 					stageErr error,
 				) {
+					w.observeDuration("model_stage_"+stage, duration, stageErr)
 					w.logger.InfoContext(
 						ctx,
 						"Dossier model stage completed",
@@ -687,12 +699,14 @@ func (w *Worker) logIssuePhase(
 	started time.Time,
 	err error,
 ) {
+	duration := time.Since(started)
+	w.observeDuration("issue_"+phase, duration, err)
 	w.logger.InfoContext(
 		ctx,
 		"Issue generation phase completed",
 		"issue_id", issueID,
 		"phase", phase,
-		"duration_ms", time.Since(started).Milliseconds(),
+		"duration_ms", duration.Milliseconds(),
 		"success", err == nil,
 	)
 }
@@ -762,6 +776,8 @@ func (w *Worker) processDeliveries(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			w.metrics.activeDeliveries.Add(1)
+			defer w.metrics.activeDeliveries.Add(-1)
 			if err := w.processDelivery(ctx, claim); err != nil {
 				errorsChannel <- err
 			}
@@ -775,7 +791,11 @@ func (w *Worker) processDeliveries(ctx context.Context) error {
 func (w *Worker) processDelivery(
 	ctx context.Context,
 	claim *store.DeliveryClaim,
-) error {
+) (resultErr error) {
+	started := time.Now()
+	defer func() {
+		w.observeDuration("delivery_total", time.Since(started), resultErr)
+	}()
 	ctx, cancel := context.WithCancel(ctx)
 	renewed := make(chan error, 1)
 	go w.renewDeliveryClaim(ctx, claim, cancel, renewed)
@@ -862,6 +882,29 @@ func (w *Worker) processDelivery(
 		return errors.Join(err, transitionErr)
 	}
 	return fmt.Errorf("deliver Issue %s: %w", claim.Issue.ID, err)
+}
+
+func (w *Worker) observeDuration(
+	operation string,
+	duration time.Duration,
+	err error,
+) {
+	outcome := "success"
+	if err != nil {
+		outcome = "failure"
+	}
+	w.metrics.durations.Observe(map[string]string{
+		"operation": operation,
+		"outcome":   outcome,
+	}, duration.Seconds())
+}
+
+func (w *Worker) WriteDurationMetrics(writer io.Writer) error {
+	return w.metrics.durations.WritePrometheus(
+		writer,
+		"learnloom_worker_operation_duration_seconds",
+		"Duration of worker operations in seconds.",
+	)
 }
 
 func (w *Worker) renewDeliveryClaim(
@@ -954,6 +997,7 @@ func (w *Worker) Snapshot() Snapshot {
 		RenewalFailures:  w.metrics.renewalFailures.Load(),
 		ReleasedClaims:   w.metrics.releasedClaims.Load(),
 		ActiveIssues:     w.metrics.activeIssues.Load(),
+		ActiveDeliveries: w.metrics.activeDeliveries.Load(),
 		Draining:         w.draining.Load(),
 		LastCycleAt:      lastCycle,
 	}

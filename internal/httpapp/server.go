@@ -21,6 +21,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/artifact"
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/VatsalP117/learnloom/internal/telemetry"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/google/uuid"
@@ -66,6 +67,7 @@ type requestMetrics struct {
 	total       atomic.Uint64
 	errors      atomic.Uint64
 	rateLimited atomic.Uint64
+	durations   *telemetry.HistogramFamily
 }
 
 type session struct {
@@ -117,6 +119,11 @@ func NewServer(
 	server := &Server{
 		cfg: cfg, store: database, artifacts: artifacts,
 		logger: logger, readiness: readiness,
+		metrics: requestMetrics{
+			durations: telemetry.NewHistogramFamily([]float64{
+				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+			}),
+		},
 	}
 	auth := cfg.Authentication
 	if auth == nil {
@@ -184,6 +191,7 @@ func clerkSessionToken(request *http.Request) string {
 func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	started := time.Now()
 	s.metrics.total.Add(1)
+	metricRouteLabel := "invalid_host"
 	requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
 	if _, err := uuid.Parse(requestID); err != nil {
 		requestID = uuid.NewString()
@@ -210,6 +218,11 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 				writeProblem(writer, http.StatusInternalServerError, "internal_error", "An internal error occurred.")
 			}
 		}
+		s.metrics.durations.Observe(map[string]string{
+			"method": metricMethod(request.Method),
+			"route":  metricRouteLabel,
+			"status": metricStatus(status),
+		}, time.Since(started).Seconds())
 		s.logger.InfoContext(
 			request.Context(),
 			"HTTP request",
@@ -226,6 +239,7 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 		writeProblem(writer, http.StatusMisdirectedRequest, "misdirected_request", "The request Host is not allowed.")
 		return
 	}
+	metricRouteLabel = metricRoute(host, request.URL.Path)
 	request = request.WithContext(context.WithValue(request.Context(), hostKey{}, host))
 	switch host.Kind {
 	case HostWWW:
@@ -629,6 +643,13 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 		operations.LessonsCompleted,
 		operations.RetainedLearners,
 	)
+	if err := s.metrics.durations.WritePrometheus(
+		response,
+		"learnloom_http_request_duration_seconds",
+		"Duration of hosted HTTP requests in seconds.",
+	); err != nil {
+		s.logger.ErrorContext(ctx, "write HTTP duration metrics", "error", err)
+	}
 }
 
 func (s *Server) internalError(

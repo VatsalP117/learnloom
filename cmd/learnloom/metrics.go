@@ -53,6 +53,7 @@ func workerMetricsServer(
 				"# TYPE learnloom_claim_renewal_failures_total counter\nlearnloom_claim_renewal_failures_total %d\n"+
 				"# TYPE learnloom_claims_released_total counter\nlearnloom_claims_released_total %d\n"+
 				"# TYPE learnloom_active_issues gauge\nlearnloom_active_issues %d\n"+
+				"# TYPE learnloom_active_deliveries gauge\nlearnloom_active_deliveries %d\n"+
 				"# TYPE learnloom_worker_draining gauge\nlearnloom_worker_draining %d\n"+
 				"# TYPE learnloom_worker_last_cycle_timestamp_seconds gauge\nlearnloom_worker_last_cycle_timestamp_seconds %d\n",
 			snapshot.Cycles,
@@ -65,9 +66,13 @@ func workerMetricsServer(
 			snapshot.RenewalFailures,
 			snapshot.ReleasedClaims,
 			snapshot.ActiveIssues,
+			snapshot.ActiveDeliveries,
 			boolMetric(snapshot.Draining),
 			snapshot.LastCycleAt.Unix(),
 		)
+		if err := worker.WriteDurationMetrics(response); err != nil {
+			return
+		}
 	})
 	return &http.Server{
 		Addr: address, Handler: mux, ReadHeaderTimeout: 5 * time.Second,

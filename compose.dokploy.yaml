@@ -48,6 +48,9 @@ services:
       retries: 30
     networks:
       - backend
+    labels:
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=postgres"
     restart: unless-stopped
 
   migrate:
@@ -58,6 +61,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    labels:
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=migrate"
     restart: "no"
 
   web:
@@ -87,6 +93,8 @@ services:
       - "3000"
       - "9091"
     labels: &web-traefik-labels
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=web"
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
       - "traefik.http.services.learnloom-web.loadbalancer.server.port=3000"
@@ -169,6 +177,9 @@ services:
         condition: service_completed_successfully
       searxng:
         condition: service_started
+    labels:
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=worker"
     restart: unless-stopped
 
   searxng:
@@ -187,6 +198,9 @@ services:
         condition: service_healthy
     networks:
       - backend
+    labels:
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=searxng"
     restart: unless-stopped
 
   searxng-valkey:
@@ -201,6 +215,9 @@ services:
       - searxng-valkey-data:/data
     networks:
       - backend
+    labels:
+      - "com.learnloom.monitor=true"
+      - "com.learnloom.service=searxng-valkey"
     restart: unless-stopped
 
 volumes:
@@ -210,5 +227,6 @@ volumes:
 
 networks:
   backend:
+    name: learnloom-backend
   dokploy-network:
     external: true

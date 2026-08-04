@@ -1,0 +1,179 @@
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+prometheus.remote_write "grafana_cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_METRICS_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_METRICS_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+}
+
+prometheus.relabel "common" {
+	forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+	rule {
+		target_label = "environment"
+		replacement  = "production"
+	}
+
+	rule {
+		target_label = "project"
+		replacement  = "learnloom"
+	}
+
+	rule {
+		target_label = "host"
+		replacement  = sys.env("MONITORING_HOST")
+	}
+}
+
+prometheus.scrape "learnloom" {
+	targets = [
+		{
+			"__address__" = "web:9091",
+			"instance"    = "learnloom-web",
+			"service"     = "web",
+		},
+		{
+			"__address__" = "worker:9090",
+			"instance"    = "learnloom-worker",
+			"service"     = "worker",
+		},
+	]
+	scrape_interval = "15s"
+	scrape_timeout  = "5s"
+	job_name        = "learnloom"
+	forward_to      = [prometheus.relabel.common.receiver]
+}
+
+prometheus.exporter.unix "host" {
+	procfs_path        = "/host/proc"
+	rootfs_path        = "/rootfs"
+	sysfs_path         = "/sys"
+	udev_data_path     = "/rootfs/run/udev/data"
+	disable_collectors = [
+		"arp",
+		"bcache",
+		"bonding",
+		"fibrechannel",
+		"infiniband",
+		"ipvs",
+		"nfs",
+		"nfsd",
+		"nvme",
+		"powersupplyclass",
+		"rapl",
+		"tapestats",
+		"thermal_zone",
+		"zfs",
+	]
+}
+
+prometheus.scrape "host" {
+	targets         = prometheus.exporter.unix.host.targets
+	scrape_interval = "30s"
+	job_name        = "node"
+	forward_to      = [prometheus.relabel.common.receiver]
+}
+
+prometheus.exporter.cadvisor "docker" {
+	docker_host                  = "unix:///var/run/docker.sock"
+	docker_only                  = true
+	storage_duration             = "2m"
+	allowlisted_container_labels = [
+		"com.learnloom.monitor",
+		"com.learnloom.service",
+	]
+}
+
+prometheus.relabel "learnloom_containers" {
+	forward_to = [prometheus.relabel.common.receiver]
+
+	rule {
+		source_labels = ["container_label_com_learnloom_monitor"]
+		regex         = "true"
+		action        = "keep"
+	}
+}
+
+prometheus.scrape "docker" {
+	targets         = prometheus.exporter.cadvisor.docker.targets
+	scrape_interval = "30s"
+	job_name        = "docker"
+	forward_to      = [prometheus.relabel.learnloom_containers.receiver]
+}
+
+prometheus.scrape "alloy" {
+	targets = [{
+		"__address__" = "127.0.0.1:12345",
+		"instance"    = "learnloom-alloy",
+		"service"     = "alloy",
+	}]
+	scrape_interval = "30s"
+	job_name        = "alloy"
+	forward_to      = [prometheus.relabel.common.receiver]
+}
+
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "learnloom_logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_learnloom_monitor"]
+		regex         = "true"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_learnloom_service"]
+		target_label  = "service_name"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		target_label = "environment"
+		replacement  = "production"
+	}
+
+	rule {
+		target_label = "project"
+		replacement  = "learnloom"
+	}
+
+	rule {
+		target_label = "host"
+		replacement  = sys.env("MONITORING_HOST")
+	}
+}
+
+loki.source.docker "learnloom" {
+	host             = "unix:///var/run/docker.sock"
+	targets          = discovery.relabel.learnloom_logs.output
+	forward_to       = [loki.write.grafana_cloud.receiver]
+	refresh_interval = "5s"
+}
+
+loki.write "grafana_cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_LOGS_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_LOGS_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+}

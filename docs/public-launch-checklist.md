@@ -29,6 +29,9 @@ release.
 - [x] Provider tokens, retries, stage latency, estimated spend, and learning
   outcomes feed durable recording rules and a versioned operations dashboard;
   claim admission enforces the configured daily reservation budget.
+- [x] A versioned Alloy service defines collection for Learnloom application,
+  worker, host, container, and log telemetry without publishing operational
+  ports.
 - [x] A restore harness refuses non-drill databases and verifies schema, row,
   and sampled artifact checksum evidence.
 

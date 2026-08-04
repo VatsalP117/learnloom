@@ -1,6 +1,7 @@
 node_modules/
 web/dist/
 .env
+.env.monitoring
 config.json
 data/
 output/

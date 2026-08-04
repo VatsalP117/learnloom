@@ -1,3 +1,4 @@
+namespace: learnloom
 groups:
   - name: learnloom-recording
     interval: 30s
@@ -12,49 +13,135 @@ groups:
         expr: learnloom_model_estimated_cost_microusd / clamp_min(learnloom_learning_actions{action="retained_learner"}, 1)
       - record: learnloom:database_pool_saturation
         expr: learnloom_database_connections{state="acquired"} / clamp_min(learnloom_database_connection_limit, 1)
+      - record: learnloom:http_5xx_ratio
+        expr: sum(rate(learnloom_http_request_duration_seconds_count{status="5xx"}[5m])) / clamp_min(sum(rate(learnloom_http_request_duration_seconds_count[5m])), 0.001)
+      - record: learnloom:http_request_p95_seconds
+        expr: histogram_quantile(0.95, sum by (le, route) (rate(learnloom_http_request_duration_seconds_bucket[5m])))
+      - record: learnloom:worker_operation_p95_seconds
+        expr: histogram_quantile(0.95, sum by (le, operation) (rate(learnloom_worker_operation_duration_seconds_bucket[30m])))
 
-  - name: learnloom-alerts
+  - name: learnloom-availability-alerts
     interval: 30s
     rules:
+      - alert: LearnloomMetricsTargetDown
+        expr: up{job="learnloom"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Learnloom {{ $labels.service }} metrics endpoint is unreachable"
+          description: "Alloy has failed to scrape {{ $labels.instance }} for at least two minutes."
+      - alert: LearnloomCollectorMissing
+        expr: absent_over_time(up{job="alloy"}[5m])
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Learnloom Alloy collector stopped reporting
+          description: No Alloy self-scrape has reached Grafana Cloud for at least five minutes.
+      - alert: LearnloomWorkerStalled
+        expr: time() - learnloom_worker_last_cycle_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Learnloom worker has not started a cycle recently
+          description: The worker's last cycle timestamp is more than five minutes old.
+
+  - name: learnloom-application-alerts
+    interval: 30s
+    rules:
+      - alert: LearnloomHTTP5xxRateHigh
+        expr: learnloom:http_5xx_ratio > 0.05 and sum(rate(learnloom_http_request_duration_seconds_count[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5% of Learnloom requests are returning 5xx
+          description: The five-minute error ratio is {{ $value | humanizePercentage }}.
+      - alert: LearnloomHTTPP95LatencyHigh
+        expr: learnloom:http_request_p95_seconds > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Learnloom route {{ $labels.route }} has high p95 latency"
+          description: "Five-minute p95 latency has remained above two seconds. Current value: {{ $value | humanizeDuration }}."
       - alert: LearnloomIssueQueueStale
         expr: learnloom_queue_oldest_issue_seconds > 900
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: Oldest queued lesson has waited more than 15 minutes.
+          summary: Oldest queued lesson has waited more than 15 minutes
       - alert: LearnloomDeliveryQueueStale
         expr: learnloom_queue_oldest_delivery_seconds > 900
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: Oldest queued delivery has waited more than 15 minutes.
+          summary: Oldest queued delivery has waited more than 15 minutes
+      - alert: LearnloomGenerationFailures
+        expr: increase(learnloom_dossier_generation_failures_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Learnloom dossier generation failed
+          description: "{{ $value }} generation failures were observed in the last 15 minutes."
+      - alert: LearnloomDeliveryFailures
+        expr: increase(learnloom_delivery_failures_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Learnloom delivery failed
+          description: "{{ $value }} delivery failures were observed in the last 15 minutes."
       - alert: LearnloomDatabasePoolSaturated
         expr: learnloom:database_pool_saturation > 0.85
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: More than 85% of the Postgres pool is acquired.
+          summary: More than 85% of the Postgres pool is acquired
       - alert: LearnloomDailyModelBudgetWarning
         expr: learnloom_model_estimated_cost_today_microusd > 0.8 * learnloom_model_daily_budget_microusd
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: Estimated daily model spend passed 80% of the configured budget.
+          summary: Estimated daily model spend passed 80% of the configured budget
       - alert: LearnloomDailyModelBudgetReached
         expr: learnloom_model_estimated_cost_today_microusd >= learnloom_model_daily_budget_microusd
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: Estimated daily model spend reached the configured claim budget.
+          summary: Estimated daily model spend reached the configured claim budget
       - alert: LearnloomClaimRecoveryActive
         expr: increase(learnloom_claims_recovered_total[15m]) > 0
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: Worker claims required automatic recovery.
+          summary: Worker claims required automatic recovery
+
+  - name: learnloom-infrastructure-alerts
+    interval: 30s
+    rules:
+      - alert: LearnloomHostDiskLow
+        expr: node_filesystem_avail_bytes{job="node",mountpoint="/",fstype!="rootfs"} / node_filesystem_size_bytes{job="node",mountpoint="/",fstype!="rootfs"} < 0.15
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Learnloom VM root disk has less than 15% free
+          description: "Free disk ratio: {{ $value | humanizePercentage }}."
+      - alert: LearnloomHostMemoryLow
+        expr: node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"} < 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Learnloom VM has less than 10% memory available
+          description: "Available memory ratio: {{ $value | humanizePercentage }}."
