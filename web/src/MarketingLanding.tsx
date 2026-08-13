@@ -10,8 +10,9 @@ import {
   Quote,
   Search,
   Sparkles,
+  X,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
@@ -20,31 +21,40 @@ import { appOrigin, personalSiteHost } from "./config";
 import "./marketing.css";
 
 export default function MarketingLanding() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   useEffect(() => {
     document.title = "Learnloom | Give us a topic. We’ll build the learning path.";
   }, []);
 
   return (
     <div className="ll-page">
-      <header className="ll-nav">
+      <header className={`ll-nav${menuOpen ? " menu-open" : ""}`}>
         <a className="ll-brand" href="#top" aria-label="Learnloom home">
           <BrandMark />
           <span>Learnloom</span>
         </a>
-        <nav className="ll-nav-links" aria-label="Main navigation">
-          <a href="/solutions">Solutions</a>
-          <a href="/product/ai-learning-assistant">Product</a>
-          <a href="/guides">Guides</a>
-          <a href="/examples">Examples</a>
-          <a href="#how-it-works">How it works</a>
+        <nav className="ll-nav-links" id="ll-main-navigation" aria-label="Main navigation">
+          <a href="/solutions" onClick={() => setMenuOpen(false)}>Solutions</a>
+          <a href="/product/ai-learning-assistant" onClick={() => setMenuOpen(false)}>Product</a>
+          <a href="/guides" onClick={() => setMenuOpen(false)}>Guides</a>
+          <a href="/examples" onClick={() => setMenuOpen(false)}>Examples</a>
+          <a href="#how-it-works" onClick={() => setMenuOpen(false)}>How it works</a>
         </nav>
         <div className="ll-nav-actions">
           <a className="ll-sign-in" href={`${appOrigin}/sign-in`}>Sign in</a>
           <a className="ll-button ll-button-dark ll-button-small" href={`${appOrigin}/sign-up`}>
             Start learning <ArrowRight size={15} />
           </a>
-          <button className="ll-menu" type="button" aria-label="Open navigation">
-            <Menu size={21} />
+          <button
+            className="ll-menu"
+            type="button"
+            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+            aria-controls="ll-main-navigation"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? <X size={21} /> : <Menu size={21} />}
           </button>
         </div>
       </header>

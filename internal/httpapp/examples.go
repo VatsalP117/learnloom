@@ -91,9 +91,7 @@ func renderExamplesDocument(
 		strings.TrimSuffix(canonical, "/examples"),
 	))
 	body.WriteString(`<style>` + seoCSS + examplesCSS + `</style></head><body>`)
-	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
-	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
-	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
+	body.WriteString(renderMarketingNav(appOrigin, "/examples"))
 	body.WriteString(`<main><section class="examples-hero"><p class="eyebrow">Learning in public</p><h1>See what sustained curiosity can become.</h1><p>Selected learning homes show how current sources can become connected, source-grounded lessons over time. Every featured learner has chosen both public visibility and search discovery.</p></section>`)
 	if len(examples) == 0 {
 		body.WriteString(`<section class="examples-empty"><p class="eyebrow">The gallery is being prepared</p><h2>Curated examples will appear here.</h2><p>Public sites are never added automatically. Learnloom features only selected learning homes whose owners have enabled search discovery.</p></section>`)
@@ -125,7 +123,7 @@ func renderExamplesDocument(
 	body.WriteString(`<section class="seo-cta"><p class="eyebrow">Build your own learning path</p><h2>Let each lesson become part of something larger.</h2><p>Start with a subject. Learnloom can establish the source environment, while you decide privately what you want to share.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
 	body.WriteString(`">Build your learning path <span>↗</span></a></section></main>`)
-	body.WriteString(renderSEOFooter(appOrigin))
+	body.WriteString(renderMarketingFooter(appOrigin))
 	body.WriteString(`</body></html>`)
 	return body.String()
 }
@@ -166,13 +164,13 @@ func renderExamplesHead(
 }
 
 const examplesCSS = `
-.examples-hero{padding:clamp(85px,10vw,145px) max(24px,calc((100vw - 1120px)/2));background:radial-gradient(circle at 82% 18%,#cfe8df 0,transparent 30%),#f7f5ee;border-bottom:1px solid rgba(16,37,33,.12)}
-.examples-hero h1{max-width:900px;margin:0 0 30px;font-family:Georgia,serif;font-size:clamp(48px,7vw,84px);font-weight:500;line-height:1.03;letter-spacing:-.045em}
+.examples-hero{min-height:570px;display:flex;flex-direction:column;justify-content:center;padding:clamp(90px,10vw,145px) max(24px,calc((100vw - 1120px)/2));background:radial-gradient(circle at 80% 17%,rgba(255,255,255,.9),transparent 26%),radial-gradient(circle at 12% 90%,rgba(171,196,119,.2),transparent 30%),linear-gradient(150deg,#dcecf4,#eef3e7 58%,#f2e8dc);border-bottom:1px solid var(--line)}
+.examples-hero h1{max-width:900px;margin:0 0 30px;font-size:clamp(50px,6.4vw,88px);font-weight:520;line-height:.99;letter-spacing:-.06em}
 .examples-hero>p:not(.eyebrow){max-width:730px;color:#47605a;font-size:20px;line-height:1.7}
 .examples-grid{max-width:1120px;margin:0 auto;padding:clamp(70px,9vw,115px) 24px;display:grid;gap:28px}
 .example-card{display:grid;grid-template-columns:minmax(260px,.7fr) minmax(0,1.3fr);gap:50px;padding:36px;border:1px solid rgba(16,37,33,.14);border-radius:20px;background:#fff}
 .example-card header h2{margin:0 0 15px;font-family:Georgia,serif;font-size:34px;font-weight:500;letter-spacing:-.03em}.example-card header>p:not(.eyebrow){color:#536a64;line-height:1.65}.example-card header>a{display:inline-block;margin-top:18px;color:#1d5d4e;font-size:14px;font-weight:800;text-decoration:none}
 .example-lessons{display:grid;gap:10px}.example-lessons>strong{margin-bottom:5px;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.example-lessons>a{display:grid;grid-template-columns:1fr auto;gap:6px 18px;padding:18px;border-radius:12px;background:#f1f4ee;color:inherit;text-decoration:none}.example-lessons span{color:#557068;font-size:11px;text-transform:uppercase;letter-spacing:.06em}.example-lessons b{grid-column:1/2;font-size:16px;line-height:1.4}.example-lessons i{grid-column:2;grid-row:1/3;align-self:center;color:#397064;font-size:11px;font-style:normal;font-weight:800}
 .examples-empty{max-width:800px;margin:0 auto;padding:120px 24px;text-align:center}.examples-empty h2{font-family:Georgia,serif;font-size:48px;font-weight:500;margin:0 0 20px}.examples-empty>p:last-child{color:#536a64;line-height:1.7}
-@media(max-width:780px){.example-card{grid-template-columns:1fr;padding:24px;gap:34px}.example-lessons>a{grid-template-columns:1fr}.example-lessons i{grid-column:1;grid-row:auto}.examples-hero h1{font-size:48px}}
+@media(max-width:780px){.example-card{grid-template-columns:1fr;padding:24px;gap:34px}.example-lessons>a{grid-template-columns:1fr}.example-lessons i{grid-column:1;grid-row:auto}.examples-hero{min-height:520px}.examples-hero h1{font-size:48px}}
 `

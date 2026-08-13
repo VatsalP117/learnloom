@@ -417,9 +417,7 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 		strings.TrimSuffix(canonical, page.Path),
 	))
 	body.WriteString(`<style>` + seoCSS + authorityCSS + `</style></head><body>`)
-	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>`)
-	body.WriteString(`<nav aria-label="Main navigation"><a href="/solutions">Solutions</a><a href="/product/ai-learning-assistant">Product</a><a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/how-learnloom-works">How it works</a></nav>`)
-	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
+	body.WriteString(renderMarketingNav(appOrigin, page.Path))
 	body.WriteString(`<main><article class="authority-article"><header class="authority-hero"><p class="eyebrow">` + html.EscapeString(page.Category) + `</p><h1>` + html.EscapeString(page.Title) + `</h1><p>` + html.EscapeString(page.Lead) + `</p></header>`)
 	body.WriteString(`<div class="authority-layout"><div class="authority-body">`)
 	for _, section := range page.Sections {
@@ -459,7 +457,7 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">A learning system that maintains the loop</p><h2>Turn the method into a practice.</h2><p>Give Learnloom a subject. It can establish the source environment and let each lesson build on the last—or follow only the sources you choose.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
 	body.WriteString(`">Build your learning path <span>↗</span></a></section></main>`)
-	body.WriteString(renderSEOFooter(appOrigin))
+	body.WriteString(renderMarketingFooter(appOrigin))
 	body.WriteString(`</body></html>`)
 	return body.String()
 }
@@ -521,21 +519,12 @@ func publicPageTitle(path string) (string, bool) {
 	return "", false
 }
 
-func renderSEOFooter(appOrigin string) string {
-	return `<footer><a class="seo-brand" href="/"><span>✣</span>Learnloom</a>` +
-		`<p>Current sources, woven into durable understanding.</p><nav>` +
-		`<a href="/guides">Guides</a><a href="/examples">Examples</a><a href="/editorial-principles">Editorial principles</a>` +
-		`<a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="` +
-		html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-in") +
-		`">Sign in</a></nav></footer>`
-}
-
 const authorityCSS = `
-.authority-article{max-width:1120px;margin:0 auto;padding:clamp(75px,9vw,130px) 24px 40px}
-.authority-hero{max-width:900px;padding-bottom:clamp(60px,8vw,100px);border-bottom:1px solid rgba(16,37,33,.14)}
-.authority-hero h1{font-family:Georgia,serif;font-size:clamp(46px,7vw,82px);font-weight:500;line-height:1.04;letter-spacing:-.045em;margin:0 0 30px}
+.authority-article{max-width:none;margin:0;padding:0 0 40px}
+.authority-hero{max-width:none;min-height:570px;display:flex;flex-direction:column;justify-content:center;padding:clamp(90px,10vw,145px) max(24px,calc((100vw - 1120px)/2));border-top:1px solid rgba(255,255,255,.7);border-bottom:1px solid var(--line);background:radial-gradient(circle at 80% 17%,rgba(255,255,255,.9),transparent 26%),radial-gradient(circle at 12% 90%,rgba(171,196,119,.2),transparent 30%),linear-gradient(150deg,#dcecf4,#eef3e7 58%,#f2e8dc)}
+.authority-hero h1{max-width:920px;font-size:clamp(50px,6.4vw,88px);font-weight:520;line-height:.99;letter-spacing:-.06em;margin:0 0 30px}
 .authority-hero>p:not(.eyebrow){max-width:760px;color:#47605a;font-size:20px;line-height:1.7}
-.authority-layout{display:grid;grid-template-columns:minmax(0,720px) minmax(230px,1fr);gap:clamp(50px,8vw,100px);align-items:start;padding-top:80px}
+.authority-layout{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(230px,1fr);gap:clamp(50px,8vw,100px);align-items:start;padding:clamp(70px,8vw,100px) 24px 0}
 .authority-body section{padding:0 0 58px;margin:0 0 58px;border-bottom:1px solid rgba(16,37,33,.13)}
 .authority-body h2{font-family:Georgia,serif;font-size:clamp(32px,4vw,46px);font-weight:500;line-height:1.15;letter-spacing:-.03em;margin:0 0 24px}
 .authority-body p{font-family:Georgia,serif;font-size:19px;line-height:1.82;color:#354f48;margin:0 0 20px}
@@ -544,5 +533,5 @@ const authorityCSS = `
 .authority-layout aside{position:sticky;top:30px;padding:27px;border:1px solid rgba(16,37,33,.14);border-radius:17px;background:#eef3eb}
 .authority-layout aside ul{list-style:none;margin:0;padding:0}.authority-layout aside li{display:flex;gap:11px;padding:13px 0;border-bottom:1px solid rgba(16,37,33,.11);font-size:14px;line-height:1.5}.authority-layout aside li:last-child{border:0}.authority-layout aside span{color:#397064;font-weight:900}
 .authority-related{padding-top:80px}
-@media(max-width:780px){.authority-layout{grid-template-columns:1fr;padding-top:55px}.authority-layout aside{position:static;grid-row:1}.authority-body p{font-size:18px}.authority-hero h1{font-size:46px}}
+@media(max-width:780px){.authority-hero{min-height:520px}.authority-layout{grid-template-columns:1fr;padding-top:55px}.authority-layout aside{position:static;grid-row:1}.authority-body p{font-size:18px}.authority-hero h1{font-size:46px}}
 `

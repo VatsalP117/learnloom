@@ -21,7 +21,7 @@ export default function LegalPage() {
   return (
     <div className="legal-page">
       <header className="legal-nav">
-        <a className="legal-brand" href="/marketing" aria-label="Learnloom home">
+        <a className="legal-brand" href="/" aria-label="Learnloom home">
           <span><Sparkles size={16} /></span>
           <strong>Learnloom</strong>
         </a>
@@ -35,7 +35,7 @@ export default function LegalPage() {
       </header>
 
       <main>
-        <a className="legal-back" href="/marketing">
+        <a className="legal-back" href="/">
           <ArrowLeft size={15} /> Back to Learnloom
         </a>
         {isTerms ? <TermsContent /> : <PrivacyContent />}

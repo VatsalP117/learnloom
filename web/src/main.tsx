@@ -9,7 +9,6 @@ import CalmLoader from "./CalmLoader";
 import { rootDomain } from "./config";
 import "./entry.css";
 
-const MarketingLanding = lazy(() => import("./MarketingLanding"));
 const CanonicalDossier = lazy(() => import("./CanonicalDossier"));
 const LegalPage = lazy(() => import("./LegalPage"));
 const ProductRoot = lazy(() => import("./ProductRoot"));
@@ -65,10 +64,26 @@ if (isMarketingPage) {
 const root = document.getElementById("root");
 if (!root) throw new Error("The application root element is missing.");
 
-createRoot(root).render(
-  <StrictMode>
-    <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
-      {isLegalPage ? <LegalPage /> : isExamplePage ? <CanonicalDossier /> : isMarketingPage ? <MarketingLanding /> : <ProductRoot />}
-    </Suspense>
-  </StrictMode>,
-);
+async function renderApplication() {
+  // The server sends meaningful homepage markup. Keep it visible while the
+  // marketing chunk loads so navigation never flashes a product-app loader.
+  if (isMarketingPage) {
+    const { default: MarketingLanding } = await import("./MarketingLanding");
+    createRoot(root).render(
+      <StrictMode>
+        <MarketingLanding />
+      </StrictMode>,
+    );
+    return;
+  }
+
+  createRoot(root).render(
+    <StrictMode>
+      <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
+        {isLegalPage ? <LegalPage /> : isExamplePage ? <CanonicalDossier /> : <ProductRoot />}
+      </Suspense>
+    </StrictMode>,
+  );
+}
+
+void renderApplication();
