@@ -16,7 +16,7 @@ func renderMarketingNav(appOrigin, currentPath string) string {
 	}
 
 	var body strings.Builder
-	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/" aria-label="Learnloom home"><span aria-hidden="true">✣</span><strong>Learnloom</strong></a><nav aria-label="Main navigation">`)
+	body.WriteString(`<header class="seo-nav"><a class="seo-brand" href="/" aria-label="Learnloom home"><span aria-hidden="true"><img src="/favicon.svg" alt=""></span><strong>Learnloom</strong></a><nav aria-label="Main navigation">`)
 	for _, link := range links {
 		current := ""
 		if marketingSectionActive(currentPath, link.path) {
@@ -49,7 +49,7 @@ func marketingSectionActive(currentPath, linkPath string) bool {
 
 func renderMarketingFooter(appOrigin string) string {
 	accountOrigin := strings.TrimRight(appOrigin, "/")
-	return `<footer class="seo-footer"><div class="seo-footer-intro"><a class="seo-brand" href="/" aria-label="Learnloom home"><span aria-hidden="true">✣</span><strong>Learnloom</strong></a>` +
+	return `<footer class="seo-footer"><div class="seo-footer-intro"><a class="seo-brand" href="/" aria-label="Learnloom home"><span aria-hidden="true"><img src="/favicon.svg" alt=""></span><strong>Learnloom</strong></a>` +
 		`<p>Current sources, woven into durable understanding.</p></div><div class="seo-footer-links">` +
 		`<div><strong>Product</strong><a href="/product/ai-learning-assistant">AI learning assistant</a><a href="/product/trusted-source-learning">Trusted-source learning</a><a href="/how-learnloom-works">How Learnloom works</a></div>` +
 		`<div><strong>Learn</strong><a href="/guides">Learning guides</a><a href="/examples">Public examples</a><a href="/editorial-principles">Editorial principles</a></div>` +

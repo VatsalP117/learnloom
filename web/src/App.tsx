@@ -1,5 +1,6 @@
-import { Menu, Plus, Sparkles } from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import BrandMark from "./BrandMark";
 import CalmLoader from "./CalmLoader";
 import LibraryPage from "./LibraryPage";
 import PublishingPage from "./PublishingPage";
@@ -113,7 +114,7 @@ function Topbar({ onMenu }: { onMenu: (event: MouseEvent<HTMLButtonElement>) => 
         <Menu size={18} />
       </button>
       <a className="create-brand" href="/">
-        <span><Sparkles size={15} /></span>
+        <span><BrandMark /></span>
         <strong>Learnloom</strong>
       </a>
       <nav>

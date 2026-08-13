@@ -1171,23 +1171,17 @@ function Cursor({visible, small = false}) {
 
 function BrandMark({size = 40}) {
   return (
-    <div
+    <Img
+      src={asset("favicon.svg")}
       style={{
         width: size,
         height: size,
-        display: "grid",
-        placeItems: "center",
+        display: "block",
         flex: "0 0 auto",
         borderRadius: size * 0.27,
-        color: palette.white,
-        background: palette.ink,
-        fontSize: size * 0.42,
-        fontWeight: 760,
         boxShadow: "0 10px 25px rgba(23,25,23,.13)",
       }}
-    >
-      ✦
-    </div>
+    />
   );
 }
 

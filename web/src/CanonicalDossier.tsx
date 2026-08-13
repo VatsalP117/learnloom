@@ -1,9 +1,10 @@
-import { ArrowRight, BookOpen, Check, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, Check, ExternalLink } from "lucide-react";
 import { useEffect } from "react";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
+import BrandMark from "./BrandMark";
 import { appOrigin } from "./config";
 import "./canonical-dossier.css";
 
@@ -73,7 +74,7 @@ export default function CanonicalDossier() {
   return (
     <div className="cd-page">
       <header className="cd-nav">
-        <a className="cd-brand" href="/" aria-label="Learnloom home"><span><Sparkles size={16} /></span>Learnloom</a>
+        <a className="cd-brand" href="/" aria-label="Learnloom home"><span><BrandMark /></span>Learnloom</a>
         <span className="cd-nav-label">Public Dossier · Complete example</span>
         <a className="cd-nav-cta" href={`${appOrigin}/sign-up`}>Build my path <ArrowRight size={15} /></a>
       </header>

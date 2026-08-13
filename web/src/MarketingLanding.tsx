@@ -9,7 +9,6 @@ import {
   Menu,
   Quote,
   Search,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -17,6 +16,7 @@ import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
+import BrandMark from "./BrandMark";
 import { appOrigin, personalSiteHost } from "./config";
 import "./marketing.css";
 
@@ -31,7 +31,7 @@ export default function MarketingLanding() {
     <div className="ll-page">
       <header className={`ll-nav${menuOpen ? " menu-open" : ""}`}>
         <a className="ll-brand" href="#top" aria-label="Learnloom home">
-          <BrandMark />
+          <span className="ll-brand-mark"><BrandMark /></span>
           <span>Learnloom</span>
         </a>
         <nav className="ll-nav-links" id="ll-main-navigation" aria-label="Main navigation">
@@ -201,7 +201,7 @@ export default function MarketingLanding() {
             </div>
             <div className="ll-mail-card">
               <div className="ll-mail-top">
-                <BrandMark />
+                <span className="ll-brand-mark"><BrandMark /></span>
                 <span>Today’s Dossier</span>
                 <span>8:00 AM</span>
               </div>
@@ -235,7 +235,7 @@ export default function MarketingLanding() {
         <section className="ll-final-cta">
           <div className="ll-final-clouds" />
           <div className="ll-final-content">
-            <BrandMark />
+            <span className="ll-brand-mark"><BrandMark /></span>
             <p className="ll-eyebrow">Your learning home is waiting</p>
             <h2>Make curiosity<br /><em>a place you return to.</em></h2>
             <p>Start a private path from one topic. Publishing stays optional.</p>
@@ -248,7 +248,7 @@ export default function MarketingLanding() {
 
       <footer className="ll-footer">
         <div className="ll-footer-brand">
-          <a className="ll-brand" href="#top"><BrandMark /><span>Learnloom</span></a>
+          <a className="ll-brand" href="#top"><span className="ll-brand-mark"><BrandMark /></span><span>Learnloom</span></a>
           <p>Current sources, woven into durable understanding.</p>
         </div>
         <div className="ll-footer-links">
@@ -264,10 +264,6 @@ export default function MarketingLanding() {
       </footer>
     </div>
   );
-}
-
-function BrandMark() {
-  return <span className="ll-brand-mark"><Sparkles size={16} strokeWidth={2.2} /></span>;
 }
 
 function PersonalHomePreview() {
@@ -302,7 +298,7 @@ function LearningLoopPreview() {
   return (
     <div className="ll-dashboard-shell" aria-label="Illustrated Learnloom learning loop walkthrough">
       <div className="ll-dashboard-top">
-        <div className="ll-mini-brand"><BrandMark /><strong>Learnloom</strong></div>
+        <div className="ll-mini-brand"><span className="ll-brand-mark"><BrandMark /></span><strong>Learnloom</strong></div>
         <div className="ll-dashboard-search"><Search size={12} /> AI evaluator reliability</div>
         <span className="ll-avatar">01</span>
       </div>
