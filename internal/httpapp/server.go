@@ -470,6 +470,14 @@ func (s *Server) handlePublicFollowLifecycle(
 
 func (s *Server) serveAppIndex(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	// The dashboard document is an account-neutral React bootstrap. Keep it out
+	// of browser caches while allowing an explicitly scoped Cloudflare Cache
+	// Rule to reuse it at the edge. Authenticated data continues to come from
+	// private /api responses and is never part of this document.
+	response.Header().Set(
+		"Cloudflare-CDN-Cache-Control",
+		"public, max-age=300, stale-while-revalidate=60",
+	)
 	s.serveIndex(response, request)
 }
 

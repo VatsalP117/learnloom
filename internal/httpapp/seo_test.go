@@ -140,6 +140,12 @@ func TestAppIndexIsNoIndex(t *testing.T) {
 	if got := response.Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
 		t.Fatalf("X-Robots-Tag = %q", got)
 	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
+	if got := response.Header().Get("Cloudflare-CDN-Cache-Control"); got != "public, max-age=300, stale-while-revalidate=60" {
+		t.Fatalf("Cloudflare-CDN-Cache-Control = %q", got)
+	}
 }
 
 func TestApexSEOPageTrailingSlashRedirectsToCanonicalURL(t *testing.T) {
