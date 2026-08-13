@@ -153,11 +153,14 @@
 .ll-live-dot i { width: 6px; height: 6px; border-radius: 50%; background: #3a9a55; animation: ll-pulse 2s infinite; }
 
 .ll-dashboard-shell {
-  position: absolute;
+  position: relative;
   z-index: 4;
-  bottom: -112px;
+  bottom: auto;
   width: min(1120px, calc(100% - 64px));
   height: 475px;
+  flex: 0 0 auto;
+  margin-top: 48px;
+  margin-bottom: -112px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.72);
   border-radius: 22px 22px 0 0;
@@ -514,7 +517,7 @@
   .ll-hero-actions { flex-direction: column; gap: 18px; }
   .ll-address-pill { margin-top: 16px; }
   .ll-address-pill .ll-live-dot { display: none; }
-  .ll-dashboard-shell { bottom: -70px; width: calc(100% - 28px); height: 305px; border-radius: 14px 14px 0 0; }
+  .ll-dashboard-shell { width: calc(100% - 28px); height: 305px; margin-top: 35px; margin-bottom: -70px; border-radius: 14px 14px 0 0; }
   .ll-dashboard-top { height: 43px; padding-inline: 12px; }
   .ll-dashboard-search { display: none; }
   .ll-dashboard-body { height: calc(100% - 43px); grid-template-columns: 62px 1fr; }
