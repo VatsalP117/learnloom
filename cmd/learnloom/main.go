@@ -100,8 +100,10 @@ func runWeb(
 		return err
 	}
 	static := os.DirFS(cfg.HTTP.StaticDirectory)
-	if _, err := fs.Stat(static, "index.html"); err != nil {
-		return fmt.Errorf("frontend build is unavailable at %s: %w", cfg.HTTP.StaticDirectory, err)
+	for _, entry := range []string{"index.html", "marketing.html"} {
+		if _, err := fs.Stat(static, entry); err != nil {
+			return fmt.Errorf("frontend build is unavailable at %s (%s): %w", cfg.HTTP.StaticDirectory, entry, err)
+		}
 	}
 	sourceValidator := source.New(source.Config{
 		FeedTimeout:    8 * time.Second,

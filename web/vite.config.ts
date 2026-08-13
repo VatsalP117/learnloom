@@ -7,6 +7,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        app: new URL("./index.html", import.meta.url).pathname,
+        marketing: new URL("./marketing.html", import.meta.url).pathname,
+      },
+    },
   },
   server: {
     port: 5173,

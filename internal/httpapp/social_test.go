@@ -64,7 +64,6 @@ func TestRepresentativeApexPagesHaveSocialPreviews(t *testing.T) {
 	homepage := string(decorateMarketingIndex(
 		marketingInput,
 		"https://learnloom.blog",
-		"https://app.learnloom.blog",
 	))
 
 	guide, ok := authorityPageForPath("/guides/how-to-remember-what-you-read")

@@ -82,7 +82,6 @@ func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 	output := string(decorateMarketingIndex(
 		input,
 		"https://learnloom.blog",
-		"https://app.learnloom.blog",
 	))
 
 	for _, expected := range []string{
@@ -91,7 +90,6 @@ func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 		`property="og:title"`,
 		`type="application/ld+json"`,
 		`Give us a topic. We’ll build the learning path.`,
-		`href="/solutions/remember-what-you-read"`,
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("decorated index missing %q: %s", expected, output)
@@ -99,6 +97,32 @@ func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 	}
 	if strings.Count(output, `name="description"`) != 1 {
 		t.Fatalf("decorated index should have one description: %s", output)
+	}
+	if strings.Contains(output, "seo-prerender") {
+		t.Fatalf("marketing index must not inject temporary visible UI: %s", output)
+	}
+}
+
+func TestMarketingHomepageUsesDedicatedFrontendDocument(t *testing.T) {
+	t.Parallel()
+	static := fstest.MapFS{
+		"index.html":     &fstest.MapFile{Data: []byte(`<!doctype html><title>Product app</title><div id="app-entry"></div>`)},
+		"marketing.html": &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Learnloom | Give us a topic. We’ll build the learning path.</title></head><body><div id="marketing-entry"></div></body></html>`)},
+	}
+	server := &Server{cfg: Config{
+		Static:     fs.FS(static),
+		ApexOrigin: "https://learnloom.blog",
+	}}
+	request := httptest.NewRequest(http.MethodGet, "https://learnloom.blog/", nil)
+	response := httptest.NewRecorder()
+
+	server.serveMarketingIndex(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `id="marketing-entry"`) {
+		t.Fatalf("marketing response = %d %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `id="app-entry"`) || strings.Contains(response.Body.String(), "seo-prerender") {
+		t.Fatalf("marketing response used the shared app bootstrap: %s", response.Body.String())
 	}
 }
 

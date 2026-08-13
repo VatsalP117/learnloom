@@ -395,7 +395,7 @@ func renderSEOHead(title, description, canonical, apexOrigin string) string {
 		`<script type="application/ld+json">` + string(encoded) + `</script>`
 }
 
-func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
+func decorateMarketingIndex(body []byte, apexOrigin string) []byte {
 	const title = "Learnloom | Give us a topic. We’ll build the learning path."
 	const description = "Stay current without rebuilding context. Give Learnloom a topic; it ranks useful sources, teaches the next concept, and revisits it before it fades."
 	canonical := strings.TrimRight(apexOrigin, "/") + "/"
@@ -415,44 +415,18 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 	head := renderSEOHead(title, description, canonical, apexOrigin)
 	head = strings.Replace(head, "<title>"+html.EscapeString(title)+"</title>", "", 1)
 	head = strings.Replace(head, `<meta name="description" content="`+html.EscapeString(description)+`">`, "", 1)
-	document = strings.Replace(
-		document,
-		"</head>",
-		head+`<style>
-.seo-prerender{max-width:1120px;margin:auto;padding:80px 24px;color:#16332c;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.seo-prerender h1{max-width:850px;margin:0 0 24px;font:500 clamp(44px,7vw,82px)/1.02 Georgia,serif;letter-spacing:-.04em}
-.seo-prerender>p{max-width:720px;color:#4b645e;font-size:19px;line-height:1.65}
-.seo-prerender nav{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:48px 0}
-.seo-prerender nav a{padding:24px;border:1px solid #cfdbd5;border-radius:15px;color:inherit;font-weight:750;text-decoration:none}
-.seo-prerender>a{display:inline-block;padding:14px 20px;border-radius:999px;background:#173f36;color:#fff;text-decoration:none;font-weight:750}
-@media(max-width:700px){.seo-prerender nav{grid-template-columns:1fr}}
-</style></head>`,
-		1,
-	)
-	fallback := `<main class="seo-prerender">
-<p>An autonomous learning practice</p>
-<h1>Give us a topic. We’ll build the learning path.</h1>
-<p>Learnloom finds and evaluates useful sources, prepares progressive lessons with citations and retrieval practice, and remembers what you already know.</p>
-<nav aria-label="Explore Learnloom">
-<a href="/solutions/remember-what-you-read">Remember what you read</a>
-<a href="/solutions/keep-up-with-your-field">Keep up with your field</a>
-<a href="/product/ai-learning-assistant">Explore the AI learning assistant</a>
-<a href="/guides">Read the learning guides</a>
-<a href="/examples">Explore public learning examples</a>
-</nav>
-<a href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")) + `/sign-up">Build your learning path</a>
-</main>`
-	document = strings.Replace(document, `<div id="root"></div>`, `<div id="root">`+fallback+`</div>`, 1)
+	document = strings.Replace(document, "</head>", head+"</head>", 1)
 	return []byte(document)
 }
 
 const seoCSS = `
+@font-face{font-family:Manrope;font-style:normal;font-weight:400;font-display:swap;src:url("/assets/fonts/manrope-400.woff2") format("woff2")}@font-face{font-family:Manrope;font-style:normal;font-weight:500;font-display:swap;src:url("/assets/fonts/manrope-500.woff2") format("woff2")}@font-face{font-family:Manrope;font-style:normal;font-weight:600;font-display:swap;src:url("/assets/fonts/manrope-600.woff2") format("woff2")}@font-face{font-family:Manrope;font-style:normal;font-weight:700;font-display:swap;src:url("/assets/fonts/manrope-700.woff2") format("woff2")}
 :root{--ink:#17211b;--muted:#5f6b63;--paper:#f7f6f0;--green:#496b4c;--line:rgba(23,33,27,.12);color:var(--ink);background:var(--paper);font-family:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper)}a{color:inherit}.seo-nav{position:relative;z-index:10;height:84px;width:min(1440px,calc(100% - 72px));margin:auto;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:34px;background:transparent}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper)}a{color:inherit}.seo-nav{position:absolute;z-index:10;inset:0 0 auto;height:84px;width:min(1440px,calc(100% - 72px));margin:auto;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:34px;background:transparent}
 .seo-brand{width:max-content;display:inline-flex;align-items:center;gap:10px;color:inherit;font-size:21px;font-weight:750;letter-spacing:-.045em;text-decoration:none}.seo-brand span{width:31px;height:31px;display:grid;place-items:center;border-radius:9px;color:#eef6ec;background:#1d2c22;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),0 8px 20px rgba(19,36,24,.13)}.seo-brand strong{font:inherit}
 .seo-nav nav{display:flex;align-items:center;justify-content:center;gap:clamp(18px,2.2vw,34px)}.seo-nav nav a,.nav-sign-in,.nav-cta{text-decoration:none;font-size:13px;font-weight:600}.seo-nav nav a,.nav-sign-in{color:rgba(23,33,27,.72)}.seo-nav nav a:hover,.nav-sign-in:hover,.seo-nav nav a[aria-current=page]{color:var(--ink)}.seo-nav nav a[aria-current=page]{text-decoration:underline;text-decoration-color:#87ac57;text-decoration-thickness:2px;text-underline-offset:7px}.seo-nav-actions{display:flex;align-items:center;justify-content:flex-end;gap:22px}.nav-cta,.primary{display:inline-flex;align-items:center;justify-content:center;gap:10px;border-radius:999px;color:#f8fbf7!important;background:#17221a;box-shadow:0 12px 32px rgba(18,35,23,.16);text-decoration:none;font-weight:700;transition:transform .18s ease,background .18s ease,box-shadow .18s ease}.nav-cta{min-height:43px;padding:0 18px;font-size:12px}.nav-cta:hover,.primary:hover{transform:translateY(-2px);background:#243b2a;box-shadow:0 16px 38px rgba(18,35,23,.22)}
-main{overflow:hidden}.seo-hero{position:relative;min-height:650px;display:flex;flex-direction:column;justify-content:center;padding:clamp(94px,11vw,156px) max(24px,calc((100vw - 1120px)/2));background:radial-gradient(circle at 78% 18%,rgba(255,255,255,.9),transparent 27%),radial-gradient(circle at 15% 80%,rgba(171,196,119,.22),transparent 30%),linear-gradient(155deg,#dcecf4 0,#eef3e7 54%,#f2e8dc 100%);border-top:1px solid rgba(255,255,255,.7);border-bottom:1px solid var(--line)}
-.seo-hero:after{position:absolute;right:max(24px,calc((100vw - 1120px)/2));bottom:62px;width:clamp(150px,22vw,300px);height:clamp(70px,11vw,145px);border:1px solid rgba(255,255,255,.65);border-radius:22px;background:rgba(255,255,255,.28);box-shadow:0 28px 70px rgba(35,64,43,.1);backdrop-filter:blur(18px);content:""}.seo-hero>*{position:relative;z-index:1}
+main{overflow:hidden}.seo-hero{position:relative;min-height:820px;display:flex;flex-direction:column;justify-content:center;padding:clamp(150px,13vw,190px) max(24px,calc((100vw - 1120px)/2)) 210px;background-image:linear-gradient(90deg,rgba(239,248,250,.88) 0%,rgba(239,248,250,.68) 42%,rgba(239,248,250,.06) 72%),linear-gradient(180deg,rgba(235,246,252,.14) 0%,rgba(17,36,24,.15) 100%),url("/assets/marketing/learnloom-landscape.avif");background-position:center bottom;background-size:cover;border-bottom:1px solid var(--line)}
+.seo-hero:after{position:absolute;inset:auto 0 0;height:150px;background:linear-gradient(180deg,transparent,rgba(16,32,22,.16));content:""}.seo-hero>*{position:relative;z-index:1}
 .eyebrow{margin:0 0 20px;color:#47644c;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.seo-hero h1{max-width:920px;margin:0;font-size:clamp(52px,6.5vw,92px);font-weight:520;line-height:.98;letter-spacing:-.06em}.lead{max-width:720px;margin:30px 0;color:#46564b;font-size:clamp(17px,1.7vw,20px);line-height:1.68}.hero-actions{display:flex;align-items:center;gap:25px;flex-wrap:wrap}.hero-actions a{font-size:13px;font-weight:700;text-decoration:none}.primary{min-height:50px;padding:0 22px}
 .seo-section{max-width:1120px;margin:0 auto;padding:clamp(76px,9vw,124px) 24px;border-bottom:1px solid var(--line)}.seo-section h2,.seo-cta h2{max-width:800px;margin:0 0 34px;font-size:clamp(40px,5vw,64px);font-weight:520;line-height:1.04;letter-spacing:-.05em}.prose p:not(.eyebrow){max-width:780px;color:#385149;font-family:Georgia,"Times New Roman",serif;font-size:21px;line-height:1.78}.step-grid,.benefit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.step-grid article,.benefit-grid article{padding:30px;border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.72);box-shadow:0 18px 50px rgba(27,48,34,.05)}
 .step-grid article>span{display:block;margin-bottom:58px;color:#527355;font-size:11px;font-weight:800}.seo-section h3{margin:0 0 12px;font-size:20px;letter-spacing:-.025em}.seo-section article p{margin:0;color:#526a64;line-height:1.68}.benefit-section{max-width:none;padding-left:max(24px,calc((100vw - 1120px)/2));padding-right:max(24px,calc((100vw - 1120px)/2));color:#f7fbf6;background:#17251c}.benefit-section .eyebrow{color:#abc477}.benefit-section article{color:var(--ink);background:#f7f6f0}
@@ -460,7 +434,7 @@ main{overflow:hidden}.seo-hero{position:relative;min-height:650px;display:flex;f
 .seo-cta{text-align:center;padding:clamp(96px,12vw,160px) 24px;background:radial-gradient(circle at 50% 0,rgba(255,255,255,.75),transparent 35%),linear-gradient(160deg,#dcecf4,#e5eddc 58%,#efe2d3)}.seo-cta h2,.seo-cta p{margin-left:auto;margin-right:auto}.seo-cta>p:not(.eyebrow){max-width:650px;margin-bottom:30px;color:#48625b;font-size:18px;line-height:1.65}.seo-cta .primary{width:max-content;margin:auto}
 .seo-footer{display:grid;grid-template-columns:minmax(230px,1fr) minmax(520px,1.5fr);gap:70px;padding:70px max(24px,calc((100vw - 1240px)/2)) 30px;color:#ecf4eb;background:#142119}.seo-footer-intro p{max-width:310px;margin:22px 0 0;color:#9eafa2;line-height:1.6}.seo-footer-links{display:grid;grid-template-columns:repeat(4,1fr);gap:34px}.seo-footer-links div{display:grid;align-content:start;gap:11px}.seo-footer-links strong{margin-bottom:6px;color:#f6faf5;font-size:11px;letter-spacing:.1em;text-transform:uppercase}.seo-footer-links a{color:#aebdb1;font-size:13px;line-height:1.45;text-decoration:none}.seo-footer-links a:hover{color:#fff}.seo-footer-bottom{grid-column:1/-1;display:flex;justify-content:space-between;margin-top:30px;padding-top:25px;border-top:1px solid rgba(255,255,255,.1);color:#778a7b;font-size:11px}
 @media(max-width:1050px){.seo-nav{width:calc(100% - 40px)}.seo-nav nav a:not(:first-child){display:none}.seo-nav nav{justify-content:flex-end}.seo-nav-actions{gap:14px}.seo-footer{grid-template-columns:1fr}.seo-footer-links{grid-template-columns:repeat(4,1fr)}}
-@media(max-width:780px){.seo-nav{height:72px;grid-template-columns:1fr auto auto;gap:14px;width:calc(100% - 32px)}.seo-nav nav{display:flex}.seo-nav nav a:first-child{display:block;font-size:12px}.nav-sign-in{display:none}.seo-brand{font-size:19px}.seo-hero{min-height:590px;padding-top:90px}.seo-hero:after{display:none}.seo-hero h1{font-size:clamp(46px,13vw,62px)}.step-grid,.benefit-grid,.related>div,.for-section{grid-template-columns:1fr}.step-grid article>span{margin-bottom:30px}.for-section{gap:20px}.seo-footer-links{grid-template-columns:1fr 1fr}.seo-footer-bottom{align-items:flex-start;flex-direction:column;gap:8px}}
+@media(max-width:780px){.seo-nav{height:72px;grid-template-columns:1fr auto auto;gap:14px;width:calc(100% - 32px)}.seo-nav nav{display:flex}.seo-nav nav a:first-child{display:block;font-size:12px}.nav-sign-in{display:none}.seo-brand{font-size:19px}.seo-hero{min-height:720px;padding:130px 20px 170px;background-image:linear-gradient(180deg,rgba(239,248,250,.72) 0%,rgba(239,248,250,.45) 48%,rgba(17,36,24,.18) 100%),url("/assets/marketing/learnloom-landscape-mobile.avif");background-position:center bottom}.seo-hero h1{font-size:clamp(46px,13vw,62px)}.step-grid,.benefit-grid,.related>div,.for-section{grid-template-columns:1fr}.step-grid article>span{margin-bottom:30px}.for-section{gap:20px}.seo-footer-links{grid-template-columns:1fr 1fr}.seo-footer-bottom{align-items:flex-start;flex-direction:column;gap:8px}}
 @media(max-width:460px){.seo-footer-links{grid-template-columns:1fr}.nav-cta{padding:0 14px}.seo-hero h1{font-size:44px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.nav-cta,.primary,.related a{transition:none}}
 `

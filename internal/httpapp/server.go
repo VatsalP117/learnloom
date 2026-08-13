@@ -532,26 +532,27 @@ func (s *Server) csrfToken(sessionID string) string {
 }
 
 func (s *Server) serveIndex(response http.ResponseWriter, request *http.Request) {
-	s.serveIndexDocument(response, request, false)
-}
-
-func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http.Request) {
-	s.serveIndexDocument(response, request, true)
-}
-
-func (s *Server) serveIndexDocument(
-	response http.ResponseWriter,
-	request *http.Request,
-	marketing bool,
-) {
 	body, err := fs.ReadFile(s.cfg.Static, "index.html")
 	if err != nil {
 		s.internalError(response, request, fmt.Errorf("read frontend index: %w", err))
 		return
 	}
-	if marketing {
-		body = decorateMarketingIndex(body, s.cfg.ApexOrigin, s.cfg.AppOrigin)
+	s.applyAppCSP(response)
+	response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	response.Header().Set("Cache-Control", "no-store")
+	response.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(body)
 	}
+}
+
+func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http.Request) {
+	body, err := fs.ReadFile(s.cfg.Static, "marketing.html")
+	if err != nil {
+		s.internalError(response, request, fmt.Errorf("read marketing frontend: %w", err))
+		return
+	}
+	body = decorateMarketingIndex(body, s.cfg.ApexOrigin)
 	s.applyAppCSP(response)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")

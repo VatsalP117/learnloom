@@ -1,24 +1,15 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import marketingHeroDesktop from "./assets/learnloom-hero-landscape.avif?url";
-import marketingHeroMobile from "./assets/learnloom-hero-landscape-960.avif?url";
-import marketingHeroTablet from "./assets/learnloom-hero-landscape-1440.avif?url";
 import productBackdropDesktop from "./assets/learning-landscape-1920.avif?url";
 import productBackdropMobile from "./assets/learning-landscape-960.avif?url";
 import CalmLoader from "./CalmLoader";
-import { rootDomain } from "./config";
 import "./entry.css";
 
 const CanonicalDossier = lazy(() => import("./CanonicalDossier"));
 const LegalPage = lazy(() => import("./LegalPage"));
 const ProductRoot = lazy(() => import("./ProductRoot"));
-const hostname = window.location.hostname.toLowerCase();
 const isLegalPage = ["/privacy", "/terms"].includes(window.location.pathname);
 const isExamplePage = ["/examples", "/examples/ai-evaluation"].includes(window.location.pathname);
-const isMarketingPage =
-  hostname === rootDomain ||
-  hostname === `www.${rootDomain}` ||
-  window.location.pathname === "/marketing";
 
 type BackdropSources = {
   desktop: string;
@@ -52,38 +43,17 @@ function warmBackdrop(sources: BackdropSources, priority: "high" | "low") {
   document.head.append(preload);
 }
 
-if (isMarketingPage) {
-  warmBackdrop(
-    { desktop: marketingHeroDesktop, tablet: marketingHeroTablet, mobile: marketingHeroMobile },
-    "high",
-  );
-} else if (!isLegalPage) {
+if (!isLegalPage) {
   warmBackdrop({ desktop: productBackdropDesktop, mobile: productBackdropMobile }, "low");
 }
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The application root element is missing.");
 
-async function renderApplication() {
-  // The server sends meaningful homepage markup. Keep it visible while the
-  // marketing chunk loads so navigation never flashes a product-app loader.
-  if (isMarketingPage) {
-    const { default: MarketingLanding } = await import("./MarketingLanding");
-    createRoot(root).render(
-      <StrictMode>
-        <MarketingLanding />
-      </StrictMode>,
-    );
-    return;
-  }
-
-  createRoot(root).render(
-    <StrictMode>
-      <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
-        {isLegalPage ? <LegalPage /> : isExamplePage ? <CanonicalDossier /> : <ProductRoot />}
-      </Suspense>
-    </StrictMode>,
-  );
-}
-
-void renderApplication();
+createRoot(root).render(
+  <StrictMode>
+    <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
+      {isLegalPage ? <LegalPage /> : isExamplePage ? <CanonicalDossier /> : <ProductRoot />}
+    </Suspense>
+  </StrictMode>,
+);

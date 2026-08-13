@@ -521,7 +521,7 @@ func publicPageTitle(path string) (string, bool) {
 
 const authorityCSS = `
 .authority-article{max-width:none;margin:0;padding:0 0 40px}
-.authority-hero{max-width:none;min-height:570px;display:flex;flex-direction:column;justify-content:center;padding:clamp(90px,10vw,145px) max(24px,calc((100vw - 1120px)/2));border-top:1px solid rgba(255,255,255,.7);border-bottom:1px solid var(--line);background:radial-gradient(circle at 80% 17%,rgba(255,255,255,.9),transparent 26%),radial-gradient(circle at 12% 90%,rgba(171,196,119,.2),transparent 30%),linear-gradient(150deg,#dcecf4,#eef3e7 58%,#f2e8dc)}
+.authority-hero{max-width:none;min-height:760px;display:flex;flex-direction:column;justify-content:center;padding:clamp(150px,13vw,190px) max(24px,calc((100vw - 1120px)/2)) 190px;border-bottom:1px solid var(--line);background-image:linear-gradient(90deg,rgba(239,248,250,.9) 0%,rgba(239,248,250,.7) 45%,rgba(239,248,250,.08) 75%),linear-gradient(180deg,rgba(235,246,252,.12),rgba(17,36,24,.15)),url("/assets/marketing/learnloom-landscape.avif");background-position:center bottom;background-size:cover}
 .authority-hero h1{max-width:920px;font-size:clamp(50px,6.4vw,88px);font-weight:520;line-height:.99;letter-spacing:-.06em;margin:0 0 30px}
 .authority-hero>p:not(.eyebrow){max-width:760px;color:#47605a;font-size:20px;line-height:1.7}
 .authority-layout{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(230px,1fr);gap:clamp(50px,8vw,100px);align-items:start;padding:clamp(70px,8vw,100px) 24px 0}
@@ -533,5 +533,5 @@ const authorityCSS = `
 .authority-layout aside{position:sticky;top:30px;padding:27px;border:1px solid rgba(16,37,33,.14);border-radius:17px;background:#eef3eb}
 .authority-layout aside ul{list-style:none;margin:0;padding:0}.authority-layout aside li{display:flex;gap:11px;padding:13px 0;border-bottom:1px solid rgba(16,37,33,.11);font-size:14px;line-height:1.5}.authority-layout aside li:last-child{border:0}.authority-layout aside span{color:#397064;font-weight:900}
 .authority-related{padding-top:80px}
-@media(max-width:780px){.authority-hero{min-height:520px}.authority-layout{grid-template-columns:1fr;padding-top:55px}.authority-layout aside{position:static;grid-row:1}.authority-body p{font-size:18px}.authority-hero h1{font-size:46px}}
+@media(max-width:780px){.authority-hero{min-height:700px;padding:130px 20px 170px;background-image:linear-gradient(180deg,rgba(239,248,250,.76),rgba(239,248,250,.48) 52%,rgba(17,36,24,.18)),url("/assets/marketing/learnloom-landscape-mobile.avif");background-position:center bottom}.authority-layout{grid-template-columns:1fr;padding-top:55px}.authority-layout aside{position:static;grid-row:1}.authority-body p{font-size:18px}.authority-hero h1{font-size:46px}}
 `
