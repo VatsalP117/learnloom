@@ -1,3 +1,4 @@
+// Package editorial validates the human review evidence for canonical starter paths.
 package editorial
 
 import (

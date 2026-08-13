@@ -272,25 +272,6 @@ func identityFingerprint(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Store) stopAccountWork(
-	ctx context.Context,
-	accountID string,
-	deleteArtifacts bool,
-) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer rollback(tx)
-	if err := stopAccountWorkTx(ctx, tx, accountID, deleteArtifacts); err != nil {
-		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("stop Account work: %w", err)
-	}
-	return nil
-}
-
 func stopAccountWorkTx(
 	ctx context.Context,
 	tx pgx.Tx,
