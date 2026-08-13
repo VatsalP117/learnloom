@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import CalmLoader from "./CalmLoader";
+import BrandMark from "./BrandMark";
 
 const SessionActionsContext = createContext<(() => Promise<void>) | null>(null);
 
@@ -71,7 +72,7 @@ export default function LearningShell({
       <aside className={`atelier-sidebar ${menuOpen ? "open" : ""}`}>
         <div className="atelier-brand-row">
           <a className="atelier-brand" href="/">
-            <span><Sparkles size={15} /></span>
+            <span><BrandMark /></span>
             <strong>Learnloom</strong>
             <small>Digital atelier</small>
           </a>
@@ -120,7 +121,7 @@ export default function LearningShell({
           >
             <Menu size={19} />
           </button>
-          <a className="atelier-mobile-brand" href="/">Learnloom</a>
+          <a className="atelier-mobile-brand" href="/"><span><BrandMark /></span>Learnloom</a>
         </header>
         <main className="atelier-main">{children}</main>
       </div>

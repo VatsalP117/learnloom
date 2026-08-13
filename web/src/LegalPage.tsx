@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Mail, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mail } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
@@ -6,6 +6,7 @@ import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
 import "@fontsource/bricolage-grotesque/latin-500.css";
 import "@fontsource/bricolage-grotesque/latin-600.css";
+import BrandMark from "./BrandMark";
 import { appOrigin } from "./config";
 import "./legal.css";
 
@@ -22,7 +23,7 @@ export default function LegalPage() {
     <div className="legal-page">
       <header className="legal-nav">
         <a className="legal-brand" href="/" aria-label="Learnloom home">
-          <span><Sparkles size={16} /></span>
+          <span><BrandMark /></span>
           <strong>Learnloom</strong>
         </a>
         <nav aria-label="Legal navigation">
@@ -43,7 +44,7 @@ export default function LegalPage() {
 
       <footer className="legal-footer">
         <div>
-          <span><Sparkles size={14} /></span>
+          <span><BrandMark /></span>
           <strong>Learnloom</strong>
         </div>
         <p>Understanding, built one lesson at a time.</p>

@@ -457,7 +457,7 @@ func (s *Server) handlePublicFollowLifecycle(
 	}
 	body := `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
 		`<title>` + html.EscapeString(title) + ` · Learnloom</title><style>` + readingCSS + `</style></head><body>` +
-		`<main class="not-found"><div class="leaf-mark" aria-hidden="true"><i></i></div><p class="eyebrow">Learnloom</p>` +
+		`<main class="not-found"><img class="leaf-mark" src="/favicon.svg" alt="" aria-hidden="true"><p class="eyebrow">Learnloom</p>` +
 		`<h1>` + html.EscapeString(title) + `</h1><p>` + html.EscapeString(description) + `</p>` +
 		`<a class="button" href="` + html.EscapeString(s.cfg.ApexOrigin) + `">Explore Learnloom <span>↗</span></a></main></body></html>`
 	s.applyReadingHeaders(response, false)

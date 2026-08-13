@@ -1,3 +1,5 @@
+import BrandMark from "./BrandMark";
+
 type CalmLoaderProps = {
   label?: string;
   detail?: string;
@@ -20,7 +22,7 @@ export default function CalmLoader({
     >
       <div className="calm-loader-content">
         <span className="calm-loader-mark" aria-hidden="true">
-          <i />
+          <BrandMark />
         </span>
         <strong>{label}</strong>
         {detail ? <span className="calm-loader-detail">{detail}</span> : null}

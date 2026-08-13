@@ -2010,7 +2010,8 @@
     pointer-events: auto;
   }
   .atelier-menu { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 5px; background: rgba(255,255,255,.5); }
-  .atelier-mobile-brand { display: block; color: var(--atelier-ink); font-weight: 750; text-decoration: none; }
+  .atelier-mobile-brand { display: flex; align-items: center; gap: 8px; color: var(--atelier-ink); font-weight: 750; text-decoration: none; }
+  .atelier-mobile-brand > span { width: 28px; height: 28px; display: grid; place-items: center; }
   .atelier-main::before,
   .atelier-main::after { inset: 52px 0 0; }
   .atelier-page,

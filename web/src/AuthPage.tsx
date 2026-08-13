@@ -5,10 +5,10 @@ import {
   EyeOff,
   Leaf,
   LoaderCircle,
-  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
+import BrandMark from "./BrandMark";
 import CalmLoader from "./CalmLoader";
 import "./auth.css";
 
@@ -65,7 +65,7 @@ export default function AuthPage({
       <section className="auth-visual" aria-label="A quiet mountain landscape">
         <div className="auth-visual-shade" />
         <a className="auth-visual-brand" href="/marketing" aria-label="Learnloom home">
-          <span><Sparkles size={16} strokeWidth={1.8} /></span>
+          <span><BrandMark /></span>
           <strong>Learnloom</strong>
         </a>
         <div className="auth-visual-copy">
@@ -80,7 +80,7 @@ export default function AuthPage({
 
       <section className="auth-panel">
         <a className="auth-mobile-brand" href="/marketing">
-          <span><Sparkles size={15} /></span>
+          <span><BrandMark /></span>
           Learnloom
         </a>
         <div className="auth-panel-inner">

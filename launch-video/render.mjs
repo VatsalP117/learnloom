@@ -7,6 +7,8 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const FRAMES = path.join(ROOT, "frames");
 const PNGS = path.join(ROOT, "png");
 const OUT = path.join(ROOT, "output");
+const faviconSvg = fs.readFileSync(path.join(ROOT, "..", "web", "public", "favicon.svg"), "utf8");
+const faviconDataUri = `data:image/svg+xml;base64,${Buffer.from(faviconSvg).toString("base64")}`;
 const W = 1920;
 const H = 1080;
 const FPS = 30;
@@ -61,17 +63,9 @@ function defs() {
   </defs>`;
 }
 
-function brandMark(x, y, size = 48, dark = true) {
-  const bg = dark ? colors.ink : "#eef5eb";
-  const fg = dark ? "#f3f8f1" : colors.green;
+function brandMark(x, y, size = 48) {
   return `<g transform="translate(${x} ${y})">
-    <rect width="${size}" height="${size}" rx="${size * .28}" fill="${bg}"/>
-    <path d="M${size*.27} ${size*.27} C${size*.49} ${size*.17},${size*.73} ${size*.29},${size*.69} ${size*.51}
-      C${size*.65} ${size*.72},${size*.39} ${size*.79},${size*.26} ${size*.61}
-      C${size*.14} ${size*.44},${size*.27} ${size*.27},${size*.27} ${size*.27}Z"
-      fill="none" stroke="${fg}" stroke-width="${size*.085}" stroke-linecap="round"/>
-    <path d="M${size*.37} ${size*.58} C${size*.49} ${size*.38},${size*.64} ${size*.36},${size*.78} ${size*.43}"
-      fill="none" stroke="${fg}" stroke-width="${size*.07}" stroke-linecap="round"/>
+    <image href="${faviconDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>
   </g>`;
 }
 
