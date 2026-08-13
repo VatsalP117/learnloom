@@ -1,3 +1,4 @@
+// Package telemetry provides bounded Prometheus metric helpers.
 package telemetry
 
 import (

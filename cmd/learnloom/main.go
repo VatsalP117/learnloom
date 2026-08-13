@@ -25,7 +25,10 @@ import (
 	"github.com/VatsalP117/learnloom/internal/store"
 )
 
+var buildReleaseVersion = "unknown"
+
 func main() {
+	installBuildReleaseVersion()
 	role := ""
 	if len(os.Args) == 2 {
 		role = os.Args[1]
@@ -60,6 +63,14 @@ func main() {
 		logger.Error("runtime stopped", "role", role, "error", runErr)
 		os.Exit(1)
 	}
+}
+
+func installBuildReleaseVersion() {
+	if strings.TrimSpace(os.Getenv("LEARNLOOM_RELEASE_VERSION")) != "" ||
+		strings.TrimSpace(buildReleaseVersion) == "" || buildReleaseVersion == "unknown" {
+		return
+	}
+	_ = os.Setenv("LEARNLOOM_RELEASE_VERSION", buildReleaseVersion)
 }
 
 func runMigrate(ctx context.Context, cfg config.Config) error {

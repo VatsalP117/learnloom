@@ -43,8 +43,11 @@ openssl rand -hex 32 # SEARXNG_SECRET
 
 Start from [`.env.dokploy.example`](../.env.dokploy.example). `POSTGRES_PASSWORD`
 must remain URL-safe because the Compose file inserts it into `DATABASE_URL`.
-Set `LEARNLOOM_RELEASE_VERSION` to the immutable git SHA being deployed; do not
-use a branch name, mutable tag, or `unknown`.
+Source builds automatically bake an immutable 64-character fingerprint of the
+Go and frontend release inputs into the binary. Leave
+`LEARNLOOM_RELEASE_VERSION` empty for Dokploy Git auto-deploys. Set it only when
+deploying an externally built image, and then use its immutable 40-character
+Git SHA or 64-character release digest—not a branch, mutable tag, or `unknown`.
 
 ### Paddle Billing
 
@@ -214,7 +217,7 @@ Click **Deploy** and watch the logs in this order:
 4. `worker` logs its metrics listener and begins polling.
 5. `searxng` and `searxng-valkey` remain healthy/running.
 
-Confirm the migration job applied schema version 39 before testing billing or
+Confirm the migration job applied schema version 40 before testing billing or
 generation. Version 37 adds durable cleanup for artifacts whose upload succeeds
 before an Issue completion transaction fails. Version 38 adds append-only,
 operator-controlled evidence classification so founder, test, and unclassified

@@ -1,3 +1,4 @@
+// Package loadverify runs bounded, thresholded staging load verification.
 package loadverify
 
 import (

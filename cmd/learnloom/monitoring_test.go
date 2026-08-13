@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+func TestInstallBuildReleaseVersionUsesBakedValueWithoutOverridingEnvironment(t *testing.T) {
+	previousBuild := buildReleaseVersion
+	t.Cleanup(func() { buildReleaseVersion = previousBuild })
+
+	t.Setenv("LEARNLOOM_RELEASE_VERSION", "")
+	buildReleaseVersion = strings.Repeat("a", 64)
+	installBuildReleaseVersion()
+	if got := os.Getenv("LEARNLOOM_RELEASE_VERSION"); got != buildReleaseVersion {
+		t.Fatalf("release version = %q, want baked value", got)
+	}
+
+	t.Setenv("LEARNLOOM_RELEASE_VERSION", strings.Repeat("b", 40))
+	installBuildReleaseVersion()
+	if got := os.Getenv("LEARNLOOM_RELEASE_VERSION"); got != strings.Repeat("b", 40) {
+		t.Fatalf("explicit release version was overwritten: %q", got)
+	}
+}
+
 func TestLaunchCriticalGenerationAlertsRemainProvisioned(t *testing.T) {
 	raw, err := os.ReadFile("../../infra/monitoring/learnloom-rules.yaml")
 	if err != nil {

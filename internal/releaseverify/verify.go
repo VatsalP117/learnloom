@@ -1,3 +1,4 @@
+// Package releaseverify checks a deployed release's public parity and security contract.
 package releaseverify
 
 import (

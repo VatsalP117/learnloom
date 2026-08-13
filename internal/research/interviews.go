@@ -1,3 +1,4 @@
+// Package research validates privacy-safe problem-interview evidence.
 package research
 
 import (
