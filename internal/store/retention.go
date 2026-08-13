@@ -19,6 +19,8 @@ type RetentionState struct {
 	SuppressedBacklogCount int        `json:"-"`
 	ActionLabel            string     `json:"actionLabel,omitempty"`
 	ActionURL              string     `json:"actionUrl,omitempty"`
+	ReentryNewsletterID    string     `json:"reentryNewsletterId,omitempty"`
+	ReentryNewsletterName  string     `json:"reentryNewsletterName,omitempty"`
 }
 
 func (s *Store) GetRetentionState(
@@ -29,10 +31,11 @@ func (s *Store) GetRetentionState(
 	var state RetentionState
 	err := s.pool.QueryRow(ctx, `
 		SELECT
-		  min(occurred_at) FILTER (WHERE event_name = 'review_attempted'),
+		  min(occurred_at) FILTER (WHERE event_name = 'activation_completed'),
 		  max(occurred_at) FILTER (
 		    WHERE event_name IN (
-		      'lesson_opened', 'lesson_completed', 'review_attempted'
+		      'lesson_opened', 'lesson_completed', 'review_attempted',
+		      'activation_completed'
 		    )
 		  )
 		FROM product_events
@@ -86,6 +89,10 @@ func (s *Store) GetRetentionState(
 		      AND newsletter.active
 		      AND issue.status = 'generated'
 		      AND progress.completed_at IS NULL
+		      AND NOT EXISTS (
+		        SELECT 1 FROM lesson_backlog_dismissals dismissal
+		        WHERE dismissal.account_id = $1 AND dismissal.issue_id = issue.id
+		      )
 		  ) + (
 		    SELECT count(*)
 		    FROM review_items review
@@ -100,15 +107,19 @@ func (s *Store) GetRetentionState(
 	}
 	var reviewID string
 	err = s.pool.QueryRow(ctx, `
-		SELECT id::text
-		FROM review_items
-		WHERE account_id = $1
-		  AND due_at IS NOT NULL
-		  AND retired_at IS NULL
-		  AND due_at <= $2
-		ORDER BY due_at, created_at
+		SELECT review.id::text, newsletter.id::text, newsletter.name
+		FROM review_items review
+		JOIN issues issue ON issue.id = review.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE review.account_id = $1
+		  AND review.due_at IS NOT NULL
+		  AND review.retired_at IS NULL
+		  AND review.due_at <= $2
+		ORDER BY review.due_at, review.created_at
 		LIMIT 1
-	`, accountID, now).Scan(&reviewID)
+	`, accountID, now).Scan(
+		&reviewID, &state.ReentryNewsletterID, &state.ReentryNewsletterName,
+	)
 	if err == nil {
 		state.ActionLabel = "Recall one idea"
 		state.ActionURL = "/review"
@@ -119,7 +130,7 @@ func (s *Store) GetRetentionState(
 	}
 	var issueID string
 	err = s.pool.QueryRow(ctx, `
-		SELECT issue.id::text
+		SELECT issue.id::text, newsletter.id::text, newsletter.name
 		FROM issues issue
 		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
 		LEFT JOIN lesson_progress progress
@@ -129,15 +140,31 @@ func (s *Store) GetRetentionState(
 		  AND newsletter.active
 		  AND issue.status = 'generated'
 		  AND progress.completed_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM lesson_backlog_dismissals dismissal
+			WHERE dismissal.account_id = $1 AND dismissal.issue_id = issue.id
+		  )
 		ORDER BY issue.created_at DESC
 		LIMIT 1
-	`, accountID).Scan(&issueID)
+	`, accountID).Scan(
+		&issueID, &state.ReentryNewsletterID, &state.ReentryNewsletterName,
+	)
 	if err == nil {
 		state.ActionLabel = "Open one worthwhile lesson"
 		state.ActionURL = "/issues/" + issueID
 		return state, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
+		return RetentionState{}, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		SELECT id::text, name
+		FROM newsletters
+		WHERE owner_account_id = $1 AND active
+		ORDER BY updated_at DESC, id
+		LIMIT 1
+	`, accountID).Scan(&state.ReentryNewsletterID, &state.ReentryNewsletterName)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return RetentionState{}, err
 	}
 	state.ActionLabel = "Choose a gentler rhythm"

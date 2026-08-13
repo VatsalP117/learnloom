@@ -5,7 +5,6 @@ import {
   Check,
   ChevronRight,
   Clock3,
-  Globe2,
   Mail,
   Menu,
   Quote,
@@ -22,7 +21,7 @@ import "./marketing.css";
 
 export default function MarketingLanding() {
   useEffect(() => {
-    document.title = "Learnloom | Turn trusted sources into durable understanding";
+    document.title = "Learnloom | Give us a topic. We’ll build the learning path.";
   }, []);
 
   return (
@@ -54,75 +53,53 @@ export default function MarketingLanding() {
         <section className="ll-hero">
           <div className="ll-hero-scrim" />
           <div className="ll-hero-copy">
-            <p className="ll-kicker"><span /> Your place for deeper learning</p>
+            <p className="ll-kicker"><span /> For AI and software professionals in fast-moving fields</p>
             <h1>
-              A learning home that
+              Give us a topic.
               <br />
-              <em>grows with you.</em>
+              <em>We’ll build the learning path.</em>
             </h1>
             <p className="ll-hero-description">
-              Learnloom turns the sources you trust into thoughtful daily
-              Dossiers—then publishes them to a personal corner of the web.
+              Stop rebuilding context from feeds, bookmarks, and one-off chats.
+              Learnloom finds and ranks useful sources, teaches the next concept,
+              and revisits it before it fades.
             </p>
             <div className="ll-hero-actions">
               <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
-                Claim your learning home <ArrowRight size={17} />
+                Build my learning path <ArrowRight size={17} />
               </a>
-              <a className="ll-text-link" href="#product">
-                See how it works <ChevronRight size={16} />
+              <a className="ll-text-link" href="/examples/ai-evaluation">
+                Read a complete Dossier <ChevronRight size={16} />
               </a>
             </div>
           </div>
 
-          <div className="ll-address-pill" aria-label="Example personal Learnloom address">
-            <span className="ll-address-status"><Globe2 size={15} /></span>
-            <span>{personalSiteHost("maya")}</span>
-            <span className="ll-live-dot"><i /> Public</span>
+          <div className="ll-address-pill" aria-label="Complete product example available before signup">
+            <span className="ll-address-status"><BookOpen size={15} /></span>
+            <span>Complete lesson available before signup</span>
+            <span className="ll-live-dot"><i /> Real example</span>
           </div>
 
-          <DashboardPreview />
+          <LearningLoopPreview />
         </section>
 
         <section className="ll-subdomain-section" id="product">
           <div className="ll-section-intro">
-            <p className="ll-eyebrow">A home, not another inbox</p>
-            <h2>Your learning deserves<br />its own address.</h2>
+            <p className="ll-eyebrow">One topic becomes a maintained learning system</p>
+            <h2>See the whole loop,<br />not another AI answer.</h2>
             <p>
-              Every Dossier lives in a beautiful, lasting library on your
-              personal subdomain. Share it when you want. Keep it private when
-              you don’t.
+              The path begins privately. You can inspect the provisional source
+              portfolio, learn through a short evidence-linked session, attempt
+              retrieval, and see why the next lesson changes.
             </p>
           </div>
-          <div className="ll-domain-demo">
-            <div className="ll-domain-window">
-              <div className="ll-browser-bar">
-                <span className="ll-browser-dots"><i /><i /><i /></span>
-                <div><Globe2 size={13} />{personalSiteHost("maya")}</div>
-                <span />
-              </div>
-              <div className="ll-public-site">
-                <div className="ll-public-nav">
-                  <span>Maya’s Learning Garden</span>
-                  <span>Topics &nbsp; Archive &nbsp; About</span>
-                </div>
-                <div className="ll-public-hero">
-                  <p>Today’s Dossier · 8 min read</p>
-                  <h3>Why cities remember<br />the shape of their rivers</h3>
-                  <span>Urban Systems · July 19</span>
-                </div>
-                <div className="ll-public-cards">
-                  <article><span>01</span><strong>The mechanism</strong><p>How buried waterways continue to shape streets, density, and risk.</p></article>
-                  <article><span>02</span><strong>A worked example</strong><p>Tracing the old streams underneath modern Bengaluru.</p></article>
-                  <article><span>03</span><strong>Test your model</strong><p>Three retrieval questions and one field observation.</p></article>
-                </div>
-              </div>
-            </div>
-            <div className="ll-domain-note ll-domain-note-one">
-              <Check size={15} /> Your own searchable archive
-            </div>
-            <div className="ll-domain-note ll-domain-note-two">
-              <Check size={15} /> Public or private, your choice
-            </div>
+          <div className="ll-loop-proof" aria-label="Learnloom product sequence">
+            <ProofStep number="01" label="Topic" title="Calibrate an evaluator for AI research briefs" detail="Outcome: make defensible release decisions" />
+            <ProofStep number="02" label="Source portfolio" title="Official guidance, evaluation research, practitioner evidence" detail="Ranked by role, relevance, authority signals, and coverage" />
+            <ProofStep number="03" label="Learning session" title="Build a 12-case evaluator" detail="Mechanism, worked case, limitations, citations · about 12 min" />
+            <ProofStep number="04" label="Retrieval" title="Decide when disagreement requires human review" detail="Answer before reveal; rate your recall" />
+            <ProofStep number="05" label="Adaptation" title="Next: test order sensitivity and judge calibration" detail="Chosen from gaps, prior concepts, recall, and available time" />
+            <a className="ll-button ll-button-dark" href="/examples/ai-evaluation">Inspect the complete lesson <ArrowRight size={16} /></a>
           </div>
         </section>
 
@@ -135,8 +112,8 @@ export default function MarketingLanding() {
             <FlowCard
               number="01"
               icon={<Search size={21} />}
-              title="Choose what matters"
-              copy="Pick a topic and the sources you trust. Learnloom keeps the signal and leaves the noise."
+              title="Name what you want to understand"
+              copy="Start with a topic. Learnloom discovers and validates useful sources—or you can bring your own."
               visual={<SourceVisual />}
             />
             <FlowCard
@@ -170,11 +147,49 @@ export default function MarketingLanding() {
               <li><Check size={17} /> New ideas connect to your Learning History</li>
               <li><Check size={17} /> Questions turn reading into recall</li>
             </ul>
-            <a className="ll-text-link ll-text-link-dark" href={`${appOrigin}/sign-up`}>
-              Create your first Dossier <ArrowRight size={16} />
+            <a className="ll-text-link ll-text-link-dark" href="/examples/ai-evaluation">
+              Read a complete Dossier <ArrowRight size={16} />
             </a>
           </div>
           <DossierPreview />
+        </section>
+
+        <section className="ll-comparison-section" aria-labelledby="comparison-heading">
+          <div className="ll-section-intro">
+            <p className="ll-eyebrow">Choose the workflow, not the category label</p>
+            <h2 id="comparison-heading">Different tools solve<br />different parts of learning.</h2>
+            <p>Learnloom is for a topic you need to follow and master over time. These comparisons describe workflow defaults, not universal limitations.</p>
+          </div>
+          <div className="ll-comparison-table" role="table" aria-label="Learning workflow comparison">
+            <ComparisonRow tool="General chat assistants" strength="Fast explanations and questions" tradeoff="You repeatedly supply context, judge sources, and decide what comes next" />
+            <ComparisonRow tool="NotebookLM" strength="Explore and synthesize a source collection" tradeoff="You assemble the collection and maintain the learning sequence" />
+            <ComparisonRow tool="Readwise / read-later" strength="Capture, resurface, and annotate material" tradeoff="The reading queue is not automatically turned into a source-ranked curriculum" />
+            <ComparisonRow tool="Recall / knowledge maps" strength="Summaries and connected personal knowledge" tradeoff="Learnloom centers a scheduled lesson–retrieval–adaptation loop" />
+            <ComparisonRow tool="Learnloom" strength="Topic-to-source portfolio-to-adaptive lesson loop" tradeoff="A focused learning system, not a general research workspace or notes replacement" emphasized />
+          </div>
+        </section>
+
+        <section className="ll-trust-section" aria-labelledby="trust-heading">
+          <div><p className="ll-eyebrow">Trust is a product surface</p><h2 id="trust-heading">Inspect the evidence.<br />Keep the boundary.</h2></div>
+          <div className="ll-trust-grid">
+            <article><strong>Explainable selection</strong><p>See source roles and why candidates were chosen. Prefer, block, replace, or provide your own sources.</p><a href="/editorial-principles">Source methodology <ArrowRight size={13} /></a></article>
+            <article><strong>Claims stay checkable</strong><p>Material factual claims link to frozen source evidence. Weak coverage can defer a lesson instead of manufacturing certainty.</p><a href="/examples/ai-evaluation">Inspect a Dossier <ArrowRight size={13} /></a></article>
+            <article><strong>Private by default</strong><p>New paths and lessons begin private or draft. Publishing, search indexing, and follow-by-email each require an explicit action.</p><a href="/privacy">Privacy details <ArrowRight size={13} /></a></article>
+            <article><strong>Models have limits</strong><p>Learnloom ranks signals and produces instructional synthesis; it does not certify truth. Corrections and source reporting remain available.</p><a href="/how-learnloom-works">How it works <ArrowRight size={13} /></a></article>
+          </div>
+        </section>
+
+        <section className="ll-pricing-section" id="pricing" aria-labelledby="pricing-heading">
+          <div className="ll-section-intro">
+            <p className="ll-eyebrow">Design-partner pricing</p>
+            <h2 id="pricing-heading">Experience the loop free.<br />Pay when it becomes a habit.</h2>
+            <p>This is our launch hypothesis, not an “unlimited AI” promise. We will keep the allowance visible and revise it only from measured cost and learning outcomes.</p>
+          </div>
+          <div className="ll-pricing-grid">
+            <article><p>Free</p><h3>$0</h3><span>per month</span><ul><li><Check size={15} /> One starter learning path</li><li><Check size={15} /> 3 lesson generations per 30 days</li><li><Check size={15} /> Private archive and review</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Start free <ArrowRight size={15} /></a></article>
+            <article className="featured"><p>Pro design partner</p><h3>$15</h3><span>per month · price hypothesis</span><ul><li><Check size={15} /> 30 lesson generations per 30 days</li><li><Check size={15} /> Full learning and publishing loop</li><li><Check size={15} /> Cancel in the hosted billing portal</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Join the design-partner beta <ArrowRight size={15} /></a></article>
+          </div>
+          <p className="ll-pricing-note">Taxes may be added or included based on your location and will be shown before payment. Paddle acts as merchant of record and provides invoices. Existing lessons remain readable after cancellation; new generation returns to the Free allowance.</p>
         </section>
 
         <section className="ll-email-section">
@@ -188,10 +203,10 @@ export default function MarketingLanding() {
                 <span>Today’s Dossier</span>
                 <span>8:00 AM</span>
               </div>
-              <p>Urban Systems · Issue 14</p>
-              <h3>Why cities remember the shape of their rivers</h3>
+              <p>AI Evaluation · Dossier 01</p>
+              <h3>Can you trust an AI research brief?</h3>
               <div className="ll-mail-lines"><i /><i /><i /><i /></div>
-              <a>Continue reading on {personalSiteHost("maya")} <ArrowRight size={14} /></a>
+              <a>Continue reading on {personalSiteHost("alex")} <ArrowRight size={14} /></a>
             </div>
           </div>
           <div className="ll-email-copy">
@@ -221,7 +236,7 @@ export default function MarketingLanding() {
             <BrandMark />
             <p className="ll-eyebrow">Your learning home is waiting</p>
             <h2>Make curiosity<br /><em>a place you return to.</em></h2>
-            <p>Claim your personal Learnloom address and publish your first Dossier.</p>
+            <p>Start a private path from one topic. Publishing stays optional.</p>
             <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
               Get started with Learnloom <ArrowRight size={17} />
             </a>
@@ -253,33 +268,31 @@ function BrandMark() {
   return <span className="ll-brand-mark"><Sparkles size={16} strokeWidth={2.2} /></span>;
 }
 
-function DashboardPreview() {
+function LearningLoopPreview() {
   return (
-    <div className="ll-dashboard-shell" aria-label="Learnloom dashboard preview">
+    <div className="ll-dashboard-shell" aria-label="Illustrated Learnloom learning loop walkthrough">
       <div className="ll-dashboard-top">
         <div className="ll-mini-brand"><BrandMark /><strong>Learnloom</strong></div>
-        <div className="ll-dashboard-search"><Search size={12} /> Search your learning <kbd>⌘ K</kbd></div>
-        <span className="ll-avatar">MP</span>
+        <div className="ll-dashboard-search"><Search size={12} /> AI evaluator reliability</div>
+        <span className="ll-avatar">01</span>
       </div>
       <div className="ll-dashboard-body">
         <aside>
           <span className="ll-side-label">Workspace</span>
-          <a className="active"><BookOpen size={13} /> Dossiers</a>
-          <a><Clock3 size={13} /> Learning history</a>
-          <span className="ll-side-label ll-side-spacer">Active topics</span>
-          <a><span className="ll-topic-dot blue" /> Urban systems</a>
-          <a><span className="ll-topic-dot green" /> Behavioral science</a>
-          <a><span className="ll-topic-dot gold" /> Climate technology</a>
+          <a className="active"><Search size={13} /> Source portfolio</a>
+          <a><BookOpen size={13} /> Focused lesson</a>
+          <a><BrainCircuit size={13} /> Retrieval</a>
+          <a><Clock3 size={13} /> Adapted next step</a>
         </aside>
         <div className="ll-dashboard-main">
           <div className="ll-dash-heading">
-            <div><span>Your intelligence workspace</span><h3>Knowledge Dossiers</h3></div>
-            <button><span>+</span> New topic</button>
+            <div><span>Illustrated product walkthrough</span><h3>From topic to the next useful concept</h3></div>
+            <button>Private by default</button>
           </div>
           <div className="ll-dash-cards">
-            <MiniDossier icon={<Globe2 size={17} />} title="Urban systems" color="blue" progress="82%" />
-            <MiniDossier icon={<BrainCircuit size={17} />} title="Behavioral science" color="green" progress="64%" />
-            <MiniDossier icon={<Sparkles size={17} />} title="Climate technology" color="gold" progress="91%" />
+            <MiniDossier icon={<Search size={17} />} title="Evidence portfolio" color="blue" capability="Roles and reasons visible" />
+            <MiniDossier icon={<BookOpen size={17} />} title="12-minute session" color="green" capability="Claims linked to sources" />
+            <MiniDossier icon={<BrainCircuit size={17} />} title="Adaptive return" color="gold" capability="Recall updates what comes next" />
           </div>
         </div>
       </div>
@@ -287,17 +300,25 @@ function DashboardPreview() {
   );
 }
 
-function MiniDossier({ icon, title, color, progress }) {
+function MiniDossier({ icon, title, color, capability }) {
   return (
     <article className="ll-mini-dossier">
       <div><span className={`ll-mini-icon ${color}`}>{icon}</span><span className="ll-active"><i /> Active</span></div>
       <h4>{title}</h4>
-      <p>A guided daily path through sources, mechanisms, and practice.</p>
-      <div className="ll-mini-meta"><span>Next issue</span><strong>Tomorrow, 8:00 AM</strong></div>
-      <div className="ll-mini-progress"><span><i style={{ width: progress }} /></span><strong>{progress}</strong></div>
+      <p>One stage in a connected learning cycle—not an invented activity feed.</p>
+      <div className="ll-mini-meta"><span>Product behavior</span><strong>Inspectable and durable</strong></div>
+      <div className="ll-mini-capability"><Check size={11} /><strong>{capability}</strong></div>
       <a>Open Dossier <ChevronRight size={12} /></a>
     </article>
   );
+}
+
+function ProofStep({ number, label, title, detail }) {
+  return <article><span>{number}</span><div><small>{label}</small><strong>{title}</strong><p>{detail}</p></div></article>;
+}
+
+function ComparisonRow({ tool, strength, tradeoff, emphasized = false }) {
+  return <div className={emphasized ? "emphasized" : ""} role="row"><strong role="cell">{tool}</strong><span role="cell">{strength}</span><p role="cell">{tradeoff}</p></div>;
 }
 
 function FlowCard({ number, icon, title, copy, visual }) {
@@ -316,9 +337,9 @@ function FlowCard({ number, icon, title, copy, visual }) {
 function SourceVisual() {
   return (
     <div className="ll-source-visual">
-      <span className="ll-source-card one"><i>aeon</i><strong>How ideas take root</strong><small>Essay · 12 min</small></span>
-      <span className="ll-source-card two"><i>Nature</i><strong>A new view of memory</strong><small>Research · 8 min</small></span>
-      <span className="ll-source-card three"><i>MIT</i><strong>Systems that learn</strong><small>Journal · 6 min</small></span>
+      <span className="ll-source-card one"><i>NIST</i><strong>AI RMF Core</strong><small>Official framework</small></span>
+      <span className="ll-source-card two"><i>OpenAI</i><strong>Evals in practice</strong><small>Practitioner guidance</small></span>
+      <span className="ll-source-card three"><i>Research</i><strong>LLM judge bias</strong><small>Peer-reviewed evidence</small></span>
     </div>
   );
 }
@@ -340,9 +361,9 @@ function ArchiveVisual() {
   return (
     <div className="ll-archive-visual">
       <div className="ll-archive-top"><span>Learning history</span><Search size={13} /></div>
-      <div className="ll-archive-row"><i className="blue" /><span><strong>The city beneath the city</strong><small>Urban systems · Jul 18</small></span></div>
-      <div className="ll-archive-row"><i className="green" /><span><strong>Why habits resist intention</strong><small>Behavioral science · Jul 17</small></span></div>
-      <div className="ll-archive-row"><i className="gold" /><span><strong>Storing the summer sun</strong><small>Climate technology · Jul 16</small></span></div>
+      <div className="ll-archive-row"><i className="blue" /><span><strong>Can you trust an AI brief?</strong><small>AI evaluation · Lesson 1</small></span></div>
+      <div className="ll-archive-row"><i className="green" /><span><strong>Calibrate a model judge</strong><small>AI evaluation · Lesson 2</small></span></div>
+      <div className="ll-archive-row"><i className="gold" /><span><strong>Test order sensitivity</strong><small>AI evaluation · Next</small></span></div>
     </div>
   );
 }
@@ -352,16 +373,16 @@ function DossierPreview() {
     <div className="ll-dossier-preview">
       <div className="ll-dossier-paper">
         <div className="ll-paper-meta"><span>LEARNLOOM DOSSIER</span><span>ISSUE 14 · 8 MIN</span></div>
-        <p className="ll-paper-topic">URBAN SYSTEMS</p>
-        <h3>Why cities remember the<br />shape of their rivers</h3>
-        <p className="ll-paper-deck">A mechanism-focused guide to the waterways hidden beneath modern streets.</p>
+        <p className="ll-paper-topic">AI EVALUATION</p>
+        <h3>Can you trust an<br />AI research brief?</h3>
+        <p className="ll-paper-deck">Build a 12-case evaluator that knows when an automated judge needs a human.</p>
         <div className="ll-paper-rule" />
         <p className="ll-paper-label">THE CENTRAL MECHANISM</p>
-        <p className="ll-paper-body"><span className="ll-dropcap">A</span> river does not disappear when it is covered. Its valley, soil, drainage, and floodplain continue to govern what can be built above it.</p>
-        <div className="ll-paper-callout"><strong>Hold this model</strong><span>Infrastructure can hide a system without replacing its behavior.</span></div>
+        <p className="ll-paper-body"><span className="ll-dropcap">A</span>n evaluation connects representative cases and explicit criteria to a real release decision. Polish alone cannot establish reliability.</p>
+        <div className="ll-paper-callout"><strong>Hold this model</strong><span>Evaluation = cases × criteria × decision rule.</span></div>
         <p className="ll-paper-label">RETRIEVAL PRACTICE</p>
-        <div className="ll-question"><span>01</span><p>Why can a buried river still influence flooding?</p></div>
-        <div className="ll-question"><span>02</span><p>What would you look for on a city map?</p></div>
+        <div className="ll-question"><span>01</span><p>Why is a benchmark not yet a release decision?</p></div>
+        <div className="ll-question"><span>02</span><p>When must a case route to a human?</p></div>
       </div>
       <div className="ll-source-tab"><span>4</span> cited sources</div>
     </div>

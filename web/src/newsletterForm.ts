@@ -17,9 +17,12 @@ export interface NewsletterFormValues {
   aiExplorationEnabled: boolean;
   siteVisible: boolean;
   sourceMode: string;
+  sourceReviewMode: "auto" | "review";
   sources: NewsletterSourceInput[];
   templateId?: string;
   templateVersion?: number;
+  onboardingDraftId?: string;
+  onboardingDraftRevision?: number;
 }
 
 export function usableSources(sources: NewsletterSourceInput[]) {
@@ -57,9 +60,12 @@ export function buildNewsletterPayload(values: NewsletterFormValues) {
     aiExplorationEnabled: values.aiExplorationEnabled,
     siteVisible: values.siteVisible,
     sourceMode: values.sourceMode,
+    sourceReviewMode: values.sourceReviewMode,
     sources,
     templateId: values.templateId,
     templateVersion: values.templateVersion,
+    onboardingDraftId: values.onboardingDraftId,
+    onboardingDraftRevision: values.onboardingDraftRevision,
   };
 }
 

@@ -63,7 +63,7 @@ func TestAuthorityPageCatalogRendersSubstantiveCanonicalArticles(t *testing.T) {
 	}
 }
 
-func TestHowLearnloomWorksStatesCurrentDiscoveryBoundary(t *testing.T) {
+func TestHowLearnloomWorksStatesCurrentDiscoveryOptions(t *testing.T) {
 	t.Parallel()
 
 	page, ok := authorityPageForPath("/how-learnloom-works")
@@ -75,7 +75,13 @@ func TestHowLearnloomWorksStatesCurrentDiscoveryBoundary(t *testing.T) {
 		"https://learnloom.blog/how-learnloom-works",
 		"https://app.learnloom.blog",
 	)
-	if !strings.Contains(document, "Broader source discovery is a planned capability") {
-		t.Fatal("How Learnloom works must distinguish planned discovery from shipped behavior")
+	for _, expected := range []string{
+		"a topic is enough to begin",
+		"provide only sources they trust",
+		"let Learnloom fill gaps",
+	} {
+		if !strings.Contains(document, expected) {
+			t.Fatalf("How Learnloom works missing discovery option %q", expected)
+		}
 	}
 }

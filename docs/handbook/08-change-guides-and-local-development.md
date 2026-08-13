@@ -59,6 +59,10 @@ For discovery:
 docker compose --profile discovery up --build
 ```
 
+> [!WARNING] Current-revision blocker
+> Migration 005 exists but the expected schema is hardcoded to 4, so the stack
+> will not be healthy after migrations. Fix TD-001 before running this flow.
+
 **Current-revision warning:** migration 005 versus expected schema 4 prevents
 readiness after migrations. Fix TD-001 first or the stack will not be healthy.
 
@@ -97,6 +101,16 @@ useful for visual work, not backend correctness or integration validation.
 - artifact unavailable: confirm MinIO bucket creation and path-style endpoint.
 
 ## Universal safe-change workflow
+
+```mermaid
+flowchart LR
+  A["Identify owning capability + read tests/ADR"] --> B["Trace UI DTO → handler validation → owner-scoped store → schema/side effect"]
+  B --> C["State invariants + failure/retry behavior"]
+  C --> D["Smallest cohesive change — no generic layers"]
+  D --> E["Regression at lowest level + cross-boundary integration"]
+  E --> F["Format / static / unit / integration / build"]
+  F --> G["Schema/config/deploy? Rehearse migration + rollback, update handbook"]
+```
 
 1. Identify the owning capability and read its tests/ADR.
 2. Trace UI DTO → handler validation → owner-scoped store operation → schema/

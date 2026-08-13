@@ -7,7 +7,7 @@ import (
 
 const (
 	socialImagePath = "/social-preview.png"
-	socialImageAlt  = "Learnloom — trusted sources, woven into durable understanding."
+	socialImageAlt  = "Learnloom — give us a topic, and we’ll build the learning path."
 )
 
 func socialImageURL(apexOrigin string) string {

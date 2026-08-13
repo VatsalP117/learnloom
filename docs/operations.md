@@ -32,10 +32,11 @@ renewal failures, and Claims explicitly released during shutdown. A draining
 worker returns `503` from its readiness endpoint so deployment traffic and new
 work move elsewhere while existing Claims continue.
 
-Web operations metrics expose Issue, delivery, recap, and deletion queue depth;
-oldest Issue and delivery age; and Postgres acquired, idle, total, and maximum
-connections plus aggregate acquisition wait. Alert from these bounded,
-content-free signals rather than from learner text or query strings.
+Web operations metrics expose Issue, delivery, recap, account-deletion, and
+orphan-artifact cleanup depth; oldest Issue, delivery, and overdue artifact
+cleanup age; and Postgres acquired, idle, total, and maximum connections plus
+aggregate acquisition wait. Alert from these bounded, content-free signals
+rather than from learner text or query strings.
 
 Model stage metrics persist provider-reported input/output tokens, retries,
 latency, and estimated micro-USD cost. Configure the two per-million-token
@@ -77,6 +78,12 @@ For an account deletion incident, verify the Account is inactive first and
 inspect its deletion queue row. Retry the idempotent artifact phase; successful
 artifact cleanup is followed by transactional relational erasure, identity
 tombstoning, and a privacy-minimal receipt.
+
+For an orphan-artifact alert, inspect only the cleanup key, attempt count, and
+error. Confirm no generated Issue references the key and the originating
+generation claim is expired before any manual deletion. Restore object-store
+access and let the idempotent queue drain; do not bulk-delete an Account prefix
+unless processing an authorized Account-erasure request.
 
 ## Rollback
 

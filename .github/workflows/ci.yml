@@ -42,6 +42,7 @@ jobs:
         run: |
           bash -n scripts/restore-drill.sh
           jq empty infra/monitoring/learnloom-dashboard.json
+          jq empty docs/research/interview-corpus-v1.template.json
       - name: Start S3-compatible integration service
         run: |
           docker run -d --name learnloom-minio-ci \
@@ -67,6 +68,14 @@ jobs:
           TEST_S3_BUCKET: learnloom-test
           TEST_S3_ACCESS_KEY_ID: minioadmin
           TEST_S3_SECRET_ACCESS_KEY: minioadmin
+      - name: Execute aggregate evidence reports
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/learnloom_test?sslmode=disable
+        run: |
+          go run ./cmd/learnloom migrate
+          psql "$DATABASE_URL" -X -f scripts/product-baseline.sql >/dev/null
+          psql "$DATABASE_URL" -X -f scripts/design-partner-beta-report.sql >/dev/null
+          psql "$DATABASE_URL" -X -f scripts/billing-economics.sql >/dev/null
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./cmd/... ./internal/...
       - run: npm audit --audit-level=high
       - run: docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_test_placeholder .

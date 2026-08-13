@@ -2,6 +2,22 @@
 
 ## Authentication end to end
 
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant C as Clerk
+  participant W as Go web
+  participant P as Postgres
+  B->>C: password / Google OAuth
+  C-->>B: Clerk session cookie
+  B->>W: GET /api/me + Bearer JWT (or __session cookie)
+  W->>C: verify JWT + authorized party (JWKS / pinned key)
+  W->>P: EnsureAccount(subject) — insert active projection if absent
+  W-->>B: CSRF token, site, capabilities
+  B->>W: POST mutation + exact Origin + X-CSRF-Token
+  W->>P: owner-scoped SQL
+```
+
 **Identity provider:** Clerk. React is initialized with the build-time
 publishable key (`ProductRoot.tsx`). Password/Google flows execute through Clerk
 hooks in `AuthPage.tsx`; OAuth returns through `/sso-callback`.
@@ -31,6 +47,30 @@ secret, and JSON. The token is returned by `/api/me` and held only in JS memory.
 
 There are no roles beyond Account status. Authorization is tenant ownership:
 
+```mermaid
+flowchart LR
+  subgraph Browser["Browser"]
+    SPA["React SPA · localStorage review"]
+  end
+  subgraph WebRole["Learnloom web role"]
+    AUTH["Clerk verify + authorized party"]
+    CSRF["exact Origin + session-HMAC CSRF"]
+    OWN["owner-scoped SQL: every query carries owner_account_id"]
+  end
+  subgraph WorkerRole["Learnloom worker role"]
+    SRC["source acquisition · SSRF boundary"]
+    GEN["Dossier generation"]
+    EMAIL["Resend delivery"]
+  end
+  CL["Clerk identity + webhooks"] -->|signed events| WebRole
+  Browser -->|"bearer + cookie"| WebRole
+  WebRole -->|"mutations: Origin + CSRF"| OWN
+  OWN --> P[(Postgres)]
+  WorkerRole --> P
+  WorkerRole --> S3[("S3 / R2")]
+  Public["Public reader / crawler"] -->|"username + visibility predicates"| WebRole
+```
+
 - middleware maps verified Clerk subject to exactly one internal Account;
 - every authenticated store read/write takes Account ID and constrains
   `owner_account_id`, directly or through Newsletter joins;
@@ -56,6 +96,11 @@ injected credentials.
 
 Severity reflects impact; confidence reflects repository evidence. “Possible”
 items require runtime/infrastructure validation and are not claimed exploitable.
+
+> [!DANGER] Release blocker (confirmed)
+> `currentSchemaVersion = 4` but `005_site_search_indexing.sql` exists. After
+> migrate applies version 5, `Store.Ready()` rejects it — the current web/worker
+> image cannot become ready or start. TD-001; fix before any deployment.
 
 | Severity | Confidence | Finding and evidence | Recommendation |
 |---|---|---|---|
@@ -110,7 +155,7 @@ ValidateFor()`. “Secret” means never expose to browser/log/repository.
 | Variable | Default | Roles | Secret | Behavior |
 |---|---|---|---|---|
 | `LEARNLOOM_ENV` | `development` | all | no | development/staging/production only; tightens TLS/Clerk validation |
-| `LEARNLOOM_RELEASE_VERSION` | `unknown` | worker context | no | recorded in attempt context/metrics wiring |
+| `LEARNLOOM_RELEASE_VERSION` | `unknown` in development | all runtime roles | no | staging/production require a full lowercase 40- or 64-character immutable revision; exposed as `X-Learnloom-Release` and recorded in attempt context |
 | `LOG_LEVEL` | `info` | web/worker | no | parsed by slog; invalid silently becomes info |
 | `ALLOW_INSECURE_PRIVATE_SERVICES` | false | production | no | permits HTTP/private DB/S3 exceptions for same-stack services; dangerous if broadly enabled |
 | `DATABASE_URL` | none | all, required | **yes** | Postgres URL; production TLS unless explicit private exception |
@@ -153,6 +198,23 @@ feature.
 
 `CLERK_PUBLISHABLE_KEY` is required server-side but current Go code does not use
 it. The separate Vite key is what the browser uses: duplication can drift.
+
+### Paddle commerce
+
+| Variable | Default | Roles | Secret | Notes |
+|---|---|---|---|---|
+| `PADDLE_API_KEY` | empty | web | **yes** | must be set with webhook secret and Pro price; credentials alone do not enable production checkout |
+| `PADDLE_API_BASE_URL` | `https://api.paddle.com` | web | no | staging requires `sandbox-api.paddle.com`; production requires `api.paddle.com` |
+| `PADDLE_WEBHOOK_SECRET` | empty | web | **yes** | verifies signed reconciliation events; distinct from API key |
+| `PADDLE_PRO_PRICE_ID` | empty | web | no/sensitive config | server-owned price allowlist for Pro entitlement |
+| `PAID_COMMERCE_APPROVED` | false | web/production | no | must be true before production checkout is available |
+| `PAID_COMMERCE_APPROVAL_REFERENCE` | empty | web/production | no | bounded non-secret pointer to entity/tax/refund/support and staging approval evidence |
+
+Production startup fails when Paddle credentials exist without explicit
+commerce approval and its evidence reference. This separates possession of a
+provider credential from authority to sell. Signed webhook processing remains
+available for reconciliation when configured; the checkout and portal surfaces
+use the approval gate.
 
 ### Object storage/model
 

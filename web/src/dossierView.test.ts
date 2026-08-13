@@ -18,6 +18,7 @@ describe("normalizeDossier", () => {
       "When does it fail?",
     ]);
     expect(result.application).toBe("Apply it to a current project.");
+    expect(result.limitations).toEqual([]);
   });
 
   it("preserves structured orientation, evidence markers, and answer rubrics", () => {
@@ -39,6 +40,14 @@ describe("normalizeDossier", () => {
           text: "Retrieval improves later access.",
           sourceIds: ["S1"],
         }],
+        limitations: [{
+          id: "limitation-1",
+          text: "Feedback quality changes the result.",
+          sourceIds: ["S2"],
+        }],
+        lessonType: "foundation",
+        evidenceStatus: "source_bounded",
+        suggestedNextConcepts: ["Spacing effects"],
         application: "Compare recall with rereading.",
       },
     }, { lessonMinutes: 10 });
@@ -52,6 +61,11 @@ describe("normalizeDossier", () => {
       text: "Retrieval improves later access.",
       sourceIds: ["S1"],
     });
+    expect(result.limitations[0].sourceIds).toEqual(["S2"]);
+    expect(result.lessonType).toBe("foundation");
+    expect(result.evidenceStatus).toBe("source_bounded");
+    expect(result.nextConcepts).toEqual(["Spacing effects"]);
+    expect(result.sections[1].heading).toBe("Limits and verification");
     expect(result.sections[0].paragraphs[0]).toEqual({
       text: "Retrieval changes later access.",
       sourceIds: ["S1", "S2"],

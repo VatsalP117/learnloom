@@ -23,8 +23,10 @@ func TestEvaluateQualityAcceptsCompleteDossier(t *testing.T) {
 		t.Fatal(err)
 	}
 	if report.Score < 90 || !report.Checks["lessonTimeFit"] ||
-		report.Metrics["lessonWordsMinimum"] != 450 ||
-		report.Metrics["lessonWordsMaximum"] != 1350 {
+		!report.Checks["measuredReadingTime"] ||
+		report.Metrics["lessonWordsMinimum"] != 1050 ||
+		report.Metrics["lessonWordsMaximum"] != 1800 ||
+		report.Metrics["estimatedFocusedReadingMinutes"] < 8 {
 		t.Fatalf("unexpected report: %#v", report)
 	}
 }
@@ -41,7 +43,7 @@ func TestEvaluateQualityRejectsLessonOutsideTimeBudget(t *testing.T) {
 		0,
 		lessonWordBudgetFor(5),
 	)
-	if err == nil || !strings.Contains(err.Error(), "must contain 300 to 700 words") {
+	if err == nil || !strings.Contains(err.Error(), "must contain 560 to 960 words") {
 		t.Fatalf("expected actionable time-fit error, got %v", err)
 	}
 }
@@ -52,10 +54,10 @@ func TestLessonWordBudgetBounds(t *testing.T) {
 		minutes int
 		want    lessonWordBudget
 	}{
-		{minutes: 5, want: lessonWordBudget{minimum: 300, maximum: 700}},
-		{minutes: 20, want: lessonWordBudget{minimum: 600, maximum: 1800}},
-		{minutes: 90, want: lessonWordBudget{minimum: 1800, maximum: 3200}},
-		{minutes: 0, want: lessonWordBudget{minimum: 600, maximum: 1800}},
+		{minutes: 5, want: lessonWordBudget{minimum: 560, maximum: 960}},
+		{minutes: 20, want: lessonWordBudget{minimum: 1400, maximum: 2400}},
+		{minutes: 90, want: lessonWordBudget{minimum: 2100, maximum: 3600}},
+		{minutes: 0, want: lessonWordBudget{minimum: 840, maximum: 1440}},
 	} {
 		if got := lessonWordBudgetFor(test.minutes); got != test.want {
 			t.Errorf("lessonWordBudgetFor(%d) = %#v, want %#v", test.minutes, got, test.want)

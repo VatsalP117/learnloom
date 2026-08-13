@@ -2,6 +2,11 @@
 
 ## How to read this catalogue
 
+> [!NOTE] Recorded vs reconstructed
+> **Recorded** entries summarize committed ADRs (motive stated as fact).
+> **Reconstructed** entries distinguish the observed decision from its plausible
+> motive. Confidence concerns historical reasoning, not whether code exists.
+
 “Recorded” entries summarize committed ADRs and may state motivation as fact.
 “Reconstructed” entries distinguish observed decision from plausible motive.
 Dates come from Git history. Confidence concerns historical reasoning, not
@@ -213,6 +218,13 @@ whether current code exists.
   unrelated schema-version drift that must be fixed.
 
 ## Historical narrative
+
+```mermaid
+flowchart LR
+  E1["07-18 · local engine — CLI, Command Code, SQLite, Resend"] --> E2["07-19 · hosted transition — ADR 0001–0004 commit 61b2b4f"]
+  E2 --> E3["07-20 · source intelligence + deployment — ADR 0005, Dokploy/Traefik"]
+  E3 --> E4["07-23–29 · product / reliability / SEO — RADR 0006–0012, indexing"]
+```
 
 Git history shows four clear eras:
 

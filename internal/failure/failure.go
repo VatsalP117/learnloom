@@ -22,9 +22,40 @@ const (
 )
 
 const (
-	PublicInternal = "We couldn’t prepare this lesson. We’ve been notified, and you can retry now."
-	PublicDelayed  = "This lesson is taking longer than expected. We’re retrying automatically."
-	PublicSources  = "We couldn’t find enough usable material in the selected sources. Update the sources, then retry."
+	CodeModelContractUnsatisfied     = "model_contract_unsatisfied"
+	CodeModelProviderUnavailable     = "model_provider_unavailable"
+	CodeModelRequestRejected         = "model_request_rejected"
+	CodeModelOutputTruncated         = "model_output_truncated"
+	CodeModelOutputEmpty             = "model_output_empty"
+	CodeGenerationInterrupted        = "generation_interrupted"
+	CodeNoNewLearningSignal          = "no_new_learning_signal"
+	CodeSourceDiscoveryUnavailable   = "source_discovery_unavailable"
+	CodeSourceEvidenceNeedsAttention = "source_evidence_needs_attention"
+	CodeNoWorthwhileEvidence         = "no_worthwhile_evidence"
+	CodeNoNewEvidence                = "no_new_evidence"
+	CodeWorkerClaimExpired           = "worker_claim_expired"
+)
+
+var StableCodes = []string{
+	CodeModelContractUnsatisfied,
+	CodeModelProviderUnavailable,
+	CodeModelRequestRejected,
+	CodeModelOutputTruncated,
+	CodeModelOutputEmpty,
+	CodeGenerationInterrupted,
+	CodeNoNewLearningSignal,
+	CodeSourceDiscoveryUnavailable,
+	CodeSourceEvidenceNeedsAttention,
+	CodeNoWorthwhileEvidence,
+	CodeNoNewEvidence,
+	CodeWorkerClaimExpired,
+}
+
+const (
+	PublicInternal   = "We couldn’t prepare this lesson. We’ve been notified, and you can retry now."
+	PublicDelayed    = "This lesson is taking longer than expected. We’re retrying automatically."
+	PublicSources    = "We couldn’t find enough usable material in the selected sources. Update the sources, then retry."
+	PublicNoEvidence = "There isn’t enough worthwhile evidence for a new lesson yet. Learnloom will look again at the next scheduled time."
 )
 
 type Detail struct {

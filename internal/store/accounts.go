@@ -51,7 +51,12 @@ func (s *Store) EnsureAccount(
 	}
 
 	now := time.Now().UTC()
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	defer rollback(tx)
+	row := tx.QueryRow(ctx, `
 		INSERT INTO accounts (
 			id, clerk_user_id, status, created_at, updated_at
 		)
@@ -66,13 +71,24 @@ func (s *Store) EnsureAccount(
 	`, uuid.New(), clerkUserID, now, identityFingerprint(clerkUserID))
 	account, err = scanAccount(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		account, err = s.accountByClerkUserID(ctx, clerkUserID)
+		account, err = scanAccount(tx.QueryRow(ctx, `
+			SELECT id::text, clerk_user_id, COALESCE(primary_email, ''),
+			       status, created_at, updated_at, deleted_at
+			FROM accounts WHERE clerk_user_id = $1
+		`, clerkUserID))
 		if errors.Is(err, pgx.ErrNoRows) {
-			deletedAt, tombstoneErr := s.deletedIdentityAt(ctx, clerkUserID)
+			var tombstoneDeletedAt time.Time
+			tombstoneErr := tx.QueryRow(ctx, `
+				SELECT deleted_at FROM deleted_identity_tombstones
+				WHERE identity_fingerprint = $1
+			`, identityFingerprint(clerkUserID)).Scan(&tombstoneDeletedAt)
+			if errors.Is(tombstoneErr, pgx.ErrNoRows) {
+				tombstoneErr = nil
+			}
 			if tombstoneErr != nil {
 				return domain.Account{}, tombstoneErr
 			}
-			if deletedAt != nil {
+			if !tombstoneDeletedAt.IsZero() {
 				return domain.Account{}, ErrForbidden
 			}
 		}
@@ -83,14 +99,15 @@ func (s *Store) EnsureAccount(
 	if account.Status != domain.AccountActive {
 		return domain.Account{}, ErrForbidden
 	}
-	_ = s.RecordProductEvent(
-		ctx,
-		account.ID,
-		ProductEventSignupCompleted,
-		"account",
-		account.ID,
-		now,
-	)
+	if err := insertProductEvent(
+		ctx, tx, account.ID, ProductEventSignupCompleted,
+		"account", account.ID, now,
+	); err != nil {
+		return domain.Account{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Account{}, fmt.Errorf("commit Account creation: %w", err)
+	}
 	return account, nil
 }
 
@@ -119,7 +136,12 @@ func (s *Store) SyncAccountIdentity(
 	if identityEventAt < 1 {
 		return domain.Account{}, errors.New("Clerk event timestamp is invalid")
 	}
-	tombstoneDeletedAt, err := s.deletedIdentityAt(ctx, clerkUserID)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	defer rollback(tx)
+	tombstoneDeletedAt, err := deletedIdentityAtTx(ctx, tx, clerkUserID)
 	if err != nil {
 		return domain.Account{}, err
 	}
@@ -135,7 +157,7 @@ func (s *Store) SyncAccountIdentity(
 	if status == domain.AccountDeleted {
 		deletedAt = &now
 	}
-	row := s.pool.QueryRow(ctx, `
+	row := tx.QueryRow(ctx, `
 		INSERT INTO accounts (
 			id, clerk_user_id, primary_email, status,
 			identity_event_at, created_at, updated_at, deleted_at
@@ -164,13 +186,13 @@ func (s *Store) SyncAccountIdentity(
 		identityEventAt, now, deletedAt, identityFingerprint(clerkUserID))
 	account, err := scanAccount(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		account, err = scanAccount(s.pool.QueryRow(ctx, `
+		account, err = scanAccount(tx.QueryRow(ctx, `
 			SELECT id::text, clerk_user_id, COALESCE(primary_email, ''),
 			       status, created_at, updated_at, deleted_at
 			FROM accounts WHERE clerk_user_id = $1
 		`, clerkUserID))
 		if errors.Is(err, pgx.ErrNoRows) {
-			tombstoneDeletedAt, tombstoneErr := s.deletedIdentityAt(ctx, clerkUserID)
+			tombstoneDeletedAt, tombstoneErr := deletedIdentityAtTx(ctx, tx, clerkUserID)
 			if tombstoneErr != nil {
 				return domain.Account{}, tombstoneErr
 			}
@@ -187,22 +209,21 @@ func (s *Store) SyncAccountIdentity(
 		return domain.Account{}, fmt.Errorf("sync Account identity: %w", err)
 	}
 	if account.Status != domain.AccountActive {
-		if err := s.stopAccountWork(
-			ctx,
-			account.ID,
-			account.Status == domain.AccountDeleted,
+		if err := stopAccountWorkTx(
+			ctx, tx, account.ID, account.Status == domain.AccountDeleted,
 		); err != nil {
 			return domain.Account{}, err
 		}
 	} else {
-		_ = s.RecordProductEvent(
-			ctx,
-			account.ID,
-			ProductEventSignupCompleted,
-			"account",
-			account.ID,
-			now,
-		)
+		if err := insertProductEvent(
+			ctx, tx, account.ID, ProductEventSignupCompleted,
+			"account", account.ID, now,
+		); err != nil {
+			return domain.Account{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Account{}, fmt.Errorf("commit Account identity sync: %w", err)
 	}
 	return account, nil
 }
@@ -226,6 +247,26 @@ func (s *Store) deletedIdentityAt(
 	return nil, nil
 }
 
+func deletedIdentityAtTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	clerkUserID string,
+) (*time.Time, error) {
+	var deletedAt time.Time
+	err := tx.QueryRow(ctx, `
+		SELECT deleted_at
+		FROM deleted_identity_tombstones
+		WHERE identity_fingerprint = $1
+	`, identityFingerprint(clerkUserID)).Scan(&deletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("check deleted identity: %w", err)
+	}
+	return &deletedAt, nil
+}
+
 func identityFingerprint(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
@@ -241,6 +282,21 @@ func (s *Store) stopAccountWork(
 		return err
 	}
 	defer rollback(tx)
+	if err := stopAccountWorkTx(ctx, tx, accountID, deleteArtifacts); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("stop Account work: %w", err)
+	}
+	return nil
+}
+
+func stopAccountWorkTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	accountID string,
+	deleteArtifacts bool,
+) error {
 	if _, err := tx.Exec(ctx, `
 		UPDATE newsletters
 		SET active = false, updated_at = now()
@@ -287,9 +343,6 @@ func (s *Store) stopAccountWork(
 		`, accountID); err != nil {
 			return fmt.Errorf("enqueue Account artifact deletion: %w", err)
 		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("stop Account work: %w", err)
 	}
 	return nil
 }
@@ -394,7 +447,12 @@ func (s *Store) UpdateSite(
 		}
 		description = &normalized
 	}
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.PersonalSite{}, err
+	}
+	defer rollback(tx)
+	row := tx.QueryRow(ctx, `
 		UPDATE personal_sites SET
 			visibility = $2,
 			display_name = COALESCE($3, display_name),
@@ -417,14 +475,15 @@ func (s *Store) UpdateSite(
 		return domain.PersonalSite{}, fmt.Errorf("update Personal Site: %w", err)
 	}
 	if site.SearchIndexing {
-		_ = s.RecordProductEvent(
-			ctx,
-			accountID,
-			ProductEventSearchIndexingEnabled,
-			"site",
-			site.ID,
-			site.UpdatedAt,
-		)
+		if err := insertProductEvent(
+			ctx, tx, accountID, ProductEventSearchIndexingEnabled,
+			"site", site.ID, site.UpdatedAt,
+		); err != nil {
+			return domain.PersonalSite{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.PersonalSite{}, fmt.Errorf("commit Personal Site update: %w", err)
 	}
 	return site, nil
 }

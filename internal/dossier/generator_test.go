@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 )
 
 type fakeSources struct{}
@@ -195,8 +196,9 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 			t.Fatalf("stage %s has invalid duration %s", stage, duration)
 		}
 	}
-	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 450 ||
-		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1350 {
+	if result.Artifact.Dossier.Quality.Metrics["lessonWords"] < 1050 ||
+		result.Artifact.Dossier.Quality.Metrics["lessonWordsMaximum"] != 1800 ||
+		result.Artifact.Dossier.Quality.Metrics["estimatedFocusedReadingMinutes"] < 8 {
 		t.Fatalf("missing time-fit quality metrics: %#v", result.Artifact.Dossier.Quality.Metrics)
 	}
 	var editorInput string
@@ -209,7 +211,7 @@ func TestGeneratorProducesValidatedArtifact(t *testing.T) {
 	for _, wanted := range []string{
 		"Level: experienced",
 		"Goal: build durable knowledge",
-		"Lesson body budget: 450-1350 words",
+		"Lesson body budget: 1050-1800 actual rendered words",
 		"Objective: Compare recognition with independent recall",
 		"Concepts: retrieval strength | storage strength",
 		"Sources: Prior evidence review",
@@ -285,6 +287,109 @@ func TestStructuredCheckpointMustStillSatisfyCurrentContract(t *testing.T) {
 	}
 }
 
+func TestStructuredStagePreservesContractFailureClassification(t *testing.T) {
+	t.Parallel()
+	model := &sequenceModel{responses: []string{`{"invalid":true}`, `still not json`}}
+	_, err := runStructured(
+		context.Background(),
+		model,
+		"curator",
+		"return valid curation",
+		"input",
+		nil,
+		func(value domain.Curation) error { return validateCuration(value, 1) },
+	)
+	detail := failure.Describe(err)
+	if detail.Code != "model_contract_unsatisfied" ||
+		detail.Category != failure.CategoryContentQuality ||
+		detail.Stage != "curator" || !detail.Retryable {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+	if len(model.requests) != 2 || !strings.Contains(model.requests[1].Input, "Contract repair") {
+		t.Fatalf("contract repair was not attempted: %#v", model.requests)
+	}
+}
+
+func TestNoveltyGateRequiresObjectiveConceptAndSourceOverlap(t *testing.T) {
+	t.Parallel()
+	blueprint := domain.LearningBlueprint{
+		LearningObjective: "Explain how retrieval practice strengthens durable recall",
+		Concepts:          []string{"retrieval practice", "durable recall", "corrective feedback"},
+	}
+	sources := []domain.SourceItem{
+		{Title: "Retrieval practice evidence review", CanonicalURL: "https://example.com/retrieval"},
+		{Title: "Corrective feedback in durable learning", CanonicalURL: "https://example.com/feedback"},
+		{Title: "Durable recall boundary conditions", CanonicalURL: "https://example.com/boundaries"},
+	}
+	history := []domain.LearningHistoryEntry{{
+		LearningObjective: "Explain how retrieval practice builds durable recall",
+		Concepts:          []string{"retrieval practice", "durable recall", "corrective feedback"},
+		SourceTitles: []string{
+			"Retrieval practice evidence review",
+			"Corrective feedback in durable learning",
+			"Durable recall boundary conditions",
+		},
+		SourceURLs: []string{
+			"https://example.com/retrieval",
+			"https://example.com/feedback",
+			"https://example.com/boundaries",
+		},
+	}}
+	if !repeatsRecentLearningSignal(blueprint, sources, history) {
+		t.Fatal("near-identical learning signal was not detected")
+	}
+	blueprint.Concepts = []string{"interleaving", "transfer", "contextual variation"}
+	if repeatsRecentLearningSignal(blueprint, sources, history) {
+		t.Fatal("changed concept direction was incorrectly rejected")
+	}
+	blueprint.Concepts = []string{"retrieval practice", "durable recall", "corrective feedback"}
+	sources[1].CanonicalURL = "https://example.com/new-evidence"
+	if !repeatsRecentLearningSignal(blueprint, sources, history) {
+		t.Fatal("one changed source should not hide otherwise duplicated evidence")
+	}
+	sources[0].CanonicalURL = "https://example.com/new-primary"
+	if repeatsRecentLearningSignal(blueprint, sources, history) {
+		t.Fatal("materially changed evidence portfolio was incorrectly rejected")
+	}
+}
+
+func TestGeneratorDefersRepeatedLearningBeforeDownstreamStages(t *testing.T) {
+	t.Parallel()
+	model := &sequenceModel{responses: []string{
+		`{"theme":"Retrieval practice","rationale":"The same evidence repeats the prior mechanism.","selectedSourceIds":["S1","S2","S3"]}`,
+		`{"learningObjective":"Explain how retrieval practice strengthens durable recall","prerequisites":["Recall"],"concepts":["retrieval practice","durable recall","corrective feedback"],"suggestedNextConcepts":["spacing effects"],"centralMechanism":"Repeated retrieval plus feedback","workedExample":"A learner recalls then corrects an answer","misconception":"Rereading is equivalent","practicalExperiment":"Compare recall with rereading","continuityBridge":"Repeats the prior lesson"}`,
+	}}
+	generator, err := NewGenerator(fakeSources{}, model, GenerationConfig{ModelName: "test-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = generator.Generate(context.Background(), GenerateRequest{
+		Newsletter: domain.Newsletter{
+			ID: "newsletter-1", Topic: "retrieval practice",
+			LearnerLevel: "experienced", LearnerGoal: "build durable recall",
+			LessonMinutes: 15, TimeZone: "UTC",
+			Sources: []domain.SourceDefinition{{Name: "Example", URL: "https://example.com/feed", Limit: 3}},
+		},
+		History: []domain.LearningHistoryEntry{{
+			LearningObjective: "Explain how retrieval practice builds durable recall",
+			Concepts:          []string{"retrieval practice", "durable recall", "corrective feedback"},
+			SourceURLs: []string{
+				"https://example.com/1", "https://example.com/2", "https://example.com/3",
+			},
+		}},
+	})
+	detail := failure.Describe(err)
+	if detail.Code != "no_new_learning_signal" ||
+		detail.Category != failure.CategoryInsufficientEvidence ||
+		detail.Stage != "novelty_gate" || detail.Retryable ||
+		detail.PublicMessage != failure.PublicNoEvidence {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+	if len(model.requests) != 2 {
+		t.Fatalf("novelty gate made %d model calls, want curator and blueprint only", len(model.requests))
+	}
+}
+
 func TestEditorReceivesActionableTimeFitRepair(t *testing.T) {
 	t.Parallel()
 	practice := completePractice()
@@ -331,7 +436,7 @@ func TestEditorReceivesActionableTimeFitRepair(t *testing.T) {
 	}
 	if len(model.requests) != 2 ||
 		!strings.Contains(model.requests[1].Input, "Contract repair") ||
-		!strings.Contains(model.requests[1].Input, "must contain 450 to 1350 words") {
+		!strings.Contains(model.requests[1].Input, "must contain 1050 to 1800 words") {
 		t.Fatalf("missing actionable repair request: %#v", model.requests)
 	}
 }
@@ -446,7 +551,7 @@ func completeLesson() string {
 	var lesson strings.Builder
 	for index, heading := range requiredLessonSections {
 		lesson.WriteString("## " + heading + "\n\n")
-		for paragraph := 0; paragraph < 4; paragraph++ {
+		for paragraph := 0; paragraph < 8; paragraph++ {
 			lesson.WriteString("This section explains a useful causal mechanism with enough concrete detail to support durable understanding")
 			if index == 0 && paragraph == 0 {
 				lesson.WriteString(" [S1]")

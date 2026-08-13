@@ -76,7 +76,7 @@ func TestApexRobotsAndSitemapAdvertiseCanonicalPages(t *testing.T) {
 func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 	t.Parallel()
 	input := []byte(`<!doctype html><html><head>` +
-		`<meta name="description" content="A learning home that grows with you. Learnloom turns trusted sources into thoughtful daily Dossiers, published to your own personal subdomain.">` +
+		`<meta name="description" content="Stay current without rebuilding context. Give Learnloom a topic; it ranks useful sources, teaches the next concept, and revisits it before it fades.">` +
 		`<title>Learnloom · Knowledge Dossiers</title></head><body><div id="root"></div></body></html>`)
 
 	output := string(decorateMarketingIndex(
@@ -86,11 +86,11 @@ func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 	))
 
 	for _, expected := range []string{
-		`<title>Learnloom | Turn trusted sources into durable understanding</title>`,
+		`<title>Learnloom | Give us a topic. We’ll build the learning path.</title>`,
 		`rel="canonical" href="https://learnloom.blog/"`,
 		`property="og:title"`,
 		`type="application/ld+json"`,
-		`Turn trusted sources into durable understanding.`,
+		`Give us a topic. We’ll build the learning path.`,
 		`href="/solutions/remember-what-you-read"`,
 	} {
 		if !strings.Contains(output, expected) {

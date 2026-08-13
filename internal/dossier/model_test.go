@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/VatsalP117/learnloom/internal/failure"
 )
 
 func TestOpenAIModelCompletesAndRetries(t *testing.T) {
@@ -127,5 +129,67 @@ func TestOpenAIModelClassifiesTokenTruncation(t *testing.T) {
 	_, err = model.Complete(context.Background(), CompletionRequest{Stage: "editor"})
 	if !errors.Is(err, ErrOutputTruncated) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestStageExecutionFailureDoesNotRetryPermanentProviderRequest(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+	model, err := NewOpenAIModel(ModelConfig{
+		BaseURL: server.URL, APIKey: "secret-value", Model: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.client = server.Client()
+	_, err = model.Complete(context.Background(), CompletionRequest{Stage: "teacher"})
+	detail := failure.Describe(stageExecutionFailure("teacher", err))
+	if detail.Code != "model_request_rejected" || detail.Category != failure.CategoryProvider ||
+		detail.Stage != "teacher" || detail.Retryable {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+}
+
+func TestStageExecutionFailureRetriesTransientProviderRequest(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	model, err := NewOpenAIModel(ModelConfig{
+		BaseURL: server.URL, APIKey: "secret-value", Model: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.client = server.Client()
+	_, err = model.Complete(context.Background(), CompletionRequest{Stage: "skeptic"})
+	detail := failure.Describe(stageExecutionFailure("skeptic", err))
+	if detail.Code != "model_provider_unavailable" || detail.Category != failure.CategoryProvider ||
+		detail.Stage != "skeptic" || !detail.Retryable || detail.PublicMessage != failure.PublicDelayed {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+}
+
+func TestStageExecutionFailureClassifiesEmptyOutputAsContentQuality(t *testing.T) {
+	t.Parallel()
+	detail := failure.Describe(stageExecutionFailure("researcher", ErrEmptyOutput))
+	if detail.Code != "model_output_empty" || detail.Category != failure.CategoryContentQuality ||
+		detail.Stage != "researcher" || !detail.Retryable {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+}
+
+func TestStageExecutionFailureClassifiesDeadlineAsRetryableInterruption(t *testing.T) {
+	t.Parallel()
+	detail := failure.Describe(stageExecutionFailure("teacher", context.DeadlineExceeded))
+	if detail.Code != "generation_interrupted" ||
+		detail.Category != failure.CategoryInfrastructure ||
+		detail.Stage != "teacher" || !detail.Retryable ||
+		detail.PublicMessage != failure.PublicDelayed {
+		t.Fatalf("unexpected detail: %#v", detail)
 	}
 }

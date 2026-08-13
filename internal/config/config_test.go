@@ -61,6 +61,7 @@ func TestValidateForRequiresHTTPSModel(t *testing.T) {
 func TestValidateForAllowsProductionWebWithoutStaticClerkJWTKey(t *testing.T) {
 	cfg := Config{
 		Environment:                  "production",
+		ReleaseVersion:               "0123456789abcdef0123456789abcdef01234567",
 		AllowInsecurePrivateServices: true,
 		Database: Database{
 			URL:            "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable",
@@ -95,6 +96,7 @@ func TestValidateForAcceptsWorkerRole(t *testing.T) {
 func TestValidateForRequiresEncryptedProductionDependencies(t *testing.T) {
 	cfg := validWorkerConfig()
 	cfg.Environment = "production"
+	cfg.ReleaseVersion = "0123456789abcdef0123456789abcdef01234567"
 	cfg.Database.URL = "postgres://database.example/learnloom?sslmode=disable"
 	cfg.ObjectStore.Endpoint = "http://objects.example"
 	err := cfg.ValidateFor("worker")
@@ -107,6 +109,7 @@ func TestValidateForRequiresEncryptedProductionDependencies(t *testing.T) {
 func TestValidateForAllowsExplicitPrivateProductionDependencies(t *testing.T) {
 	cfg := validWorkerConfig()
 	cfg.Environment = "production"
+	cfg.ReleaseVersion = "0123456789abcdef0123456789abcdef01234567"
 	cfg.AllowInsecurePrivateServices = true
 	cfg.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
 	cfg.ObjectStore.Endpoint = "http://minio:9000"
@@ -118,6 +121,7 @@ func TestValidateForAllowsExplicitPrivateProductionDependencies(t *testing.T) {
 func TestValidateForDoesNotRelaxPublicProductionDependencies(t *testing.T) {
 	cfg := validWorkerConfig()
 	cfg.Environment = "production"
+	cfg.ReleaseVersion = "0123456789abcdef0123456789abcdef01234567"
 	cfg.AllowInsecurePrivateServices = true
 	cfg.Database.URL = "postgres://database.example/learnloom?sslmode=disable"
 	cfg.ObjectStore.Endpoint = "http://objects.example"
@@ -125,6 +129,81 @@ func TestValidateForDoesNotRelaxPublicProductionDependencies(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "TLS in production") ||
 		!strings.Contains(err.Error(), "S3_ENDPOINT") {
 		t.Fatalf("public dependencies must remain encrypted, got %v", err)
+	}
+}
+
+func TestValidateForRequiresImmutableReleaseOutsideDevelopment(t *testing.T) {
+	t.Parallel()
+	for _, environment := range []string{"staging", "production"} {
+		for _, release := range []string{"", "unknown", "main", "0123456", strings.Repeat("A", 40)} {
+			t.Run(environment+"_"+release, func(t *testing.T) {
+				cfg := validWorkerConfig()
+				cfg.Environment = environment
+				cfg.ReleaseVersion = release
+				if environment == "production" {
+					cfg.AllowInsecurePrivateServices = true
+					cfg.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
+				}
+				err := cfg.ValidateFor("worker")
+				if err == nil || !strings.Contains(err.Error(), "LEARNLOOM_RELEASE_VERSION") {
+					t.Fatalf("environment=%s release=%q should fail: %v", environment, release, err)
+				}
+			})
+		}
+	}
+
+	for _, release := range []string{
+		"0123456789abcdef0123456789abcdef01234567",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	} {
+		cfg := validWorkerConfig()
+		cfg.Environment = "staging"
+		cfg.ReleaseVersion = release
+		if err := cfg.ValidateFor("worker"); err != nil {
+			t.Fatalf("full release %q failed: %v", release, err)
+		}
+	}
+}
+
+func TestValidateForSeparatesSandboxTestingFromApprovedProductionCommerce(t *testing.T) {
+	t.Parallel()
+	configurePaddle := func(cfg *Config) {
+		cfg.Paddle.APIKey = "paddle-key"
+		cfg.Paddle.WebhookSecret = "webhook-secret"
+		cfg.Paddle.ProPriceID = "pri_pro"
+	}
+
+	staging := validWorkerConfig()
+	staging.Environment = "staging"
+	staging.ReleaseVersion = strings.Repeat("a", 40)
+	configurePaddle(&staging)
+	staging.Paddle.APIBaseURL = "https://api.paddle.com"
+	if err := staging.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "sandbox-api.paddle.com") {
+		t.Fatalf("staging live Paddle endpoint should fail: %v", err)
+	}
+	staging.Paddle.APIBaseURL = "https://sandbox-api.paddle.com"
+	if err := staging.ValidateFor("worker"); err != nil {
+		t.Fatalf("staging sandbox Paddle failed: %v", err)
+	}
+
+	production := validWorkerConfig()
+	production.Environment = "production"
+	production.ReleaseVersion = strings.Repeat("b", 40)
+	production.AllowInsecurePrivateServices = true
+	production.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
+	configurePaddle(&production)
+	production.Paddle.APIBaseURL = "https://api.paddle.com"
+	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "PAID_COMMERCE_APPROVED") {
+		t.Fatalf("unapproved production commerce should fail: %v", err)
+	}
+	production.Paddle.CommerceApproved = true
+	production.Paddle.ApprovalReference = "legal/entity-tax-refund-review-01"
+	if err := production.ValidateFor("worker"); err != nil {
+		t.Fatalf("approved production commerce failed: %v", err)
+	}
+	production.Paddle.APIBaseURL = "https://sandbox-api.paddle.com"
+	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "api.paddle.com in production") {
+		t.Fatalf("production sandbox Paddle endpoint should fail: %v", err)
 	}
 }
 
@@ -149,7 +228,7 @@ func validWorkerConfig() Config {
 		},
 		SourceIntelligence: SourceIntelligence{
 			MinUsableItems: 4, TargetUsableItems: 8,
-			DiscoveryMaxQueries: 4, DiscoveryMaxCandidates: 30,
+			DiscoveryMaxQueries: 5, DiscoveryMaxCandidates: 30,
 			DiscoveryMaxActive: 8, MaxConcurrency: 4,
 			RefreshInterval:    12 * time.Hour,
 			DefaultMaxStaleAge: 30 * 24 * time.Hour,

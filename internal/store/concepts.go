@@ -26,9 +26,36 @@ type LearnerConceptState struct {
 }
 
 type CurriculumProjection struct {
+	Outcome               string                 `json:"outcome"`
 	Concepts              []LearnerConceptState  `json:"concepts"`
+	Milestones            []CapabilityMilestone  `json:"milestones"`
+	CurrentGaps           []CurriculumGap        `json:"currentGaps"`
+	Recall                CurriculumRecall       `json:"recall"`
 	SuggestedNextConcepts []string               `json:"suggestedNextConcepts"`
 	Timeline              []ConceptTimelineEntry `json:"timeline"`
+}
+
+type CapabilityMilestone struct {
+	Key                string `json:"key"`
+	Label              string `json:"label"`
+	Statement          string `json:"statement"`
+	Stage              string `json:"stage"`
+	CompletedCount     int    `json:"completedCount"`
+	ReviewAttemptCount int    `json:"reviewAttemptCount"`
+	ConfidenceScore    int    `json:"confidenceScore"`
+}
+
+type CurriculumGap struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+}
+
+type CurriculumRecall struct {
+	DueCount          int    `json:"dueCount"`
+	PracticedConcepts int    `json:"practicedConcepts"`
+	SolidConcepts     int    `json:"solidConcepts"`
+	Summary           string `json:"summary"`
 }
 
 type ConceptTimelineEntry struct {
@@ -130,15 +157,41 @@ func (s *Store) LoadLearnerState(
 		&relevance,
 		&recallConfidence,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return state, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return domain.LearnerState{}, fmt.Errorf("load Learner feedback: %w", err)
 	}
-	state.Difficulty = stringValue(difficulty)
-	state.Relevance = stringValue(relevance)
-	state.RecallConfidence = stringValue(recallConfidence)
+	if err == nil {
+		state.Difficulty = stringValue(difficulty)
+		state.Relevance = stringValue(relevance)
+		state.RecallConfidence = stringValue(recallConfidence)
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT note.body
+		FROM lesson_notes note
+		JOIN issues issue ON issue.id = note.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE note.account_id = $1
+		  AND issue.newsletter_id = $2
+		  AND newsletter.owner_account_id = $1
+		  AND note.kind = 'question'
+		  AND note.anchor_type = 'claim'
+		ORDER BY note.updated_at DESC, note.id DESC
+		LIMIT 3
+	`, accountID, newsletterID)
+	if err != nil {
+		return domain.LearnerState{}, fmt.Errorf("load Learner claim questions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var question string
+		if err := rows.Scan(&question); err != nil {
+			return domain.LearnerState{}, err
+		}
+		state.OpenQuestions = append(state.OpenQuestions, question)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.LearnerState{}, err
+	}
 	return state, nil
 }
 
@@ -150,6 +203,28 @@ func (s *Store) GetCurriculum(
 	if err != nil {
 		return CurriculumProjection{}, err
 	}
+	var outcome string
+	var dueCount int
+	err = s.pool.QueryRow(ctx, `
+		SELECT newsletter.learner_goal,
+		       count(DISTINCT review.id) FILTER (
+		         WHERE review.due_at IS NOT NULL
+		           AND review.retired_at IS NULL
+		           AND review.due_at <= now()
+		       )::int
+		FROM newsletters newsletter
+		LEFT JOIN issues issue ON issue.newsletter_id = newsletter.id
+		LEFT JOIN review_items review ON review.issue_id = issue.id
+		WHERE newsletter.id = $1 AND newsletter.owner_account_id = $2
+		GROUP BY newsletter.id
+	`, newsletterID, accountID).Scan(&outcome, &dueCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CurriculumProjection{}, ErrNotFound
+	}
+	if err != nil {
+		return CurriculumProjection{}, fmt.Errorf("load Curriculum outcome: %w", err)
+	}
+	milestones, gaps, recall := projectCapabilities(concepts, dueCount)
 	timeline, err := s.listConceptTimeline(ctx, accountID, newsletterID, 12)
 	if err != nil {
 		return CurriculumProjection{}, err
@@ -166,7 +241,10 @@ func (s *Store) GetCurriculum(
 	`, newsletterID, accountID).Scan(&raw)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return CurriculumProjection{Concepts: concepts, Timeline: timeline}, nil
+			return CurriculumProjection{
+				Outcome: outcome, Concepts: concepts, Milestones: milestones,
+				CurrentGaps: gaps, Recall: recall, Timeline: timeline,
+			}, nil
 		}
 		return CurriculumProjection{}, fmt.Errorf("load Curriculum direction: %w", err)
 	}
@@ -175,10 +253,72 @@ func (s *Store) GetCurriculum(
 		return CurriculumProjection{}, fmt.Errorf("decode Curriculum direction: %w", err)
 	}
 	return CurriculumProjection{
+		Outcome:               outcome,
 		Concepts:              concepts,
+		Milestones:            milestones,
+		CurrentGaps:           gaps,
+		Recall:                recall,
 		SuggestedNextConcepts: history.SuggestedNextConcepts,
 		Timeline:              timeline,
 	}, nil
+}
+
+func projectCapabilities(
+	concepts []LearnerConceptState,
+	dueCount int,
+) ([]CapabilityMilestone, []CurriculumGap, CurriculumRecall) {
+	milestones := make([]CapabilityMilestone, 0, len(concepts))
+	gaps := make([]CurriculumGap, 0, len(concepts))
+	recall := CurriculumRecall{DueCount: dueCount}
+	for _, concept := range concepts {
+		if concept.CompletedCount == 0 {
+			gaps = append(gaps, CurriculumGap{
+				Key: concept.Key, Label: concept.Label,
+				Reason: "Not yet completed in a lesson",
+			})
+			continue
+		}
+		stage := "explained"
+		statement := "Can explain the core idea behind " + concept.Label
+		if concept.ReviewAttemptCount > 0 {
+			recall.PracticedConcepts++
+			stage = "retrieved"
+			statement = "Can retrieve " + concept.Label + " with some support"
+		}
+		if concept.ReviewAttemptCount > 0 && concept.ConfidenceScore >= 75 {
+			recall.SolidConcepts++
+			stage = "recalled_solidly"
+			statement = "Can recall and explain " + concept.Label
+		}
+		milestones = append(milestones, CapabilityMilestone{
+			Key: concept.Key, Label: concept.Label, Statement: statement,
+			Stage: stage, CompletedCount: concept.CompletedCount,
+			ReviewAttemptCount: concept.ReviewAttemptCount,
+			ConfidenceScore:    concept.ConfidenceScore,
+		})
+		if concept.ReviewAttemptCount == 0 {
+			gaps = append(gaps, CurriculumGap{
+				Key: concept.Key, Label: concept.Label,
+				Reason: "Ready for a first recall",
+			})
+		} else if concept.ConfidenceScore < 60 {
+			gaps = append(gaps, CurriculumGap{
+				Key: concept.Key, Label: concept.Label,
+				Reason: "Needs another retrieval",
+			})
+		}
+	}
+	switch {
+	case dueCount > 0:
+		recall.Summary = fmt.Sprintf("%d retrieval prompt%s due now", dueCount, pluralSuffix(dueCount))
+	case recall.PracticedConcepts == 0:
+		recall.Summary = "Complete an in-lesson retrieval to begin strengthening recall"
+	case recall.SolidConcepts > 0:
+		recall.Summary = fmt.Sprintf("%d concept%s recalled solidly", recall.SolidConcepts, pluralSuffix(recall.SolidConcepts))
+	default:
+		recall.Summary = "Recall is developing through spaced retrieval"
+	}
+	return milestones, gaps, recall
 }
 
 func (s *Store) listConceptTimeline(

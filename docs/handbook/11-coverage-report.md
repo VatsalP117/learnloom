@@ -30,6 +30,23 @@ The investigation:
 
 ## File-area coverage
 
+```mermaid
+flowchart TD
+  subgraph Inspected["Inspected on disk"]
+    A["Go runtime — cmd + every internal module"]
+    B["React frontend — entry, router, hooks, pages, CSS"]
+    C["5 SQL migrations + key transactions"]
+    D["Docker / Compose / CI / SearXNG"]
+    E["All ADRs + docs + launch-video"]
+    F["Git history, branches, blame, merged PRs"]
+  end
+  subgraph Outside["Not accessible — live external state"]
+    G["Dokploy / DNS / Traefik"]
+    H["Clerk, Resend, model, R2, GitHub settings"]
+    I["Logs, metrics, query stats, costs, users"]
+  end
+```
+
 | Area | Inspected | Result |
 |---|---|---|
 | `cmd/learnloom` | all files | all runtime entry/start/shutdown/metrics paths traced |
@@ -98,6 +115,13 @@ The investigation:
    owner’s personal authorship.
 
 ## Documentation maintenance rule
+
+> [!IMPORTANT] Keep the handbook in the same PR
+> Any change to migrations, roles, routes, state machines, providers,
+> environment variables, Compose/CI, or user journeys must update the relevant
+> handbook chapter in the same pull request. A lightweight CI link/check can
+> verify Markdown, but technical accuracy still requires reviewers to follow the
+> evidence paths.
 
 Any change to migrations, roles, routes, state machines, providers, environment
 variables, Compose/CI or user journeys must update the relevant handbook chapter

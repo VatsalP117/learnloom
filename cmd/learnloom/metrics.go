@@ -46,9 +46,12 @@ func workerMetricsServer(
 			"# TYPE learnloom_worker_cycles_total counter\nlearnloom_worker_cycles_total %d\n"+
 				"# TYPE learnloom_dossiers_generated_total counter\nlearnloom_dossiers_generated_total %d\n"+
 				"# TYPE learnloom_dossier_generation_failures_total counter\nlearnloom_dossier_generation_failures_total %d\n"+
+				"# TYPE learnloom_source_portfolios_awaiting_approval_total counter\nlearnloom_source_portfolios_awaiting_approval_total %d\n"+
+				"# TYPE learnloom_model_output_truncations_total counter\nlearnloom_model_output_truncations_total %d\n"+
 				"# TYPE learnloom_deliveries_total counter\nlearnloom_deliveries_total %d\n"+
 				"# TYPE learnloom_delivery_failures_total counter\nlearnloom_delivery_failures_total %d\n"+
 				"# TYPE learnloom_account_deletions_total counter\nlearnloom_account_deletions_total %d\n"+
+				"# TYPE learnloom_artifact_cleanups_total counter\nlearnloom_artifact_cleanups_total %d\n"+
 				"# TYPE learnloom_claims_recovered_total counter\nlearnloom_claims_recovered_total %d\n"+
 				"# TYPE learnloom_claim_renewal_failures_total counter\nlearnloom_claim_renewal_failures_total %d\n"+
 				"# TYPE learnloom_claims_released_total counter\nlearnloom_claims_released_total %d\n"+
@@ -59,9 +62,12 @@ func workerMetricsServer(
 			snapshot.Cycles,
 			snapshot.Generated,
 			snapshot.GenerationFailed,
+			snapshot.GenerationAwaitingApproval,
+			snapshot.GenerationTruncated,
 			snapshot.Delivered,
 			snapshot.DeliveryFailed,
 			snapshot.Deletions,
+			snapshot.ArtifactCleanups,
 			snapshot.RecoveredClaims,
 			snapshot.RenewalFailures,
 			snapshot.ReleasedClaims,

@@ -11,6 +11,7 @@ func TestBuildLearningContractPreservesEvidenceAndAnswerRubrics(t *testing.T) {
 	contract, err := buildLearningContract(
 		domain.Curation{Rationale: "This mechanism advances the learner's goal."},
 		domain.LearningBlueprint{
+			LessonType:            domain.LessonFoundation,
 			LearningObjective:     "Explain retrieval strength.",
 			Prerequisites:         []string{"Recall"},
 			Concepts:              []string{"Retrieval strength", "Feedback"},
@@ -27,17 +28,24 @@ func TestBuildLearningContractPreservesEvidenceAndAnswerRubrics(t *testing.T) {
 			"1. It strengthens later access.\n2. It corrects errors.\n"+
 			"3. It can stabilize errors without feedback.\n</details>",
 		[]domain.SourceItem{{SourceID: "S1"}, {SourceID: "S2"}},
+		[]domain.LearningHistoryEntry{{Concepts: []string{"Feedback"}}},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if contract.Version != 1 || len(contract.Concepts) != 3 ||
-		len(contract.Claims) != 2 || len(contract.Retrieval) != 3 {
+	if contract.Version != 2 || contract.LessonType != domain.LessonFoundation ||
+		contract.EvidenceStatus != domain.EvidenceSourceBounded ||
+		len(contract.Concepts) != 3 || len(contract.Claims) != 1 ||
+		len(contract.Limitations) != 1 || len(contract.Retrieval) != 3 {
 		t.Fatalf("contract=%#v", contract)
 	}
 	if contract.Claims[0].SourceIDs[0] != "S1" ||
 		contract.Retrieval[0].AnswerRubric != "It strengthens later access." ||
 		len(contract.Retrieval[0].ConceptIDs) != 2 {
 		t.Fatalf("evidence or rubric was not preserved: %#v", contract)
+	}
+	if contract.ConceptChanges[0].Change != "introduced" ||
+		contract.ConceptChanges[1].Change != "reinforced" {
+		t.Fatalf("concept changes were not classified: %#v", contract.ConceptChanges)
 	}
 }

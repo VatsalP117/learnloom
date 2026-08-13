@@ -34,7 +34,19 @@ type CompletionResult struct {
 	Usage  ModelUsage
 }
 
-var ErrOutputTruncated = errors.New("model output was truncated by its token limit")
+var (
+	ErrOutputTruncated = errors.New("model output was truncated by its token limit")
+	ErrEmptyOutput     = errors.New("model returned empty output")
+)
+
+type modelProviderError struct {
+	statusCode int
+	retryable  bool
+	cause      error
+}
+
+func (e *modelProviderError) Error() string { return e.cause.Error() }
+func (e *modelProviderError) Unwrap() error { return e.cause }
 
 type Completer interface {
 	Complete(context.Context, CompletionRequest) (CompletionResult, error)
@@ -124,7 +136,7 @@ func (m *OpenAIModel) Complete(
 		result, retryAfter, retryable, err := m.completeOnce(ctx, body)
 		if err == nil {
 			if strings.TrimSpace(result.Output) == "" {
-				return CompletionResult{}, fmt.Errorf("model stage %s returned empty output", request.Stage)
+				return CompletionResult{}, ErrEmptyOutput
 			}
 			result.Output = strings.TrimSpace(result.Output)
 			result.Usage.Retries = attempt
@@ -174,7 +186,10 @@ func (m *OpenAIModel) completeOnce(
 		if ctx.Err() != nil {
 			return CompletionResult{}, 0, false, ctx.Err()
 		}
-		return CompletionResult{}, 0, true, fmt.Errorf("model request failed: %s", m.redact(err.Error()))
+		return CompletionResult{}, 0, true, &modelProviderError{
+			retryable: true,
+			cause:     fmt.Errorf("model request failed: %s", m.redact(err.Error())),
+		}
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -185,10 +200,11 @@ func (m *OpenAIModel) completeOnce(
 		retryable = response.StatusCode == http.StatusRequestTimeout ||
 			response.StatusCode == http.StatusTooManyRequests ||
 			response.StatusCode >= 500
-		return CompletionResult{}, retryAfter, retryable, fmt.Errorf(
-			"model returned HTTP %d",
-			response.StatusCode,
-		)
+		return CompletionResult{}, retryAfter, retryable, &modelProviderError{
+			statusCode: response.StatusCode,
+			retryable:  retryable,
+			cause:      fmt.Errorf("model returned HTTP %d", response.StatusCode),
+		}
 	}
 	var responseBody struct {
 		Choices []struct {
@@ -202,10 +218,16 @@ func (m *OpenAIModel) completeOnce(
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 4<<20))
 	if err := decoder.Decode(&responseBody); err != nil {
-		return CompletionResult{}, 0, false, fmt.Errorf("decode model response: %w", err)
+		return CompletionResult{}, 0, true, &modelProviderError{
+			retryable: true,
+			cause:     fmt.Errorf("decode model response: %w", err),
+		}
 	}
 	if len(responseBody.Choices) == 0 {
-		return CompletionResult{}, 0, false, errors.New("model response contained no choices")
+		return CompletionResult{}, 0, true, &modelProviderError{
+			retryable: true,
+			cause:     errors.New("model response contained no choices"),
+		}
 	}
 	if responseBody.Choices[0].FinishReason == "length" {
 		return CompletionResult{}, 0, false, ErrOutputTruncated

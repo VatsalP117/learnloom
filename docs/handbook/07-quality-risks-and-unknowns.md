@@ -2,30 +2,28 @@
 
 ## Executive assessment
 
-**Confirmed strengths**
+> [!NOTE] Confirmed strengths
+> - Coherent hosted target architecture with recorded ADRs and unusually strong
+>   async idempotency / source-safety design.
+> - Transactions align with real invariants, not arbitrary service layers —
+>   worker claims, evidence freeze, artifact-before-completion, separate
+>   delivery, and safe failure projection are thoughtful production patterns.
+> - Capability-oriented packages, explicit composition, and no speculative
+>   provider abstractions.
+> - Tests concentrate on the hard behavior: concurrency, ambiguous delivery,
+>   source safety, content contracts, DST, ownership and migration lifecycle.
+> - The runtime image and request surfaces have good baseline hardening.
 
-- The system has a coherent hosted target architecture, with recorded ADRs and
-  unusually strong async idempotency/source-safety design.
-- Transactions align with real invariants rather than arbitrary “service”
-  layers. Worker claims, evidence freeze, artifact-before-completion, separate
-  delivery, and safe failure projection are thoughtful production patterns.
-- Package boundaries are capability-oriented and dependencies are composed
-  explicitly. The code avoids speculative provider abstractions.
-- Tests concentrate on difficult behavior: concurrency, ambiguous delivery,
-  source safety, content contracts, DST, ownership and migration lifecycle.
-- The runtime image and request surfaces have good baseline hardening.
-
-**Confirmed weaknesses**
-
-- A new migration was added without updating the hardcoded expected schema
-  version. This makes the current revision operationally non-starting after
-  migrate and demonstrates a missing invariant in CI.
-- HTTP routing/contracts and frontend types are manual and weakly linked.
-- The persistence module is necessarily deep but very large (`issues.go` 1,297
-  lines; `control.go` 1,139; `generator.go` 943), increasing review load.
-- Operations documents describe alerts/backups, but no actual monitoring,
-  backup, deploy or restore implementation is versioned here.
-- Privacy retention, auditability, and admin/support tooling are incomplete.
+> [!WARNING] Confirmed weaknesses
+> - Migration 005 shipped without updating the hardcoded expected schema
+>   version → the current revision is **operationally non-starting** after
+>   migrate, and CI has no invariant to catch it.
+> - HTTP routing/contracts and frontend types are manual and weakly linked.
+> - Deep persistence module with very large files (`issues.go` 1,297;
+>   `control.go` 1,139; `generator.go` 943) — real, but raises review load.
+> - Operations documents describe alerts/backups, but no monitoring, backup,
+>   deploy or restore implementation is versioned here.
+> - Privacy retention, auditability, and admin/support tooling are incomplete.
 
 ## Intentional design versus accidental complexity
 
@@ -70,10 +68,42 @@ Difficulty is relative.
 | TD-015 Feature | PDF enum/schema but no fetch implementation | confusing contract/rejected sources | P3 / low | remove until supported or implement safely via ADR |
 | TD-016 Performance | no query/load/bundle budgets | regressions discovered in production | P2 / medium | representative benchmarks and query-plan fixtures |
 | TD-017 Security | no HSTS in app | depends entirely on edge | P2 / low/external | assert Traefik/CDN HSTS |
-| TD-018 Audit | no settings/data-correction audit log/admin tool | weak support/forensics | P2 / high | design least-privilege audit/admin workflow |
+| TD-018 Audit | public moderation has a durable audit and exact hold command; broader settings/data-correction administration still has no general tool | weak support/forensics outside public moderation | P2 / medium | design least-privilege workflows only for evidenced support cases |
 | TD-019 DX | dev requires wildcard TLS/Clerk but automation absent | onboarding friction | P3 / medium | local proxy/bootstrap script without storing secrets |
 | TD-020 CI | mutable action majors and scanners latest | build verification drift | P3 / low | pin SHA/tool versions and automate updates |
 | TD-021 Operations | PR #28 replaced production MinIO with R2; review warned existing objects needed copy/validation/rollback, while merged PR only states referenced keys must exist | historical artifacts could be unavailable if a live bucket had data | P1 if cutover was live / external | verify whether production contained objects; retain/migrate old volume until checksums and rollback are proven |
+
+```mermaid
+quadrantChart
+  title Technical debt register — priority vs difficulty
+  x-axis "Urgent · P0" --> "Opportunistic · P3"
+  y-axis "Easy" --> "Hard"
+  quadrant-1 "Plan + rehearse"
+  quadrant-2 "Highest risk — plan now"
+  quadrant-3 "Quick wins"
+  quadrant-4 "Opportunistic"
+  "TD-001": [0.08, 0.1]
+  "TD-002": [0.28, 0.5]
+  "TD-003": [0.28, 0.88]
+  "TD-004": [0.28, 0.82]
+  "TD-005": [0.28, 0.5]
+  "TD-006": [0.55, 0.5]
+  "TD-007": [0.55, 0.25]
+  "TD-008": [0.55, 0.5]
+  "TD-009": [0.55, 0.5]
+  "TD-010": [0.55, 0.5]
+  "TD-011": [0.55, 0.25]
+  "TD-012": [0.55, 0.9]
+  "TD-013": [0.55, 0.5]
+  "TD-014": [0.85, 0.5]
+  "TD-015": [0.85, 0.2]
+  "TD-016": [0.55, 0.5]
+  "TD-017": [0.55, 0.3]
+  "TD-018": [0.55, 0.85]
+  "TD-019": [0.85, 0.5]
+  "TD-020": [0.85, 0.2]
+  "TD-021": [0.28, 0.75]
+```
 
 ## Specific maintainability observations
 
@@ -134,7 +164,7 @@ Difficulty is relative.
 | Clerk cookie/session/MFA/bot settings? | SDK integration | provider settings external | Clerk production instance review |
 | R2 encryption/versioning/lifecycle/CORS/token scope? | endpoint/template | bucket settings external | Cloudflare bucket/API-token audit |
 | Model provider actually used and data retention terms? | runtime `MODEL_BASE_URL` and `MODEL_NAME` remain deployment-controlled | runtime env/legal agreement external | deployed env names (not secrets), DPA/provider config |
-| Source copyright/robots policy? | safe HTTP technical policy only | product/legal choice unrecorded | legal/product ADR |
+| Is the public-source policy operationally and legally defensible at launch? | [ADR-0007](../adr/0007-public-source-retrieval-policy.md) allows public retrieval when `robots.txt` is absent while forbidding access-control bypass and preserving attribution/removal | counsel review and real complaint-response evidence remain external | counsel approval plus tested rights-holder intake/removal runbook |
 | Expected data-deletion semantics? | artifacts deleted, DB retained | intent not recorded; high privacy consequence | product/legal requirement and ADR |
 | Cost per lesson/capacity budget? | token/concurrency limits | no telemetry/rates | stage token/cost metrics and provider plan |
 | Whether old branches/PR discussions include decisions not merged? | local branches/log, no PR API review | commit history available, discussion metadata not local | GitHub PR/issue archive review |

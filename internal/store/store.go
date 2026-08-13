@@ -11,12 +11,13 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrConflict         = errors.New("conflict")
-	ErrForbidden        = errors.New("forbidden")
-	ErrQuotaExceeded    = errors.New("quota exceeded")
-	ErrClaimLost        = errors.New("Issue Claim was lost")
-	ErrGenerationPaused = errors.New("generation is paused")
+	ErrNotFound            = errors.New("not found")
+	ErrConflict            = errors.New("conflict")
+	ErrForbidden           = errors.New("forbidden")
+	ErrQuotaExceeded       = errors.New("quota exceeded")
+	ErrClaimLost           = errors.New("Issue Claim was lost")
+	ErrGenerationPaused    = errors.New("generation is paused")
+	ErrEntitlementRequired = errors.New("generation entitlement required")
 )
 
 type Config struct {

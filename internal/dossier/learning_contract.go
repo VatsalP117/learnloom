@@ -14,9 +14,15 @@ func buildLearningContract(
 	blueprint domain.LearningBlueprint,
 	lesson, critique, practice string,
 	sources []domain.SourceItem,
+	history []domain.LearningHistoryEntry,
 ) (domain.LearningContract, error) {
 	concepts := contractConcepts(blueprint)
-	claims, err := evidenceClaims(lesson+"\n\n"+critique, sources)
+	conceptChanges := contractConceptChanges(concepts, history)
+	claims, err := evidenceClaims(lesson, sources)
+	if err != nil {
+		return domain.LearningContract{}, err
+	}
+	limitations, err := evidenceClaims(critique, sources)
 	if err != nil {
 		return domain.LearningContract{}, err
 	}
@@ -30,23 +36,56 @@ func buildLearningContract(
 	for index := range retrieval {
 		retrieval[index].ConceptIDs = append([]string(nil), conceptIDs...)
 	}
-	if len(concepts) == 0 || len(claims) == 0 || len(retrieval) < 3 {
+	if len(concepts) == 0 || len(claims) == 0 || len(limitations) == 0 || len(retrieval) < 3 {
 		return domain.LearningContract{}, errors.New(
 			"structured learning contract is incomplete",
 		)
 	}
 	return domain.LearningContract{
-		Version:               1,
+		Version:               2,
+		LessonType:            blueprint.LessonType,
+		EvidenceStatus:        domain.EvidenceSourceBounded,
 		SelectionRationale:    strings.TrimSpace(curation.Rationale),
 		LearningObjective:     strings.TrimSpace(blueprint.LearningObjective),
 		ContinuityBridge:      strings.TrimSpace(blueprint.ContinuityBridge),
 		Concepts:              concepts,
+		ConceptChanges:        conceptChanges,
 		Misconception:         strings.TrimSpace(blueprint.Misconception),
 		Claims:                claims,
+		Limitations:           limitations,
 		Retrieval:             retrieval,
 		SuggestedNextConcepts: cleanUniqueStrings(blueprint.SuggestedNextConcepts),
 		Application:           strings.TrimSpace(blueprint.PracticalExperiment),
 	}, nil
+}
+
+func contractConceptChanges(
+	concepts []domain.LearningConcept,
+	history []domain.LearningHistoryEntry,
+) []domain.ConceptChange {
+	known := map[string]struct{}{}
+	for _, entry := range history {
+		for _, concept := range entry.ConceptStates {
+			known[conceptID(concept.Label)] = struct{}{}
+		}
+		for _, concept := range entry.Concepts {
+			known[conceptID(concept)] = struct{}{}
+		}
+	}
+	changes := make([]domain.ConceptChange, 0, len(concepts))
+	for _, concept := range concepts {
+		if concept.Role != "core" {
+			continue
+		}
+		change := "introduced"
+		if _, exists := known[concept.ID]; exists {
+			change = "reinforced"
+		}
+		changes = append(changes, domain.ConceptChange{
+			ID: concept.ID, Label: concept.Label, Change: change,
+		})
+	}
+	return changes
 }
 
 func contractConcepts(blueprint domain.LearningBlueprint) []domain.LearningConcept {

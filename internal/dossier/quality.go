@@ -78,6 +78,7 @@ func evaluateQuality(
 		)
 	}
 	lessonWords := markdownBodyWordCount(lesson)
+	estimatedFocusedReadingMinutes := max(1, (lessonWords+99)/100)
 	if lessonWords < wordBudget.minimum || lessonWords > wordBudget.maximum {
 		return domain.QualityReport{}, fmt.Errorf(
 			"editorial lesson has %d words; lesson body must contain %d to %d words to fit the learner's available time",
@@ -197,6 +198,7 @@ func evaluateQuality(
 		"requiredLessonSections":    true,
 		"substantiveLessonSections": true,
 		"lessonTimeFit":             true,
+		"measuredReadingTime":       true,
 		"sourceGrounding":           len(lessonCited) >= requiredCitations,
 		"validCitationIdentifiers":  true,
 		"retrievalPractice":         len(questions) >= 3,
@@ -222,14 +224,15 @@ func evaluateQuality(
 		Score:   min(score, 100),
 		Checks:  checks,
 		Metrics: map[string]int{
-			"selectedSources":    len(sources),
-			"enrichedSources":    enriched,
-			"citedSources":       len(lessonCited),
-			"lessonWords":        lessonWords,
-			"lessonWordsMinimum": wordBudget.minimum,
-			"lessonWordsMaximum": wordBudget.maximum,
-			"retrievalQuestions": len(questions),
-			"answeredQuestions":  len(answers),
+			"selectedSources":                len(sources),
+			"enrichedSources":                enriched,
+			"citedSources":                   len(lessonCited),
+			"lessonWords":                    lessonWords,
+			"lessonWordsMinimum":             wordBudget.minimum,
+			"lessonWordsMaximum":             wordBudget.maximum,
+			"estimatedFocusedReadingMinutes": estimatedFocusedReadingMinutes,
+			"retrievalQuestions":             len(questions),
+			"answeredQuestions":              len(answers),
 		},
 	}, nil
 }
@@ -263,17 +266,17 @@ type lessonWordBudget struct {
 
 func lessonWordBudgetFor(minutes int) lessonWordBudget {
 	if minutes <= 0 {
-		minutes = 20
+		minutes = 12
 	}
 	return lessonWordBudget{
-		minimum: min(max(minutes*30, 300), 1800),
-		maximum: min(max(minutes*90, 700), 3200),
+		minimum: min(max(minutes*70, 560), 2100),
+		maximum: min(max(minutes*120, 960), 3600),
 	}
 }
 
 func (b lessonWordBudget) promptLine() string {
 	return fmt.Sprintf(
-		"Lesson body budget: %d-%d words (practice, skeptical review, and sources are excluded).",
+		"Lesson body budget: %d-%d actual rendered words for the requested focused reading time (practice, retrieval pauses, and sources are excluded).",
 		b.minimum,
 		b.maximum,
 	)

@@ -11,6 +11,85 @@ import (
 	"github.com/VatsalP117/learnloom/internal/store"
 )
 
+func TestDecoratePublicGrowthShowsPathRelatedSharingAndAttributedCTA(t *testing.T) {
+	t.Parallel()
+	document := decoratePublicGrowth(
+		"<html><body><main>Lesson</main></body></html>",
+		domain.PersonalSite{DisplayName: "Alan"},
+		store.PublicIssue{
+			PublicID: "dossier-1", Title: "A useful lesson",
+			NewsletterOutcome: "Make better evaluation decisions.",
+			NewsletterTopic:   "AI evaluation", NewsletterPublicSlug: "ai-evaluation",
+		},
+		"https://alan.learnloom.blog/d/dossier-1/a-useful-lesson",
+		[]store.PublicIssue{{
+			PublicID: "dossier-2", PublicSlug: "next", Title: "The next lesson",
+			CompletedAt: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC),
+		}},
+	)
+	for _, expected := range []string{
+		"A path maintained by Alan",
+		"Make better evaluation decisions.",
+		"The next lesson",
+		"Share this Dossier",
+		"Follow this path",
+		`method="post" action="/follow/dossier-1"`,
+		"Double opt-in",
+		"/go/dossier-1/start",
+		"/go/dossier-1/linkedin",
+	} {
+		if !strings.Contains(document, expected) {
+			t.Fatalf("public growth surface missing %q", expected)
+		}
+	}
+}
+
+func TestPublicReferralFingerprintIsStableButDoesNotExposeCookie(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{CSRFSecret: strings.Repeat("s", 32)}}
+	first := server.publicReferralFingerprint("visitor-cookie")
+	second := server.publicReferralFingerprint("visitor-cookie")
+	other := server.publicReferralFingerprint("another-cookie")
+	if len(first) != 64 || first != second || first == other {
+		t.Fatalf("unexpected referral fingerprints %q %q %q", first, second, other)
+	}
+	if strings.Contains(first, "visitor-cookie") {
+		t.Fatal("referral fingerprint exposed the visitor cookie")
+	}
+}
+
+func TestLikelyAutomatedVisitorExcludesBotsAndPreviews(t *testing.T) {
+	t.Parallel()
+	for _, userAgent := range []string{"", "Googlebot/2.1", "Slackbot-LinkExpanding", "HeadlessChrome"} {
+		if !isLikelyAutomatedVisitor(userAgent) {
+			t.Errorf("%q should be classified as automated", userAgent)
+		}
+	}
+	if isLikelyAutomatedVisitor("Mozilla/5.0 Safari/605.1.15") {
+		t.Fatal("normal browser was classified as automated")
+	}
+}
+
+func TestPublicVisitorCookieIsSecureHttpOnlyAndSharedAcrossSubdomains(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{
+		RootDomain: "learnloom.blog", CSRFSecret: strings.Repeat("s", 32),
+	}}
+	request := httptest.NewRequest(http.MethodGet, "https://maya.learnloom.blog/d/id/slug", nil)
+	request.RemoteAddr = "203.0.113.10:443"
+	response := httptest.NewRecorder()
+	fingerprint := server.publicVisitorFingerprint(response, request)
+	if len(fingerprint) != 64 {
+		t.Fatalf("fingerprint length = %d", len(fingerprint))
+	}
+	cookie := response.Header().Get("Set-Cookie")
+	for _, expected := range []string{"ll_public_ref=", "Domain=learnloom.blog", "HttpOnly", "Secure", "SameSite=Lax"} {
+		if !strings.Contains(cookie, expected) {
+			t.Fatalf("visitor cookie missing %q: %s", expected, cookie)
+		}
+	}
+}
+
 func TestRenderIssueCardsUsesPublicRouteAndEscapesContent(t *testing.T) {
 	t.Parallel()
 

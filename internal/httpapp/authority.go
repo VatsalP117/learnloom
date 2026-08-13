@@ -272,7 +272,7 @@ var authorityPages = []authorityPage{
 				Title: "1. The learner defines the intent",
 				Paragraphs: []string{
 					"A learning stream begins with a topic or question, current level, desired outcome, lesson length, schedule, and source policy. These are instructional constraints, not profile decoration. They determine what material is relevant and how deeply it should be explained.",
-					"Learnloom currently supports learner-provided trusted sources. Broader source discovery is a planned capability and should not be assumed to be active unless it is visibly offered during stream creation.",
+					"When source discovery is available, a topic is enough to begin: Learnloom searches for candidate sources, safely validates readable material, and builds a bounded evidence set. Learners can instead provide only sources they trust or let Learnloom fill gaps around those sources.",
 				},
 			},
 			{
@@ -456,9 +456,9 @@ func renderAuthorityDocument(page authorityPage, canonical, appOrigin string) st
 			body.WriteString(`<a href="` + html.EscapeString(path) + `"><span>` + html.EscapeString(title) + `</span><b>↗</b></a>`)
 		}
 	}
-	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">A learning system that maintains the loop</p><h2>Turn the method into a practice.</h2><p>Choose a subject, bring the sources you trust, and let each lesson build on the last.</p><a class="primary" href="`)
+	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">A learning system that maintains the loop</p><h2>Turn the method into a practice.</h2><p>Give Learnloom a subject. It can establish the source environment and let each lesson build on the last—or follow only the sources you choose.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
-	body.WriteString(`">Create your learning stream <span>↗</span></a></section></main>`)
+	body.WriteString(`">Build your learning path <span>↗</span></a></section></main>`)
 	body.WriteString(renderSEOFooter(appOrigin))
 	body.WriteString(`</body></html>`)
 	return body.String()

@@ -5,5 +5,5 @@ import type { Site } from "./types";
 
 export default function DemoHostedApp() {
   const [site, setSite] = useState<Site>(demoSite);
-  return <App site={site} onSiteUpdate={setSite} />;
+  return <App capabilities={{ sourceDiscovery: true }} site={site} onSiteUpdate={setSite} />;
 }

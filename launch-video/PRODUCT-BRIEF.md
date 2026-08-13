@@ -5,16 +5,17 @@
 Learnloom is a personal learning service that turns topics a user cares about
 into thoughtful, source-grounded daily lessons called Knowledge Dossiers.
 
-A user gives Learnloom one or more topics they want to understand over time.
-They can provide publications, websites, feeds, researchers, or other sources
-they already trust. Learnloom continuously curates useful material from those
-sources, connects it to the learner's previous Dossiers, and produces a new
-structured lesson each day.
+A user can begin with only a topic and a professional outcome. Learnloom plans
+role-aware search queries, finds and ranks a provisional source portfolio,
+explains why each source was selected, and can prepare the first lesson after
+confirmation. Learners may instead provide publications, websites, feeds,
+researchers, or other sources they already trust, or combine both modes.
 
-Learnloom will also be able to discover relevant sources across the web on the
-user's behalf. This discovery capability is planned for launch but is not yet
-implemented in the current product. Users will be able to rely on their own
-trusted-source list, Learnloom's discovery, or a combination of both.
+Discovery is implemented in the current product. It is bounded and
+explainable, not a guarantee that Learnloom has found the objectively “most
+trustworthy” pages on the web. Weak coverage pauses generation or asks the
+learner to broaden or replace sources; the human-labeled source-quality gate
+must pass before launch claims become stronger.
 
 The result is not another feed and not a collection of AI summaries. It is a
 growing, personal curriculum based on what is happening in the world now.
@@ -24,10 +25,10 @@ growing, personal curriculum based on what is happening in the world now.
 The internet gives people unprecedented access to information, but access does
 not automatically become understanding.
 
-Curious people already know what they want to learn about. It might be climate
-technology, artificial intelligence, behavioral science, urban planning,
-markets, biotechnology, design, or several topics at once. The difficulty is
-maintaining a high-quality learning practice around those interests.
+The launch hypothesis is AI and software professionals who need to stay current
+on a defined technical area and turn updates into usable professional judgment.
+The product may later serve other domains, but launch examples and messaging
+must remain inside this wedge until buyer research proves an expansion.
 
 Today, that requires the user to repeatedly do all of the following:
 
@@ -92,8 +93,8 @@ define:
 - Their current level: beginner, intermediate, or advanced.
 - The learning outcome they care about.
 - The approximate lesson length.
-- A daily schedule and time zone.
-- Their preferred delivery and publishing settings.
+- A learning rhythm and time zone, configured after first value.
+- Optional email delivery, configured after first value.
 - Trusted sources such as articles, publications, RSS or Atom feeds, research
   organizations, or expert websites.
 - Whether Learnloom may discover additional sources beyond their supplied list.
@@ -106,7 +107,7 @@ it.
 
 ## Source modes
 
-Learnloom is intended to support three ways of sourcing material:
+Learnloom supports three ways of sourcing material:
 
 ### Trusted sources
 
@@ -121,7 +122,8 @@ goal, learner level, source quality, recency, and the contents of previous
 Dossiers. It should prefer primary sources, reputable research, strong
 explanations, and diverse evidence instead of merely selecting popular pages.
 
-This mode is planned and not yet implemented in the current application.
+This is the default onboarding mode. The learner sees the provisional source
+roles and selection reasons and may require approval before model generation.
 
 ### Hybrid sourcing
 
@@ -197,8 +199,8 @@ growing learning journey.
 
 ## The personal learning home
 
-Every learner can claim a personal Learnloom subdomain, such as
-`maya.learnloom.blog`.
+Every learner can optionally claim a personal Learnloom subdomain, such as
+`alex.learnloom.blog`, after experiencing the private learning value.
 
 The Personal Site is the lasting home for their Dossiers. It provides:
 
@@ -206,8 +208,8 @@ The Personal Site is the lasting home for their Dossiers. It provides:
 - Organization by topic or learning stream.
 - A permanent reading experience outside the inbox.
 - A body of knowledge the learner can search and return to.
-- Public or private visibility controlled by the learner.
-- The ability to publish or hide individual streams and Dossiers.
+- A private workspace or an explicitly public learning site.
+- Private, draft, and published lesson states with effective audience shown.
 - A shareable record of sustained curiosity when the learner wants one.
 
 Email is a delivery channel, not the product's final destination. The Personal
@@ -215,22 +217,11 @@ Site turns daily lessons into something cumulative.
 
 ## Who Learnloom is for
 
-Learnloom is for intellectually curious people who want to understand important
-subjects over time but do not want to manually operate an entire research and
-learning system.
-
-Likely users include:
-
-- Professionals keeping up with a rapidly changing field.
-- Founders and operators learning across unfamiliar domains.
-- Researchers following developments outside their core specialty.
-- Students building depth beyond a fixed curriculum.
-- Independent learners who already collect articles and notes.
-- Writers and analysts maintaining awareness across several topics.
-- Anyone who values understanding and recall more than feed consumption.
-
-These users are not necessarily trying to complete a course. They want an
-ongoing relationship with a subject.
+Before launch, Learnloom is for AI engineers, AI product builders, ML
+infrastructure practitioners, developer-tooling professionals, and adjacent
+software professionals following a fast-moving technical subject. This is a
+hypothesis to validate through interviews and a paid design-partner cohort, not
+a claim that everyone in those roles will buy.
 
 ## Jobs the product performs
 
@@ -339,7 +330,9 @@ lesson.
 The current application supports:
 
 - Multiple topic-based learning streams.
-- User-provided trusted web, RSS, and Atom sources.
+- Topic-first autonomous discovery, user-provided web/RSS/Atom sources, and
+  hybrid gap filling.
+- A provisional source-portfolio preview with role and selection explanation.
 - Learner level, goal, lesson length, and schedule configuration.
 - A multi-stage Dossier pipeline.
 - Source-grounded lessons, critique, practice, quality checks, and optional AI
@@ -347,12 +340,13 @@ The current application supports:
 - Learning History for continuity.
 - Manual and scheduled Issues.
 - Optional email delivery.
-- Public or private Personal Sites.
-- Per-stream and per-Dossier publishing controls.
-
-Automated discovery of sources across the broader web is a planned launch
-feature and should be described as part of the intended product experience, but
-not as functionality available in the current build.
+- Private workspaces and optional public Personal Sites.
+- Private, draft, and published Dossier states with explicit audience gates.
+- Durable retrieval practice, learner feedback, Today selection, and adaptive
+  learning rhythm.
+- Server-enforced Free/Pro entitlements and a provider-backed billing lifecycle
+  in the repository; live commercial claims remain gated on Paddle staging and
+  legal/business review.
 
 ## Product promise
 
@@ -365,9 +359,15 @@ The core idea can be expressed simply:
 **The web gives us endless things to read. Learnloom turns what matters into
 something we can understand, remember, and build on.**
 
-## Demo assets
+## Demo assets and release status
 
-The prepared product captures are in `launch-video/screenshots`:
+The images and rendered videos in this directory predate the current launch
+wedge, onboarding, publishing model, and pricing. They contain legacy
+Maya/urban-systems scenes and must not be published as current product proof.
+Recapture from the reviewed AI-engineering demo after the human starter-lesson
+gate passes, then update the storyboard and render sources before release.
+
+Legacy product captures are in `launch-video/screenshots`:
 
 - `01-dashboard.jpg`
 - `02-dossier-detail.jpg`

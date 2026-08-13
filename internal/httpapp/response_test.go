@@ -1,6 +1,8 @@
 package httpapp
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -63,5 +65,23 @@ func TestWriteProblemRejectsUndeclaredRuntimeCodes(t *testing.T) {
 	if body := response.Body.String(); !strings.Contains(body, `"code":"internal_error"`) ||
 		strings.Contains(body, "internal detail") {
 		t.Fatalf("unsafe problem response: %s", body)
+	}
+}
+
+func TestProductionResponseIdentifiesReleaseAndEnablesHSTS(t *testing.T) {
+	t.Parallel()
+	server := &Server{cfg: Config{
+		Environment: "production", ReleaseVersion: "git-abc123",
+	}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "https://app.learnloom.blog/healthz", nil)
+
+	server.ServeHTTP(response, request)
+
+	if got := response.Header().Get("Strict-Transport-Security"); got != "max-age=31536000; includeSubDomains" {
+		t.Fatalf("HSTS=%q", got)
+	}
+	if got := response.Header().Get("X-Learnloom-Release"); got != "git-abc123" {
+		t.Fatalf("release header=%q", got)
 	}
 }

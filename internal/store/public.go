@@ -29,6 +29,9 @@ type PublicIssue struct {
 	NewsletterID         string    `json:"newsletterId"`
 	NewsletterName       string    `json:"newsletterName"`
 	NewsletterPublicSlug string    `json:"newsletterPublicSlug"`
+	NewsletterTopic      string    `json:"newsletterTopic"`
+	NewsletterOutcome    string    `json:"newsletterOutcome"`
+	OwnerDisplayName     string    `json:"ownerDisplayName"`
 }
 
 func (s *Store) ListPublicNewsletters(
@@ -83,7 +86,8 @@ func (s *Store) ListPublicIssues(
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id::text, 'dossier-' || i.public_id::text, i.public_slug,
 		       i.dossier_title, i.artifact_key, i.completed_at,
-		       n.id::text, n.name, n.public_slug
+		       n.id::text, n.name, n.public_slug, n.topic, n.learner_goal,
+		       s.display_name
 		FROM issues i
 		JOIN newsletters n ON n.id = i.newsletter_id
 		JOIN accounts a ON a.id = n.owner_account_id
@@ -113,6 +117,9 @@ func (s *Store) ListPublicIssues(
 			&issue.NewsletterID,
 			&issue.NewsletterName,
 			&issue.NewsletterPublicSlug,
+			&issue.NewsletterTopic,
+			&issue.NewsletterOutcome,
+			&issue.OwnerDisplayName,
 		); err != nil {
 			return nil, err
 		}
@@ -132,7 +139,8 @@ func (s *Store) GetPublicIssue(
 	row := s.pool.QueryRow(ctx, `
 		SELECT i.id::text, 'dossier-' || i.public_id::text, i.public_slug,
 		       i.dossier_title, i.artifact_key, i.completed_at,
-		       n.id::text, n.name, n.public_slug
+		       n.id::text, n.name, n.public_slug, n.topic, n.learner_goal,
+		       s.display_name
 		FROM issues i
 		JOIN newsletters n ON n.id = i.newsletter_id
 		JOIN accounts a ON a.id = n.owner_account_id
@@ -154,6 +162,9 @@ func (s *Store) GetPublicIssue(
 		&issue.NewsletterID,
 		&issue.NewsletterName,
 		&issue.NewsletterPublicSlug,
+		&issue.NewsletterTopic,
+		&issue.NewsletterOutcome,
+		&issue.OwnerDisplayName,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PublicIssue{}, ErrNotFound
@@ -162,4 +173,50 @@ func (s *Store) GetPublicIssue(
 		return PublicIssue{}, fmt.Errorf("get public Issue: %w", err)
 	}
 	return issue, nil
+}
+
+func (s *Store) ListRelatedPublicIssues(
+	ctx context.Context,
+	username, newsletterID, currentIssueID string,
+	limit int,
+) ([]PublicIssue, error) {
+	if limit < 1 || limit > 6 {
+		limit = 3
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT i.id::text, 'dossier-' || i.public_id::text, i.public_slug,
+		       i.dossier_title, i.artifact_key, i.completed_at,
+		       n.id::text, n.name, n.public_slug, n.topic, n.learner_goal,
+		       site.display_name
+		FROM issues i
+		JOIN newsletters n ON n.id = i.newsletter_id
+		JOIN accounts account ON account.id = n.owner_account_id
+		JOIN personal_sites site ON site.owner_account_id = account.id
+		WHERE site.username = $1 AND site.visibility = 'public'
+		  AND account.status = 'active' AND n.site_visible
+		  AND n.id = $2 AND i.id <> $3
+		  AND i.status = 'generated' AND i.publication_state = 'published'
+		  AND i.moderation_state = 'clear'
+		ORDER BY i.completed_at DESC, i.id
+		LIMIT $4
+	`, strings.ToLower(username), newsletterID, currentIssueID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list related public Issues: %w", err)
+	}
+	defer rows.Close()
+	var result []PublicIssue
+	for rows.Next() {
+		var issue PublicIssue
+		if err := rows.Scan(
+			&issue.ID, &issue.PublicID, &issue.PublicSlug, &issue.Title,
+			&issue.ArtifactKey, &issue.CompletedAt, &issue.NewsletterID,
+			&issue.NewsletterName, &issue.NewsletterPublicSlug,
+			&issue.NewsletterTopic, &issue.NewsletterOutcome,
+			&issue.OwnerDisplayName,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, issue)
+	}
+	return result, rows.Err()
 }

@@ -23,7 +23,37 @@ All statements use these evidence labels:
 
 No secret values were inspected or reproduced. Paths are repository-relative.
 
+> [!IMPORTANT] Evidence labels
+> Every statement in this handbook is graded by how strongly the repository
+> supports it: **Confirmed** (code/config/test/ADR), **Strong inference**
+> (multiple facts, motive unrecorded), **Possible interpretation** (plausible,
+> unestablished), **Unknown** (repository cannot answer), or **Contradictory
+> evidence** (artifacts disagree). Treat unlabelled claims as prose, not proof.
+
 ## Suggested reading order
+
+```mermaid
+flowchart LR
+  subgraph OneHour["One-hour orientation"]
+    direction LR
+    H1["01 Architecture"] --> H2["02 Journeys & APIs"]
+    H2 --> H3["03 Domain & data"]
+    H3 --> H4["07 Risks & unknowns"]
+  end
+  subgraph OneDay["One-day understanding"]
+    direction LR
+    D["01 → 02 → 03 → 04 → 05 → 06 → 07, in order, with an IDE trace"]
+  end
+  subgraph OneWeek["One-week deep study"]
+    direction LR
+    W["08 Change guides · run locally"] --> W2["09 Learning & ownership exercises"]
+  end
+  subgraph FullMastery["Full mastery"]
+    direction LR
+    M["Full question bank · restore rehearsal · one new ADR · one end-to-end feature"]
+  end
+  OneHour --> OneDay --> OneWeek --> FullMastery
+```
 
 ### One-hour orientation
 
@@ -70,6 +100,18 @@ small end-to-end feature using the safe-change guides.
 | [11](11-coverage-report.md) | Investigation coverage, evidence limitations, final self-review | **Reference** |
 
 ## The first ten concepts to internalize
+
+```mermaid
+flowchart LR
+  B["One Go binary — /learnloom"] --> W["web role · HTTP policy"]
+  B --> K["worker role · async orchestration"]
+  B --> M["migrate role · embedded SQL"]
+  W --> P[(Postgres — mutable truth)]
+  K --> P
+  M --> P
+  K --> S3[("S3 / R2 — immutable artifacts")]
+  W --> S3
+```
 
 1. **One artifact, three roles.** `/learnloom web`, `worker`, and `migrate`
    are the same Go binary with different dependency graphs

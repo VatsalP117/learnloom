@@ -13,11 +13,15 @@ import LearningShell, {
   formatShortDate,
 } from "./LearningShell";
 import { lessonState } from "./learningState";
+import { apiJSON } from "./api";
 import { useWorkspace } from "./useWorkspace";
 
 export default function TodayPage() {
   const workspace = useWorkspace();
   const [, refreshState] = useState(0);
+  const [reentryBusy, setReentryBusy] = useState("");
+  const [reentryNotice, setReentryNotice] = useState("");
+  const [reentryError, setReentryError] = useState("");
 
   useEffect(() => {
     const refresh = () => refreshState((value) => value + 1);
@@ -25,20 +29,71 @@ export default function TodayPage() {
     return () => window.removeEventListener("learnloom:state", refresh);
   }, []);
 
-  const { primary, secondary, focus } = useMemo(
-    () => selectTodayFocus(
+  const { primary, secondary, focus, reason, actionLabel, actionUrl, dueCount } = useMemo(
+    () => resolveTodaySelection(
+      workspace.snapshot?.todayFocus,
       workspace.lessons,
       workspace.reviews,
       lessonState,
       workspace.snapshot?.retention,
     ),
-    [workspace.lessons, workspace.reviews, workspace.snapshot?.retention],
+    [workspace.lessons, workspace.reviews, workspace.snapshot?.retention, workspace.snapshot?.todayFocus],
   );
-  const primaryState = primary ? lessonState(primary.id) : null;
+  const primaryState = primary ? {
+    ...lessonState(primary.id),
+    progress: Math.max(
+      lessonState(primary.id).progress ?? 0,
+      workspace.snapshot?.todayFocus?.kind === "lesson"
+        ? workspace.snapshot.todayFocus.progress ?? 0
+        : 0,
+    ),
+  } : null;
   const reviewFirst = focus === "review";
   const reentryFirst = focus === "reentry";
   const specialFocus = reviewFirst || reentryFirst;
   const sideLesson = specialFocus ? primary : secondary;
+  const reentryNewsletterId = workspace.snapshot?.todayFocus?.newsletterId ||
+    workspace.snapshot?.retention?.reentryNewsletterId;
+  const reentryNewsletter = workspace.newsletters.find(({ id }) => id === reentryNewsletterId);
+
+  async function handleReentryControl(action: "reduce" | "pause" | "reset") {
+    if (!reentryNewsletterId || !reentryNewsletter) return;
+    setReentryBusy(action);
+    setReentryError("");
+    try {
+      if (action === "reduce") {
+        await apiJSON(`/api/newsletters/${encodeURIComponent(reentryNewsletterId)}/rhythm`, {
+          method: "POST",
+          body: {
+            mode: "weekly_synthesis",
+            selectedWeekdays: [reentryNewsletter.selectedWeekdays?.[0] ?? 1],
+            autoThrottleEnabled: reentryNewsletter.autoThrottleEnabled ?? true,
+            unopenedLessonLimit: reentryNewsletter.unopenedLessonLimit ?? 3,
+          },
+        });
+        setReentryNotice("This stream now prepares one synthesis each week.");
+      } else if (action === "pause") {
+        await apiJSON(`/api/newsletters/${encodeURIComponent(reentryNewsletterId)}/active`, {
+          method: "POST",
+          body: { active: false },
+        });
+        setReentryNotice("This stream is paused. Your history is unchanged.");
+      } else {
+        const result = await apiJSON<{ dismissedCount: number }>(
+          `/api/newsletters/${encodeURIComponent(reentryNewsletterId)}/reset-backlog`,
+          { method: "POST", body: {} },
+        );
+        setReentryNotice(result.dismissedCount > 0
+          ? `${result.dismissedCount} older lesson${result.dismissedCount === 1 ? "" : "s"} moved out of Today. They remain in your library.`
+          : "Your Today queue is already clear.");
+      }
+      await workspace.reload();
+    } catch (error) {
+      setReentryError(error.message);
+    } finally {
+      setReentryBusy("");
+    }
+  }
 
   return (
     <LearningShell active="today">
@@ -60,8 +115,8 @@ export default function TodayPage() {
             <p className="atelier-eyebrow">Your first thread</p>
             <h2>Turn a question into a learning practice.</h2>
             <p>
-              Choose a subject, the sources you trust, and a rhythm that fits your
-              life. Your first lesson can begin as soon as the stream is ready.
+              Start with a question. Learnloom will establish the source
+              environment, build the path, and prepare your first lesson.
             </p>
             <a className="atelier-primary" href="/newsletters/new">
               Create your first stream <ArrowRight size={16} />
@@ -81,34 +136,44 @@ export default function TodayPage() {
                   <p className="atelier-eyebrow">Welcome back</p>
                   <h2>Begin with one useful step.</h2>
                   <p>
-                    Your learning history is still here. Choose one action now;
-                    the rest can wait, and you can soften your rhythm whenever you like.
+                    {reason || "Your learning history is still here. Choose one action now; the rest can wait."}
                   </p>
                 </div>
                 <a
                   className="atelier-primary"
-                  href={workspace.snapshot?.retention?.actionUrl ?? "/streams"}
+                  href={actionUrl ?? workspace.snapshot?.retention?.actionUrl ?? "/streams"}
                 >
-                  {workspace.snapshot?.retention?.actionLabel ?? "Choose your next step"}
+                  {actionLabel ?? workspace.snapshot?.retention?.actionLabel ?? "Choose your next step"}
                   <ArrowRight size={16} />
                 </a>
+                {reentryNewsletter ? (
+                  <div className="reentry-controls" aria-label={`Re-entry controls for ${reentryNewsletter.name}`}>
+                    <p>Or make the return gentler for <strong>{reentryNewsletter.name}</strong>:</p>
+                    <div>
+                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reduce")}>Slow to weekly</button>
+                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("pause")}>Pause stream</button>
+                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reset")}>Clear older backlog</button>
+                    </div>
+                    {reentryNotice ? <small className="reentry-notice">{reentryNotice}</small> : null}
+                    {reentryError ? <small className="reentry-error">{reentryError}</small> : null}
+                  </div>
+                ) : null}
               </article>
             ) : reviewFirst ? (
               <article className="today-feature today-feature-review glass-panel">
                 <div className="today-feature-top">
                   <span className="atelier-chip"><BrainCircuit size={13} /> Review due</span>
-                  <span>{workspace.reviews.length} prompt{workspace.reviews.length === 1 ? "" : "s"}</span>
+                  <span>{dueCount || workspace.reviews.length} prompt{(dueCount || workspace.reviews.length) === 1 ? "" : "s"}</span>
                 </div>
                 <div className="today-feature-copy">
                   <p className="atelier-eyebrow">Best next step</p>
                   <h2>Strengthen what is ready to be recalled.</h2>
                   <p>
-                    A short retrieval pass now will make recent ideas easier to use
-                    later. Your next lesson will stay ready when you finish.
+                    {reason || "A short retrieval pass now will make recent ideas easier to use later."}
                   </p>
                 </div>
-                <a className="atelier-primary" href="/review">
-                  Start review <ArrowRight size={16} />
+                <a className="atelier-primary" href={actionUrl ?? "/review"}>
+                  {actionLabel ?? "Start review"} <ArrowRight size={16} />
                 </a>
               </article>
             ) : (
@@ -123,9 +188,9 @@ export default function TodayPage() {
                   <p className="atelier-eyebrow">{primary.newsletter.name}</p>
                   <h2>{primary.title}</h2>
                   <p>
-                    {primaryState?.progress > 0
+                    {reason || (primaryState?.progress > 0
                       ? "Pick up where you left off. Your place has been saved."
-                      : `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`}
+                      : `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`)}
                   </p>
                 </div>
                 <div className="today-progress">
@@ -135,8 +200,8 @@ export default function TodayPage() {
                   </div>
                   <span><i style={{ width: `${primaryState?.progress ?? 0}%` }} /></span>
                 </div>
-                <a className="atelier-primary" href={`/issues/${encodeURIComponent(primary.id)}`}>
-                  {primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson"}
+                <a className="atelier-primary" href={actionUrl ?? `/issues/${encodeURIComponent(primary.id)}`}>
+                  {actionLabel ?? (primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson")}
                   <ArrowRight size={16} />
                 </a>
               </article>
@@ -243,6 +308,49 @@ export function selectTodayFocus(
         : reviews.length > 0
           ? "review"
           : "lesson",
+  };
+}
+
+export function resolveTodaySelection(
+  authoritative,
+  lessons,
+  reviews = [],
+  stateFor = lessonState,
+  retention = undefined,
+) {
+  const fallback = selectTodayFocus(lessons, reviews, stateFor, retention);
+  if (!authoritative?.kind) return {
+    ...fallback,
+    reason: "",
+    actionLabel: "",
+    actionUrl: "",
+    dueCount: 0,
+  };
+
+  let primary = fallback.primary;
+  if (authoritative.kind === "lesson") {
+    primary = lessons.find((lesson) => lesson.id === authoritative.subjectId) ?? {
+      id: authoritative.subjectId,
+      title: authoritative.title,
+      status: "generated",
+      newsletterId: authoritative.newsletterId,
+      newsletter: {
+        id: authoritative.newsletterId,
+        name: authoritative.newsletterName,
+        lessonMinutes: authoritative.lessonMinutes,
+        active: true,
+      },
+    };
+  }
+  return {
+    primary,
+    secondary: [fallback.primary, fallback.secondary]
+      .find((lesson) => lesson && lesson.id !== primary?.id),
+    focus: authoritative.kind === "clear" ? "clear" : authoritative.kind,
+    reason: authoritative.reason,
+    actionLabel: authoritative.actionLabel,
+    actionUrl: authoritative.actionUrl,
+    dueCount: authoritative.dueCount ?? 0,
   };
 }
 

@@ -42,6 +42,114 @@ type IssueModeration struct {
 	Actions     []ModerationAction `json:"actions"`
 }
 
+type OperatorModerationResult struct {
+	AlreadyHeld bool
+}
+
+// HoldPublicIssueByOperator removes an exact public Dossier from public reads
+// without granting the operator access to the owner's private lesson data.
+// The operator must be a distinct active Account so the existing moderation
+// audit trail records who applied the hold.
+func (s *Store) HoldPublicIssueByOperator(
+	ctx context.Context,
+	operatorAccountID, username, publicID, caseReference, reason string,
+	now time.Time,
+) (OperatorModerationResult, error) {
+	if _, err := uuid.Parse(operatorAccountID); err != nil {
+		return OperatorModerationResult{}, errors.New("operator account ID is invalid")
+	}
+	username = strings.ToLower(strings.TrimSpace(username))
+	if username == "" || len(username) > 63 {
+		return OperatorModerationResult{}, errors.New("public username is invalid")
+	}
+	rawPublicID := strings.TrimPrefix(strings.TrimSpace(publicID), "dossier-")
+	if _, err := uuid.Parse(rawPublicID); err != nil {
+		return OperatorModerationResult{}, errors.New("public Dossier ID is invalid")
+	}
+	caseReference = strings.TrimSpace(caseReference)
+	reason = strings.TrimSpace(reason)
+	if len(caseReference) < 3 || len(caseReference) > 80 ||
+		len(reason) < 10 || len(reason) > 800 {
+		return OperatorModerationResult{}, errors.New("moderation case reference or reason is invalid")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	auditReason := "Rights-holder review pending · " + caseReference + ": " + reason
+	if len(auditReason) > 1000 {
+		return OperatorModerationResult{}, errors.New("moderation reason is invalid")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return OperatorModerationResult{}, err
+	}
+	defer rollback(tx)
+	var operatorActive bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1 FROM accounts WHERE id = $1 AND status = 'active'
+		)
+	`, operatorAccountID).Scan(&operatorActive); err != nil {
+		return OperatorModerationResult{}, fmt.Errorf("verify moderation operator: %w", err)
+	}
+	if !operatorActive {
+		return OperatorModerationResult{}, ErrForbidden
+	}
+
+	var issueID, ownerAccountID, currentState string
+	err = tx.QueryRow(ctx, `
+		SELECT issue.id::text, newsletter.owner_account_id::text,
+		       issue.moderation_state
+		FROM issues issue
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		JOIN accounts account ON account.id = newsletter.owner_account_id
+		JOIN personal_sites site
+		  ON site.owner_account_id = newsletter.owner_account_id
+		WHERE site.username = $1
+		  AND site.visibility = 'public'
+		  AND account.status = 'active'
+		  AND newsletter.site_visible
+		  AND issue.public_id = $2::uuid
+		  AND issue.status = 'generated'
+		  AND issue.publication_state = 'published'
+		FOR UPDATE OF issue
+	`, username, rawPublicID).Scan(&issueID, &ownerAccountID, &currentState)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OperatorModerationResult{}, ErrNotFound
+	}
+	if err != nil {
+		return OperatorModerationResult{}, fmt.Errorf("find public Dossier for moderation: %w", err)
+	}
+	if ownerAccountID == operatorAccountID {
+		return OperatorModerationResult{}, ErrForbidden
+	}
+	if currentState == "held" {
+		if err := tx.Commit(ctx); err != nil {
+			return OperatorModerationResult{}, err
+		}
+		return OperatorModerationResult{AlreadyHeld: true}, nil
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE issues
+		SET moderation_state = 'held', moderation_reason = $2
+		WHERE id = $1
+	`, issueID, auditReason); err != nil {
+		return OperatorModerationResult{}, fmt.Errorf("hold public Dossier: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO public_moderation_actions (
+		  id, issue_id, actor_account_id, action, reason, created_at
+		) VALUES ($1, $2, $3, 'publication_held', $4, $5)
+	`, uuid.NewString(), issueID, operatorAccountID, auditReason, now); err != nil {
+		return OperatorModerationResult{}, fmt.Errorf("audit operator moderation hold: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OperatorModerationResult{}, fmt.Errorf("commit operator moderation hold: %w", err)
+	}
+	return OperatorModerationResult{}, nil
+}
+
 func (s *Store) CreatePublicContentReport(
 	ctx context.Context,
 	username, publicID, category, details, fingerprint string,

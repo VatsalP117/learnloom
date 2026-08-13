@@ -28,6 +28,8 @@ Application metrics include:
 - bounded request-duration histograms labeled by method, route template, and
   status class;
 - queue depth and oldest-item age;
+- overdue immutable-artifact cleanup depth/age and completed cleanups;
+- pending Paddle webhooks/checkouts and grace or generation-paused Accounts;
 - Postgres pool use and acquire wait time;
 - model tokens, retries, estimated spend, and learning outcomes;
 - generation and delivery counters;
@@ -154,7 +156,8 @@ in sampled entries.
 
 The dashboard covers availability, request rate, 5xx ratio, route p95 latency,
 worker phase latency/outcomes, queues, active work, Postgres saturation, model
-spend, VM health, container resources, and logs.
+spend, artifact cleanup, Paddle lifecycle backlog, VM health, container
+resources, and logs.
 
 ## Upload recording and alert rules
 
@@ -182,8 +185,22 @@ the Alloy ingestion token.
    → Alert rules**, then delete the temporary service account.
 
 The rule file includes collector/target availability, worker liveness, 5xx
-ratio, p95 latency, queue age, generation and delivery failures, claim
-recovery, Postgres saturation, model budget, disk, and memory alerts.
+ratio, p95 latency, queue age, generation and delivery failures, the 30-minute
+generation failure ratio, two consecutive terminal Account failures, provider
+output truncation, claim recovery, Postgres saturation, model budget, stuck
+Paddle webhooks, billing-paused generation, stale orphan-artifact cleanup, disk,
+and memory alerts.
+
+Before launch, exercise `LearnloomArtifactCleanupStale` in staging with an
+unreferenced test object and a controlled object-store deletion failure. Verify
+warning delivery, restore object-store access, observe the cleanup counter
+increase and pending/age gauges return to zero, then remove the test artifact.
+
+Before treating the generation SLO as protected, deliberately exercise the
+staging fixtures for one truncation and two consecutive Account failures.
+Confirm that the warning and critical notifications arrive, then resolve the
+fixtures and confirm both alerts return to normal. A rule visible in Grafana
+without tested notification delivery is not release evidence.
 
 ## Configure notification delivery
 
