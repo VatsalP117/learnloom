@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/VatsalP117/learnloom/internal/store"
 )
 
@@ -75,6 +76,20 @@ func TestSitePayloadIncludesSearchIndexingPreference(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"searchIndexing":true`) {
 		t.Fatalf("site payload = %s", encoded)
+	}
+}
+
+func TestPublicAnalyticsPeriodValidation(t *testing.T) {
+	t.Parallel()
+	for _, value := range []int{7, 30, 90} {
+		if !validPublicAnalyticsPeriod(value) {
+			t.Errorf("period %d should be valid", value)
+		}
+	}
+	for _, value := range []int{0, 1, 31, 365} {
+		if validPublicAnalyticsPeriod(value) {
+			t.Errorf("period %d should be invalid", value)
+		}
 	}
 }
 
@@ -225,5 +240,59 @@ func TestIssuePayloadsNeverExposeInternalFailureDetails(t *testing.T) {
 		!strings.Contains(body, "model_contract_unsatisfied") ||
 		!strings.Contains(body, "We couldn’t prepare this lesson") {
 		t.Fatalf("unsafe Issue payload: %s", body)
+	}
+}
+
+func TestIssuePayloadsExplainEvidenceDeferralsWithoutInternalDetail(t *testing.T) {
+	t.Parallel()
+	issues := []domain.Issue{{
+		ID: "issue-deferred", Status: domain.IssueDeferred,
+		Error:           failure.PublicNoEvidence,
+		FailureCode:     "no_worthwhile_evidence",
+		FailureCategory: string(failure.CategoryInsufficientEvidence),
+		FailureStage:    "source_intelligence",
+		IncidentID:      "incident-deferred",
+	}}
+	payload, err := json.Marshal(issuePayloads(issues))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(payload)
+	for _, expected := range []string{
+		`"status":"deferred"`,
+		`"failureCode":"no_worthwhile_evidence"`,
+		failure.PublicNoEvidence,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("deferred payload missing %q: %s", expected, body)
+		}
+	}
+}
+
+func TestSourceCatalogPayloadExplainsRoleWithoutNumericTrustClaim(t *testing.T) {
+	t.Parallel()
+	payload, err := json.Marshal(sourceCatalogPayloads([]domain.SourceCatalogItem{{
+		ID: "source-1", DisplayName: "Official reference",
+		CanonicalURL: "https://docs.example.com/reference",
+		Origin:       domain.SourceOriginDiscovered, Scope: domain.SourceScopeExact,
+		State: domain.SourceStateActive, Health: "healthy",
+		DiscoveryReason: "Primary reference for maintained documentation",
+		Role:            domain.SourceRoleOfficialPrimary, RankingVersion: "source-rank-v2",
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(payload)
+	for _, expected := range []string{
+		`"role":"official_primary"`,
+		`"rankingVersion":"source-rank-v2"`,
+		"Primary reference for maintained documentation",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("source payload missing %q: %s", expected, body)
+		}
+	}
+	if strings.Contains(body, "rankScore") || strings.Contains(body, "authorityScore") {
+		t.Fatalf("source payload exposed a misleading numeric trust score: %s", body)
 	}
 }

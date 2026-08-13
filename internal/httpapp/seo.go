@@ -37,7 +37,7 @@ var seoPages = []seoPage{
 		Path:        "/solutions",
 		Eyebrow:     "Learning problems, solved deliberately",
 		Title:       "Turn information into a learning practice",
-		Description: "Learnloom helps curious people remember what they read, keep up with changing fields, and build a personal curriculum from sources they trust.",
+		Description: "Give Learnloom a topic. It establishes a useful source environment, builds a progressive learning path, and helps each lesson build on the last.",
 		Lead:        "Finding information is easy. Building durable understanding from it is the difficult part. Learnloom maintains the loop between discovery, explanation, recall, and a lasting archive.",
 		Problem:     "A calmer answer to information overload",
 		Body: []string{
@@ -46,7 +46,7 @@ var seoPages = []seoPage{
 		},
 		Steps: []seoStep{
 			{Title: "Choose an intent", Copy: "Describe the subject, current level, and outcome you want to work toward."},
-			{Title: "Establish trustworthy inputs", Copy: "Use publications, feeds, research organizations, or expert sites you already respect."},
+			{Title: "Establish the source environment", Copy: "Let Learnloom discover and validate useful sources, bring your own, or combine both approaches."},
 			{Title: "Build continuity", Copy: "New Dossiers become part of a learning history instead of disappearing into another feed."},
 		},
 		Benefits: []seoBenefit{
@@ -85,15 +85,15 @@ var seoPages = []seoPage{
 		Path:        "/solutions/keep-up-with-your-field",
 		Eyebrow:     "Stay current without living in a feed",
 		Title:       "Keep up with your field without information overload",
-		Description: "Follow trusted sources and turn meaningful developments into coherent daily lessons instead of another noisy feed or crowded inbox.",
+		Description: "Give Learnloom a changing field to follow and turn meaningful developments into coherent lessons instead of another noisy feed or crowded inbox.",
 		Lead:        "A changing field produces more updates than any thoughtful person can follow. Learnloom narrows the stream to what deserves understanding and turns it into a lesson that builds context over time.",
 		Problem:     "The cost of staying current",
 		Body: []string{
 			"News feeds reward novelty and engagement. Newsletters compete for attention. Search answers one question at a time. None of them is responsible for deciding whether an update is well supported, genuinely new, or important to your longer-term learning goal.",
-			"With Learnloom, you define the topic, level, outcome, and sources. The service monitors that information environment and prepares a focused Dossier when there is something worthwhile to learn. Daily is a rhythm, not a demand to manufacture novelty.",
+			"With Learnloom, you define the topic, level, and outcome. Learnloom can establish the information environment for you, follow only sources you choose, or fill gaps around them. It prepares a focused Dossier when there is something worthwhile to learn. Daily is a rhythm, not a demand to manufacture novelty.",
 		},
 		Steps: []seoStep{
-			{Title: "Define the boundary", Copy: "Choose the question you want to follow and the sources that deserve your attention."},
+			{Title: "Define the intent", Copy: "Choose the question you want to follow; let Learnloom establish the source environment or set your own boundary."},
 			{Title: "Reduce repetition", Copy: "Evaluate new material in the context of what your learning stream has already covered."},
 			{Title: "Turn updates into context", Copy: "Explain why a development matters, what mechanism drives it, and what remains uncertain."},
 		},
@@ -109,7 +109,7 @@ var seoPages = []seoPage{
 		Path:        "/solutions/build-a-personal-learning-curriculum",
 		Eyebrow:     "A curriculum that follows the changing world",
 		Title:       "Build a personal learning curriculum over time",
-		Description: "Create an evolving curriculum around your interests, current level, trusted sources, and learning goals—with each lesson building on the last.",
+		Description: "Start with a topic, current level, and learning goal. Learnloom establishes an evolving curriculum with each lesson building on the last.",
 		Lead:        "A fixed course is coherent but can become dated. The open web is current but fragmented. Learnloom combines current sources with the continuity of a curriculum.",
 		Problem:     "Move beyond isolated courses and disconnected notes",
 		Body: []string{
@@ -157,7 +157,7 @@ var seoPages = []seoPage{
 		Path:        "/product/ai-learning-assistant",
 		Eyebrow:     "An AI assistant designed around learning",
 		Title:       "A personal AI learning assistant grounded in your sources",
-		Description: "Learnloom turns topics and trusted sources into source-grounded lessons that build on your learning history—not disposable chat answers.",
+		Description: "Give Learnloom a topic. It establishes the source environment and prepares lessons that build on your learning history—not disposable chat answers.",
 		Lead:        "Learnloom is an AI learning assistant for maintaining a learning practice: it prepares focused lessons, preserves evidence, supports recall, and keeps the results in a lasting personal archive.",
 		Problem:     "An assistant with continuity and an information boundary",
 		Body: []string{
@@ -166,7 +166,7 @@ var seoPages = []seoPage{
 		},
 		Steps: []seoStep{
 			{Title: "Tell it what you are learning", Copy: "Set a topic, current level, desired outcome, lesson length, and rhythm."},
-			{Title: "Ground it in evidence", Copy: "Provide trusted sites, feeds, publications, researchers, or organizations."},
+			{Title: "Ground it in evidence", Copy: "Let Learnloom discover and validate useful sources, provide your own, or ask it to fill the gaps."},
 			{Title: "Receive a prepared lesson", Copy: "Read a structured Dossier with citations, practice, and continuity in your learning home."},
 		},
 		Benefits: []seoBenefit{
@@ -321,7 +321,7 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 	body.WriteString(`<a class="nav-cta" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Start learning <span>↗</span></a></header>`)
 	body.WriteString(`<main><section class="seo-hero"><p class="eyebrow">` + html.EscapeString(page.Eyebrow) + `</p>`)
 	body.WriteString(`<h1>` + html.EscapeString(page.Title) + `</h1><p class="lead">` + html.EscapeString(page.Lead) + `</p>`)
-	body.WriteString(`<div class="hero-actions"><a class="primary" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Create your learning stream <span>↗</span></a><a href="/#how-it-works">See how Learnloom works</a></div></section>`)
+	body.WriteString(`<div class="hero-actions"><a class="primary" href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")+"/sign-up") + `">Build your learning path <span>↗</span></a><a href="/#how-it-works">See how Learnloom works</a></div></section>`)
 	body.WriteString(`<section class="seo-section prose"><p class="eyebrow">The problem</p><h2>` + html.EscapeString(page.Problem) + `</h2>`)
 	for _, paragraph := range page.Body {
 		body.WriteString("<p>" + html.EscapeString(paragraph) + "</p>")
@@ -350,9 +350,9 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 			body.WriteString(`<a href="` + html.EscapeString(related.Path) + `"><span>` + html.EscapeString(related.Title) + `</span><b>↗</b></a>`)
 		}
 	}
-	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">Your learning home is waiting</p><h2>Make curiosity a place you return to.</h2><p>Choose a subject, bring the sources you trust, and prepare your first Knowledge Dossier.</p><a class="primary" href="`)
+	body.WriteString(`</div></section><section class="seo-cta"><p class="eyebrow">Your learning path is waiting</p><h2>Give curiosity a direction.</h2><p>Start with a subject. Learnloom can establish the source environment and prepare the first Knowledge Dossier—or follow only the sources you choose.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
-	body.WriteString(`">Get started with Learnloom <span>↗</span></a></section></main>`)
+	body.WriteString(`">Build your learning path <span>↗</span></a></section></main>`)
 	body.WriteString(renderSEOFooter(appOrigin))
 	body.WriteString(`</body></html>`)
 	return body.String()
@@ -398,8 +398,8 @@ func renderSEOHead(title, description, canonical, apexOrigin string) string {
 }
 
 func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
-	const title = "Learnloom | Turn trusted sources into durable understanding"
-	const description = "Learnloom turns topics and trusted sources into thoughtful Knowledge Dossiers with explanations, citations, retrieval practice, and a lasting personal learning archive."
+	const title = "Learnloom | Give us a topic. We’ll build the learning path."
+	const description = "Stay current without rebuilding context. Give Learnloom a topic; it ranks useful sources, teaches the next concept, and revisits it before it fades."
 	canonical := strings.TrimRight(apexOrigin, "/") + "/"
 	document := string(body)
 	document = strings.Replace(
@@ -410,7 +410,7 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 	)
 	document = strings.Replace(
 		document,
-		`content="A learning home that grows with you. Learnloom turns trusted sources into thoughtful daily Dossiers, published to your own personal subdomain."`,
+		`content="Give Learnloom a topic. It finds and evaluates useful sources, builds a progressive learning path, and helps you remember what matters."`,
 		`content="`+html.EscapeString(description)+`"`,
 		1,
 	)
@@ -432,9 +432,9 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 		1,
 	)
 	fallback := `<main class="seo-prerender">
-<p>Source-grounded personal learning</p>
-<h1>Turn trusted sources into durable understanding.</h1>
-<p>Learnloom prepares thoughtful Knowledge Dossiers with explanations, citations, examples, retrieval practice, and continuity—then keeps them in your personal learning home.</p>
+<p>An autonomous learning practice</p>
+<h1>Give us a topic. We’ll build the learning path.</h1>
+<p>Learnloom finds and evaluates useful sources, prepares progressive lessons with citations and retrieval practice, and remembers what you already know.</p>
 <nav aria-label="Explore Learnloom">
 <a href="/solutions/remember-what-you-read">Remember what you read</a>
 <a href="/solutions/keep-up-with-your-field">Keep up with your field</a>
@@ -442,7 +442,7 @@ func decorateMarketingIndex(body []byte, apexOrigin, appOrigin string) []byte {
 <a href="/guides">Read the learning guides</a>
 <a href="/examples">Explore public learning examples</a>
 </nav>
-<a href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")) + `/sign-up">Create your learning stream</a>
+<a href="` + html.EscapeString(strings.TrimRight(appOrigin, "/")) + `/sign-up">Build your learning path</a>
 </main>`
 	document = strings.Replace(document, `<div id="root"></div>`, `<div id="root">`+fallback+`</div>`, 1)
 	return []byte(document)

@@ -19,6 +19,8 @@ groups:
         expr: histogram_quantile(0.95, sum by (le, route) (rate(learnloom_http_request_duration_seconds_bucket[5m])))
       - record: learnloom:worker_operation_p95_seconds
         expr: histogram_quantile(0.95, sum by (le, operation) (rate(learnloom_worker_operation_duration_seconds_bucket[30m])))
+      - record: learnloom:generation_failure_ratio_30m
+        expr: sum(increase(learnloom_dossier_generation_failures_total[30m])) / clamp_min(sum(increase(learnloom_dossiers_generated_total[30m])) + sum(increase(learnloom_dossier_generation_failures_total[30m])), 1)
 
   - name: learnloom-availability-alerts
     interval: 30s
@@ -89,6 +91,30 @@ groups:
         annotations:
           summary: Learnloom dossier generation failed
           description: "{{ $value }} generation failures were observed in the last 15 minutes."
+      - alert: LearnloomGenerationFailureRateRegression
+        expr: learnloom:generation_failure_ratio_30m > 0.05 and (sum(increase(learnloom_dossiers_generated_total[30m])) + sum(increase(learnloom_dossier_generation_failures_total[30m]))) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Learnloom generation failure ratio exceeded the 5% launch gate
+          description: "The 30-minute generation failure ratio is {{ $value | humanizePercentage }} across at least five outcomes."
+      - alert: LearnloomConsecutiveAccountFailures
+        expr: learnloom_accounts_with_consecutive_generation_failures > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: At least one learner encountered two consecutive terminal generation failures
+          description: "{{ $value }} account(s) currently have two consecutive failed terminal lesson attempts."
+      - alert: LearnloomProviderOutputTruncation
+        expr: increase(learnloom_model_output_truncations_total[30m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A model response reached its configured output-token limit
+          description: "{{ $value }} truncation failure(s) occurred in the last 30 minutes. Check stage output budgets before increasing limits."
       - alert: LearnloomDeliveryFailures
         expr: increase(learnloom_delivery_failures_total[15m]) > 0
         for: 1m
@@ -125,6 +151,30 @@ groups:
           severity: warning
         annotations:
           summary: Worker claims required automatic recovery
+      - alert: LearnloomBillingWebhookStuck
+        expr: learnloom_billing_webhooks_pending > 0 and learnloom_billing_webhook_oldest_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: A Paddle webhook has remained unprocessed for more than five minutes
+          description: "{{ $value }} second age for the oldest unprocessed billing webhook."
+      - alert: LearnloomBillingGenerationPaused
+        expr: learnloom_billing_accounts{entitlement="generation_paused"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: At least one paid-lifecycle account has generation paused
+          description: "{{ $value }} account(s) require billing review; learned content remains accessible."
+      - alert: LearnloomArtifactCleanupStale
+        expr: learnloom_artifact_cleanups_pending > 0 and learnloom_artifact_cleanup_oldest_seconds > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: An unreferenced Dossier artifact has remained pending deletion
+          description: "The oldest overdue immutable-artifact cleanup is {{ $value | humanizeDuration }} old."
 
   - name: learnloom-infrastructure-alerts
     interval: 30s

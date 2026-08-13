@@ -1,5 +1,10 @@
 # Learnloom launch film
 
+> **Not approved for publication.** Existing renders and source scenes predate
+> the AI/software launch wedge, topic-first discovery, private/draft/published
+> semantics, and current product UI. They include legacy Maya/urban examples.
+> Regenerate from reviewed starter lessons and current captures before use.
+
 A 46-second, 1920×1080 launch film inspired by the reference video's editorial
 typography, restrained product motion, white-space-led composition, and dark
 immersive interludes.
@@ -11,11 +16,12 @@ soundtrack. It does not reuse footage, branding, or audio from the reference.
 
 1. Introduce Learnloom as a learning home.
 2. Contrast endless reading with durable understanding.
-3. Choose a question and trusted sources.
+3. Start with a technical question and inspect Learnloom's explainable source
+   portfolio (or supply specific sources).
 4. Weave those sources into a Learning Blueprint.
 5. Reveal the finished Dossier.
 6. Show continuity through Learning History.
-7. Deliver through a personal site and email.
+7. Keep it private by default; optionally deliver by email or publish later.
 8. Close with the product promise and launch CTA.
 
 ## Render
@@ -26,8 +32,8 @@ Requires Node.js, `sips` (included with macOS), and FFmpeg:
 node launch-video/render.mjs
 ```
 
-The renderer creates SVG motion frames, rasterizes them, synthesizes the
-soundtrack, and exports `output/learnloom-launch-film.mp4`.
+The renderer creates the legacy storyboard only. Its output is not launch
+evidence until the scenes and captures are replaced and reviewed.
 
 ## Remotion cut
 

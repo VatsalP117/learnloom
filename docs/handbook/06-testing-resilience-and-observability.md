@@ -2,6 +2,15 @@
 
 ## Testing map
 
+```mermaid
+flowchart TB
+  E2E["Browser E2E · accessibility · visual — MISSING"]
+  INT["Integration — store lifecycle, source, worker, artifact, migrations"]
+  UNIT["Unit — Go stdlib + React/Vitest (30 focused tests)"]
+  STATIC["Static & security — ESLint/TS, gofmt/vet/staticcheck, race, govulncheck, npm audit"]
+  E2E --> INT --> UNIT --> STATIC
+```
+
 | Category | What exists | Important coverage | Principal gaps |
 |---|---|---|---|
 | Go unit | standard `*_test.go` | config, host/CSRF token extraction, payload safety, source SSRF/parsers/discovery, model retry/contract, quality, artifact compression/cache, delivery idempotency, scheduling/DST | many handler routes and store failure branches |
@@ -35,6 +44,11 @@ accessibility, or backup/restore tests.
 - auth UI and request credential policy: HostedApp/API tests.
 
 ### Highest-priority missing tests for safe AI delegation
+
+> [!IMPORTANT] The one that would have caught today's blocker
+> No test asserts that migrating an empty DB produces a `SchemaVersion()` equal
+> to the derived highest embedded migration and that `Store.Ready()` then
+> succeeds. That missing invariant (P0) let the version-4/5 drift ship.
 
 1. **P0:** migrate an empty DB, assert `SchemaVersion()` equals the derived
    highest embedded migration and `Store.Ready()` succeeds. This would have

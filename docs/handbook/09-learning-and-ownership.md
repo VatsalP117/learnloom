@@ -2,6 +2,21 @@
 
 ## Project-specific learning curriculum
 
+```mermaid
+flowchart LR
+  M1["M1 · run + identify the three roles"] --> M2["M2 · follow one authenticated request"]
+  M2 --> M3["M3 · relational model + migrations"]
+  M3 --> M4["M4 · Issue + Delivery state machines"]
+  M4 --> M5["M5 · source safety + evidence"]
+  M5 --> M6["M6 · Dossier generation"]
+  M6 --> M7["M7 · frontend state + rendering"]
+  M7 --> M8["M8 · operate + architect"]
+  M8 --> OWN["Ownership checklist"]
+```
+
+Each module is one concept → plain-language model → deep trace → exercise →
+modification → verification, always against real files.
+
 ### Module 1 — Run and identify the three roles
 
 - **Concept:** process role and composition root.
@@ -130,6 +145,10 @@
   knowledge.
 
 ## Question bank — stop before the answers
+
+> [!TIP] Study method
+> Answer each question in writing before expanding the answers section. The
+> debugging / "what if" set (41–55) is the highest-value interview rehearsal.
 
 ### Basic
 

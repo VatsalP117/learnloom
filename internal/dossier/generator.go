@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,15 +38,16 @@ type Generator struct {
 }
 
 type GenerateRequest struct {
-	Newsletter    domain.Newsletter
-	History       []domain.LearningHistoryEntry
-	LearnerState  domain.LearnerState
-	Now           time.Time
-	OnStage       StageObserver
-	OnCheckpoint  func(stage, output string)
-	PreparedItems []domain.SourceItem
-	Warnings      []string
-	Checkpoints   map[string]string
+	Newsletter          domain.Newsletter
+	History             []domain.LearningHistoryEntry
+	LearnerState        domain.LearnerState
+	Now                 time.Time
+	RequestedLessonType domain.LessonType
+	OnStage             StageObserver
+	OnCheckpoint        func(stage, output string)
+	PreparedItems       []domain.SourceItem
+	Warnings            []string
+	Checkpoints         map[string]string
 }
 
 type StageObserver func(
@@ -72,15 +74,17 @@ func GenerationFingerprint(request GenerateRequest, modelName string) (string, e
 			TimeZone             string                    `json:"timeZone"`
 			AIExplorationEnabled bool                      `json:"aiExplorationEnabled"`
 		} `json:"newsletter"`
-		History       []domain.LearningHistoryEntry `json:"history"`
-		LearnerState  domain.LearnerState           `json:"learnerState"`
-		PreparedItems []domain.SourceItem           `json:"preparedItems"`
+		History             []domain.LearningHistoryEntry `json:"history"`
+		LearnerState        domain.LearnerState           `json:"learnerState"`
+		PreparedItems       []domain.SourceItem           `json:"preparedItems"`
+		RequestedLessonType domain.LessonType             `json:"requestedLessonType,omitempty"`
 	}{
-		PipelineVersion: PipelineVersion,
-		ModelName:       modelName,
-		History:         request.History,
-		LearnerState:    request.LearnerState,
-		PreparedItems:   request.PreparedItems,
+		PipelineVersion:     PipelineVersion,
+		ModelName:           modelName,
+		History:             request.History,
+		LearnerState:        request.LearnerState,
+		PreparedItems:       request.PreparedItems,
+		RequestedLessonType: request.RequestedLessonType,
 	}
 	payload.Newsletter.ID = request.Newsletter.ID
 	payload.Newsletter.Topic = request.Newsletter.Topic
@@ -272,6 +276,7 @@ func (g *Generator) Generate(
 			stageInstructions()["blueprint"],
 			fitSections(g.cfg.MaxIntermediateCharacters, []weightedSection{
 				{"Learner context", learnerContext, 2},
+				{"Requested lesson type", string(request.RequestedLessonType), 1},
 				{"Curated theme", prettyJSON(curation), 1},
 				{"Enriched sources", sourceBundle, 5},
 			}),
@@ -284,6 +289,21 @@ func (g *Generator) Generate(
 	}
 	if err != nil {
 		return GenerateResult{}, err
+	}
+	if validLessonType(request.RequestedLessonType) {
+		blueprint.LessonType = request.RequestedLessonType
+	} else {
+		blueprint.LessonType = resolveLessonType(blueprint.LessonType, len(request.History))
+	}
+	if repeatsRecentLearningSignal(blueprint, curated, request.History) {
+		return GenerateResult{}, failure.New(
+			failure.CodeNoNewLearningSignal,
+			failure.CategoryInsufficientEvidence,
+			"novelty_gate",
+			false,
+			failure.PublicNoEvidence,
+			errors.New("candidate objective, concepts, and source portfolio repeat a recent lesson"),
+		)
 	}
 	blueprintText := prettyJSON(blueprint)
 	research, restored := restoreTextCheckpoint(request.Checkpoints, "researcher")
@@ -517,6 +537,7 @@ func (g *Generator) Generate(
 		editorial.Critique,
 		finalPractice,
 		enriched,
+		request.History,
 	)
 	if err != nil {
 		return GenerateResult{}, err
@@ -526,10 +547,11 @@ func (g *Generator) Generate(
 		return GenerateResult{}, err
 	}
 	dossier := domain.Dossier{
-		Version:     3,
+		Version:     4,
 		ProfileID:   request.Newsletter.ID,
 		Date:        date,
 		Title:       curation.Theme,
+		LessonType:  blueprint.LessonType,
 		GeneratedAt: now.UTC(),
 		Model:       g.cfg.ModelName,
 		Curation:    curation,
@@ -547,7 +569,9 @@ func (g *Generator) Generate(
 	history := domain.LearningHistoryEntry{
 		Date:                  date,
 		GeneratedAt:           now.UTC(),
+		LessonType:            blueprint.LessonType,
 		SourceTitles:          mapSourceTitles(enriched),
+		SourceURLs:            mapSourceURLs(enriched),
 		LessonSummary:         truncate(stripMarkdown(editorial.Lesson), 800),
 		RecallQuestions:       extractQuestions(finalPractice),
 		RetrievalPrompts:      slices.Clone(learning.Retrieval),
@@ -656,6 +680,9 @@ func validateCuration(value domain.Curation, itemCount int) error {
 }
 
 func validateBlueprint(value domain.LearningBlueprint) error {
+	if value.LessonType != "" && !validLessonType(value.LessonType) {
+		return errors.New("Blueprint lesson type is invalid")
+	}
 	fields := map[string]string{
 		"learning objective":   value.LearningObjective,
 		"central mechanism":    value.CentralMechanism,
@@ -684,6 +711,33 @@ func validateBlueprint(value domain.LearningBlueprint) error {
 		return err
 	}
 	return nil
+}
+
+func validLessonType(value domain.LessonType) bool {
+	switch value {
+	case domain.LessonFoundation,
+		domain.LessonUpdate,
+		domain.LessonDeepDive,
+		domain.LessonSynthesis,
+		domain.LessonApplication,
+		domain.LessonReview:
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveLessonType(value domain.LessonType, historyCount int) domain.LessonType {
+	if validLessonType(value) {
+		if historyCount == 0 {
+			return domain.LessonFoundation
+		}
+		return value
+	}
+	if historyCount == 0 {
+		return domain.LessonFoundation
+	}
+	return domain.LessonDeepDive
 }
 
 func validateShortList(name string, values []string, minimum, maximum int) error {
@@ -820,6 +874,13 @@ func (g *Generator) learnerContext(
 	if len(conceptState) == 0 {
 		conceptState = []string{"- No durable concept evidence yet."}
 	}
+	openQuestions := make([]string, 0, len(state.OpenQuestions))
+	for _, question := range state.OpenQuestions {
+		openQuestions = append(openQuestions, "- "+truncate(question, 500))
+	}
+	if len(openQuestions) == 0 {
+		openQuestions = []string{"- No unresolved claim questions recorded."}
+	}
 	return strings.Join([]string{
 		"# Learner",
 		"Interests: " + newsletter.Topic,
@@ -836,6 +897,8 @@ func (g *Generator) learnerContext(
 		"Recent relevance signal: " + firstText(state.Relevance, "not recorded"),
 		"Recent recall confidence: " + firstText(state.RecallConfidence, "not recorded"),
 		strings.Join(conceptState, "\n"),
+		"Open questions about prior claims:",
+		strings.Join(openQuestions, "\n"),
 		"",
 		"Build deliberately on prior learning when it is relevant. Do not merely repeat it.",
 		"Use learner evidence conservatively: reinforce low-confidence concepts, avoid repeating strong concepts without a new connection, and adjust depth when difficulty feedback is available.",
@@ -849,7 +912,7 @@ func stageInstructions() map[string]string {
 	}
 	return map[string]string{
 		"curator":     "Choose one coherent, high-value learning theme from the supplied Source Items. Select three to five complementary Source Item identifiers; use fewer only when fewer exist. Return strict JSON only: {\"theme\":\"...\",\"rationale\":\"...\",\"selectedSourceIds\":[\"S1\",\"S2\",\"S3\"]}.",
-		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\"; non-empty string arrays \"prerequisites\" and \"concepts\"; and one to five strings in \"suggestedNextConcepts\" describing useful conceptual directions after this lesson.",
+		"blueprint":   "Design one lesson before prose is written for the learner's level, goal, time, and previous lessons. Return strict JSON only with \"lessonType\" set to exactly one of \"foundation\", \"update\", \"deep_dive\", \"synthesis\", \"application\", or \"review\"; string fields \"learningObjective\", \"centralMechanism\", \"workedExample\", \"misconception\", \"practicalExperiment\", \"continuityBridge\"; non-empty string arrays \"prerequisites\" and \"concepts\"; and one to five strings in \"suggestedNextConcepts\" describing useful conceptual directions after this lesson. Use foundation for a learner's first lesson; use the other types only when the learner history supports that purpose.",
 		"researcher":  "Write a compact research brief serving the Learning Blueprint. Explain claims, mechanisms, conditions, and implications using only supplied Source Items. Cite identifiers like [S1], distinguish facts from inference, and identify disagreement or missing evidence.",
 		"skeptic":     "Audit the research brief against the enriched Source Items and Learning Blueprint. Identify weak evidence, missing context, alternatives, edge cases, and unsupported claims. Preserve valid Source Item identifiers and give exact constraints for a trustworthy lesson.",
 		"teacher":     "Write only the source-grounded lesson. Use these exact Markdown headings once and in order: " + strings.Join(headings, ", ") + ". Make every section substantive, explain the central mechanism step by step, cite factual claims, honor the lesson-body word budget in the learner context, and end with the Takeaway.",
@@ -875,6 +938,17 @@ func mapSourceTitles(items []domain.SourceItem) []string {
 	return result
 }
 
+func mapSourceURLs(items []domain.SourceItem) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(firstText(item.CanonicalURL, item.URL))
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return compactUniqueFold(result)
+}
+
 func extractQuestions(markdown string) []string {
 	var questions []string
 	for _, line := range strings.Split(markdown, "\n") {
@@ -891,10 +965,132 @@ func extractQuestions(markdown string) []string {
 
 func blueprintConcepts(value domain.LearningBlueprint) []string {
 	values := append([]string{value.CentralMechanism}, value.Prerequisites...)
+	values = append(values, value.Concepts...)
+	values = compactUniqueFold(values)
 	for index := range values {
 		values[index] = truncate(values[index], 300)
 	}
 	return values
+}
+
+func compactUniqueFold(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func repeatsRecentLearningSignal(
+	blueprint domain.LearningBlueprint,
+	sources []domain.SourceItem,
+	history []domain.LearningHistoryEntry,
+) bool {
+	if len(history) == 0 {
+		return false
+	}
+	candidateSources := make([]string, 0, len(sources))
+	candidateSourceURLs := make([]string, 0, len(sources))
+	for _, item := range sources {
+		candidateSources = append(candidateSources, item.Title)
+		candidateSourceURLs = append(
+			candidateSourceURLs,
+			strings.TrimSpace(firstText(item.CanonicalURL, item.URL)),
+		)
+	}
+	start := max(0, len(history)-5)
+	for _, prior := range history[start:] {
+		if tokenSimilarity(blueprint.LearningObjective, prior.LearningObjective) < 0.70 {
+			continue
+		}
+		if sliceSimilarity(blueprintConcepts(blueprint), prior.Concepts) < 0.66 {
+			continue
+		}
+		evidenceSimilarity := sliceSimilarity(candidateSources, prior.SourceTitles)
+		if len(prior.SourceURLs) > 0 && len(candidateSourceURLs) > 0 {
+			evidenceSimilarity = exactSliceOverlap(candidateSourceURLs, prior.SourceURLs)
+		}
+		if evidenceSimilarity >= 0.66 {
+			return true
+		}
+	}
+	return false
+}
+
+func exactSliceOverlap(left, right []string) float64 {
+	leftSet := make(map[string]struct{}, len(left))
+	rightSet := make(map[string]struct{}, len(right))
+	for _, value := range left {
+		if normalized := strings.ToLower(strings.TrimSpace(value)); normalized != "" {
+			leftSet[normalized] = struct{}{}
+		}
+	}
+	for _, value := range right {
+		if normalized := strings.ToLower(strings.TrimSpace(value)); normalized != "" {
+			rightSet[normalized] = struct{}{}
+		}
+	}
+	if len(leftSet) == 0 || len(rightSet) == 0 {
+		return 0
+	}
+	intersection := 0
+	for value := range leftSet {
+		if _, exists := rightSet[value]; exists {
+			intersection++
+		}
+	}
+	return float64(intersection) / float64(min(len(leftSet), len(rightSet)))
+}
+
+func tokenSimilarity(left, right string) float64 {
+	return setSimilarity(similarityTokens([]string{left}), similarityTokens([]string{right}))
+}
+
+func sliceSimilarity(left, right []string) float64 {
+	return setSimilarity(similarityTokens(left), similarityTokens(right))
+}
+
+func similarityTokens(values []string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, value := range values {
+		for _, token := range strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+			return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+		}) {
+			if len(token) > 2 && token != "the" && token != "and" && token != "with" &&
+				token != "from" && token != "into" && token != "using" {
+				result[token] = struct{}{}
+			}
+		}
+	}
+	return result
+}
+
+func setSimilarity(left, right map[string]struct{}) float64 {
+	if len(left) == 0 || len(right) == 0 {
+		return 0
+	}
+	intersection := 0
+	union := make(map[string]struct{}, len(left)+len(right))
+	for token := range left {
+		union[token] = struct{}{}
+		if _, exists := right[token]; exists {
+			intersection++
+		}
+	}
+	for token := range right {
+		union[token] = struct{}{}
+	}
+	return float64(intersection) / float64(len(union))
 }
 
 func stripMarkdown(value string) string {

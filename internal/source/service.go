@@ -73,6 +73,7 @@ type Repository interface {
 	HasIssueSources(ctx context.Context, issueID string) (bool, error)
 	GetIssueSources(ctx context.Context, issueID string) ([]domain.SourceSnapshot, error)
 	InsertIssueSources(ctx context.Context, issueID string, links []domain.IssueSource) (bool, error)
+	HasNovelIssueEvidence(ctx context.Context, newsletterID, issueID string) (bool, error)
 	UpsertDiscoveredSourceSpec(ctx context.Context, spec domain.SourceSpec) (domain.SourceSpec, error)
 	SetSourceSpecState(ctx context.Context, specID string, state domain.SourceState, kind domain.SourceKind) error
 	CreateDiscoveryRun(ctx context.Context, run domain.DiscoveryRun) error
@@ -110,7 +111,7 @@ func NewService(repo Repository, acquisition *Acquisition, cfg ServiceConfig) *S
 		cfg.TargetUsableItems = 8
 	}
 	if cfg.DiscoveryMaxQueries < 1 {
-		cfg.DiscoveryMaxQueries = 4
+		cfg.DiscoveryMaxQueries = 5
 	}
 	if cfg.DiscoveryMaxCandidates < 1 {
 		cfg.DiscoveryMaxCandidates = 30
@@ -148,20 +149,26 @@ func (svc *Service) WithSearcher(searcher Searcher) *Service {
 }
 
 type PrepareIssueResult struct {
-	Items    []domain.SourceItem
-	Warnings []string
-	HadPrior bool
+	Items            []domain.SourceItem
+	Warnings         []string
+	HadPrior         bool
+	HasNovelEvidence bool
 }
 
 type preparedEvidence struct {
-	Item       domain.SourceItem
-	SnapshotID string
-	CreatedAt  time.Time
+	Item           domain.SourceItem
+	SnapshotID     string
+	CreatedAt      time.Time
+	Preference     domain.SourcePreference
+	QualitySignals []string
 }
 
 type snapshotMetadata struct {
-	Source string              `json:"source"`
-	Origin domain.SourceOrigin `json:"origin"`
+	Source         string              `json:"source"`
+	Origin         domain.SourceOrigin `json:"origin"`
+	Role           domain.SourceRole   `json:"role,omitempty"`
+	RankingVersion string              `json:"rankingVersion,omitempty"`
+	QualitySignals []string            `json:"qualitySignals,omitempty"`
 }
 
 func (svc *Service) PrepareIssue(
@@ -182,7 +189,12 @@ func (svc *Service) PrepareIssue(
 		if len(items) == 0 {
 			return PrepareIssueResult{}, errors.New("frozen Issue evidence is empty")
 		}
-		return PrepareIssueResult{Items: items, HadPrior: true}, nil
+		return svc.withNovelty(
+			ctx,
+			newsletter.ID,
+			issueID,
+			PrepareIssueResult{Items: items, HadPrior: true},
+		)
 	}
 
 	specs, err := svc.repo.ListActiveSourceSpecs(ctx, newsletter.ID)
@@ -222,6 +234,9 @@ func (svc *Service) PrepareIssue(
 		)
 		warnings = append(warnings, discoveryWarnings...)
 		if err != nil {
+			if errors.Is(err, errDiscoveryUnavailable) {
+				return PrepareIssueResult{}, err
+			}
 			warnings = append(warnings, err.Error())
 		} else {
 			candidates = append(candidates, discovered...)
@@ -253,32 +268,45 @@ func (svc *Service) PrepareIssue(
 		if err != nil {
 			return PrepareIssueResult{}, fmt.Errorf("load concurrently frozen Issue evidence: %w", err)
 		}
-		return PrepareIssueResult{
+		return svc.withNovelty(ctx, newsletter.ID, issueID, PrepareIssueResult{
 			Items:    snapshotsToSourceItems(snapshots),
 			Warnings: warnings,
 			HadPrior: true,
-		}, nil
+		})
 	}
-	return PrepareIssueResult{Items: items, Warnings: warnings}, nil
+	return svc.withNovelty(
+		ctx,
+		newsletter.ID,
+		issueID,
+		PrepareIssueResult{Items: items, Warnings: warnings},
+	)
+}
+
+func (svc *Service) withNovelty(
+	ctx context.Context,
+	newsletterID, issueID string,
+	result PrepareIssueResult,
+) (PrepareIssueResult, error) {
+	novel, err := svc.repo.HasNovelIssueEvidence(ctx, newsletterID, issueID)
+	if err != nil {
+		return PrepareIssueResult{}, fmt.Errorf("compare Issue evidence: %w", err)
+	}
+	result.HasNovelEvidence = novel
+	return result, nil
 }
 
 func (svc *Service) selectEvidence(candidates []preparedEvidence) []preparedEvidence {
-	seen := make(map[string]struct{}, len(candidates))
-	selected := make([]preparedEvidence, 0, len(candidates))
-	for _, candidate := range candidates {
-		if len([]rune(strings.TrimSpace(candidate.Item.Summary))) < svc.cfg.MinItemCharacters {
-			continue
+	ordered := append([]preparedEvidence(nil), candidates...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		leftPenalty := evidenceQualityPenalty(ordered[i].QualitySignals)
+		rightPenalty := evidenceQualityPenalty(ordered[j].QualitySignals)
+		if leftPenalty != rightPenalty {
+			return leftPenalty < rightPenalty
 		}
-		key := strings.ToLower(strings.TrimSpace(candidate.Item.Title)) + "|" +
-			normalizeEvidenceURL(candidate.Item.CanonicalURL)
-		if _, exists := seen[key]; exists {
-			continue
+		if ordered[i].Preference != ordered[j].Preference {
+			return ordered[i].Preference == domain.SourcePreferencePreferred
 		}
-		seen[key] = struct{}{}
-		selected = append(selected, candidate)
-	}
-	sort.SliceStable(selected, func(i, j int) bool {
-		left, right := selected[i].Item.PublishedAt, selected[j].Item.PublishedAt
+		left, right := ordered[i].Item.PublishedAt, ordered[j].Item.PublishedAt
 		if left == nil {
 			return false
 		}
@@ -287,10 +315,86 @@ func (svc *Service) selectEvidence(candidates []preparedEvidence) []preparedEvid
 		}
 		return left.After(*right)
 	})
+	seen := make(map[string]struct{}, len(candidates))
+	selected := make([]preparedEvidence, 0, len(candidates))
+	var selectedShingles []map[string]struct{}
+	for _, candidate := range ordered {
+		if len([]rune(strings.TrimSpace(candidate.Item.Summary))) < svc.cfg.MinItemCharacters {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(candidate.Item.Title)) + "|" +
+			normalizeEvidenceURL(candidate.Item.CanonicalURL)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		shingles := evidenceShingles(candidate.Item.Summary)
+		duplicate := false
+		for _, existing := range selectedShingles {
+			if shingleSimilarity(shingles, existing) >= 0.85 {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		selected = append(selected, candidate)
+		selectedShingles = append(selectedShingles, shingles)
+	}
 	if len(selected) > svc.cfg.MaxItems {
 		selected = selected[:svc.cfg.MaxItems]
 	}
 	return selected
+}
+
+func evidenceQualityPenalty(signals []string) int {
+	penalty := 0
+	for _, signal := range signals {
+		switch signal {
+		case "unattributed_advice":
+			penalty += 20
+		case "syndication_marker", "cross_domain_canonical":
+			penalty += 12
+		case "stale_versioned_material":
+			penalty += 10
+		}
+	}
+	return penalty
+}
+
+func evidenceShingles(value string) map[string]struct{} {
+	words := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	result := make(map[string]struct{})
+	if len(words) < 5 {
+		return result
+	}
+	if len(words) > 1200 {
+		words = words[:1200]
+	}
+	for index := 0; index+5 <= len(words); index++ {
+		result[strings.Join(words[index:index+5], " ")] = struct{}{}
+	}
+	return result
+}
+
+func shingleSimilarity(left, right map[string]struct{}) float64 {
+	if len(left) < 10 || len(right) < 10 {
+		return 0
+	}
+	intersection := 0
+	for shingle := range left {
+		if _, exists := right[shingle]; exists {
+			intersection++
+		}
+	}
+	union := len(left) + len(right) - intersection
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
 }
 
 func (svc *Service) validateSufficiency(
@@ -304,18 +408,12 @@ func (svc *Service) validateSufficiency(
 	if len(selected) == 0 {
 		return svc.noEvidenceError(mode, warnings)
 	}
-	return failure.New(
-		"insufficient_source_evidence",
-		failure.CategoryInsufficientEvidence,
-		"source_intelligence",
-		false,
-		failure.PublicSources,
-		fmt.Errorf(
-			"insufficient evidence: %d usable items found, minimum is %d or one substantial exact page",
-			len(selected),
-			svc.cfg.MinUsableItems,
-		),
+	cause := fmt.Errorf(
+		"insufficient evidence: %d usable items found, minimum is %d or one substantial exact page",
+		len(selected),
+		svc.cfg.MinUsableItems,
 	)
+	return svc.insufficientEvidenceError(mode, cause)
 }
 
 func (svc *Service) hasHardMinimum(selected []preparedEvidence) bool {
@@ -335,6 +433,9 @@ func (svc *Service) resolveAndSnapshot(
 	ctx context.Context,
 	spec domain.SourceSpec,
 ) ([]preparedEvidence, error) {
+	if err := checkURLPolicy(ctx, svc.acquisition.Cfg.URLPolicy, spec.InputURL); err != nil {
+		return nil, err
+	}
 	endpoint, exists, err := svc.repo.GetSourceEndpoint(ctx, spec.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load source endpoint: %w", err)
@@ -362,11 +463,26 @@ func (svc *Service) resolveAndSnapshot(
 		if err != nil {
 			return nil, fmt.Errorf("load fresh source snapshots: %w", err)
 		}
+		snapshots, err = filterAllowedSnapshots(ctx, svc.acquisition.Cfg.URLPolicy, snapshots)
+		if err != nil {
+			return nil, err
+		}
 		if svc.snapshotsAreUsable(snapshots, time.Now().UTC()) {
-			return snapshotsToEvidence(snapshots), nil
+			return applyEvidencePreference(snapshotsToEvidence(snapshots), spec.Preference), nil
 		}
 	}
-	return svc.fetchEndpoint(ctx, spec, endpoint, exists, true)
+	evidence, err := svc.fetchEndpoint(ctx, spec, endpoint, exists, true)
+	return applyEvidencePreference(evidence, spec.Preference), err
+}
+
+func applyEvidencePreference(
+	evidence []preparedEvidence,
+	preference domain.SourcePreference,
+) []preparedEvidence {
+	for index := range evidence {
+		evidence[index].Preference = preference
+	}
+	return evidence
 }
 
 func (svc *Service) fetchEndpoint(
@@ -376,6 +492,9 @@ func (svc *Service) fetchEndpoint(
 	persisted bool,
 	allowAutoFeed bool,
 ) ([]preparedEvidence, error) {
+	if err := checkURLPolicy(ctx, svc.acquisition.Cfg.URLPolicy, endpoint.EndpointURL); err != nil {
+		return nil, err
+	}
 	maxBytes := max(svc.acquisition.Cfg.MaxFeedBytes, svc.acquisition.Cfg.MaxArticleBytes)
 	timeout := max(svc.acquisition.Cfg.FeedTimeout, svc.acquisition.Cfg.ArticleTimeout)
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -437,6 +556,10 @@ func (svc *Service) fetchEndpoint(
 		if len(snapshots) == 0 {
 			return nil, errors.New("source returned 304 without stored snapshots")
 		}
+		snapshots, err = filterAllowedSnapshots(ctx, svc.acquisition.Cfg.URLPolicy, snapshots)
+		if err != nil {
+			return nil, err
+		}
 		if !svc.snapshotsAreUsable(snapshots, now) {
 			return nil, errors.New("source returned 304 but its stored evidence is too old")
 		}
@@ -446,6 +569,9 @@ func (svc *Service) fetchEndpoint(
 	kind := detectKind(result.ContentType, result.Body)
 	if allowAutoFeed && kind == domain.SourceKindHTML {
 		if feedURL := findFeedAutoDiscovery(string(result.Body), result.FinalURL); feedURL != "" {
+			if err := checkURLPolicy(ctx, svc.acquisition.Cfg.URLPolicy, feedURL); err != nil {
+				return nil, err
+			}
 			feedEndpoint := endpoint
 			feedEndpoint.EndpointURL = feedURL
 			feedEndpoint.CanonicalURL = feedURL
@@ -479,6 +605,28 @@ func (svc *Service) fetchEndpoint(
 	}
 }
 
+func filterAllowedSnapshots(
+	ctx context.Context,
+	policy URLPolicy,
+	snapshots []domain.SourceSnapshot,
+) ([]domain.SourceSnapshot, error) {
+	if policy == nil {
+		return snapshots, nil
+	}
+	allowed := make([]domain.SourceSnapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		permitted, err := policy.SourceURLAllowed(ctx, snapshot.CanonicalURL)
+		if err != nil {
+			return nil, err
+		}
+		if !permitted {
+			continue
+		}
+		allowed = append(allowed, snapshot)
+	}
+	return allowed, nil
+}
+
 func (svc *Service) snapshotFeed(
 	ctx context.Context,
 	spec domain.SourceSpec,
@@ -494,12 +642,14 @@ func (svc *Service) snapshotFeed(
 	if len(items) > itemLimit(spec) {
 		items = items[:itemLimit(spec)]
 	}
-	metadata := encodeSnapshotMetadata(spec)
 	evidence := make([]preparedEvidence, 0, len(items))
 	for _, item := range items {
 		if resolved, resolveErr := finalURL.Parse(item.URL); resolveErr == nil {
 			item.URL = resolved.String()
 			item.CanonicalURL = item.URL
+		}
+		if err := checkURLPolicy(ctx, svc.acquisition.Cfg.URLPolicy, item.URL); err != nil {
+			continue
 		}
 		canonicalURL := item.CanonicalURL
 		if canonicalURL == "" {
@@ -517,6 +667,14 @@ func (svc *Service) snapshotFeed(
 		if itemKey == "" || itemKey == normalizeEvidenceURL(endpoint.CanonicalURL) {
 			itemKey = hashContent(title + "|" + publishedKey(item.PublishedAt))
 		}
+		signals := resolvedQualitySignals(
+			spec,
+			item.Author,
+			content,
+			canonicalURL,
+			canonicalURL,
+			item.PublishedAt,
+		)
 		snapshot := domain.SourceSnapshot{
 			ID:               uuid.NewString(),
 			SourceEndpointID: endpoint.ID,
@@ -528,7 +686,7 @@ func (svc *Service) snapshotFeed(
 			Content:          content,
 			ContentSource:    "feed-summary",
 			ContentSHA256:    hashContent(content),
-			Metadata:         metadata,
+			Metadata:         encodeSnapshotMetadata(spec, signals),
 			FetchedAt:        now,
 		}
 		snapshotID, err := svc.repo.InsertSourceSnapshot(ctx, snapshot)
@@ -546,8 +704,9 @@ func (svc *Service) snapshotFeed(
 				ContentSource: "feed-summary",
 				Author:        item.Author,
 			},
-			SnapshotID: snapshotID,
-			CreatedAt:  now,
+			SnapshotID:     snapshotID,
+			CreatedAt:      now,
+			QualitySignals: signals,
 		})
 	}
 	if len(evidence) == 0 {
@@ -583,8 +742,9 @@ func (svc *Service) snapshotExact(
 	text := string(body)
 	canonicalURL := finalURL.String()
 	contentSource := "article"
+	author := ""
 	if endpoint.Kind == domain.SourceKindHTML {
-		text, canonicalURL, _ = extractArticle(text, finalURL)
+		text, canonicalURL, author = extractArticle(text, finalURL)
 	}
 	if parsed, err := validateWebURL(canonicalURL); err == nil {
 		canonicalURL = parsed.String()
@@ -596,16 +756,25 @@ func (svc *Service) snapshotExact(
 		return nil, errors.New("exact source content is too short")
 	}
 	title := sourceName(spec)
+	signals := resolvedQualitySignals(
+		spec,
+		author,
+		string(body),
+		canonicalURL,
+		finalURL.String(),
+		nil,
+	)
 	snapshot := domain.SourceSnapshot{
 		ID:               uuid.NewString(),
 		SourceEndpointID: endpoint.ID,
 		ItemKey:          canonicalURL,
 		Title:            title,
 		CanonicalURL:     canonicalURL,
+		Author:           author,
 		Content:          content,
 		ContentSource:    contentSource,
 		ContentSHA256:    hashContent(content),
-		Metadata:         encodeSnapshotMetadata(spec),
+		Metadata:         encodeSnapshotMetadata(spec, signals),
 		FetchedAt:        now,
 	}
 	snapshotID, err := svc.repo.InsertSourceSnapshot(ctx, snapshot)
@@ -620,9 +789,11 @@ func (svc *Service) snapshotExact(
 			CanonicalURL:  canonicalURL,
 			Summary:       content,
 			ContentSource: contentSource,
+			Author:        author,
 		},
-		SnapshotID: snapshotID,
-		CreatedAt:  now,
+		SnapshotID:     snapshotID,
+		CreatedAt:      now,
+		QualitySignals: signals,
 	}}, nil
 }
 
@@ -630,10 +801,13 @@ func snapshotsToEvidence(snapshots []domain.SourceSnapshot) []preparedEvidence {
 	items := snapshotsToSourceItems(snapshots)
 	evidence := make([]preparedEvidence, len(snapshots))
 	for index := range snapshots {
+		var metadata snapshotMetadata
+		_ = json.Unmarshal([]byte(snapshots[index].Metadata), &metadata)
 		evidence[index] = preparedEvidence{
-			Item:       items[index],
-			SnapshotID: snapshots[index].ID,
-			CreatedAt:  snapshots[index].FetchedAt,
+			Item:           items[index],
+			SnapshotID:     snapshots[index].ID,
+			CreatedAt:      snapshots[index].FetchedAt,
+			QualitySignals: metadata.QualitySignals,
 		}
 	}
 	return evidence
@@ -664,23 +838,47 @@ func (svc *Service) noEvidenceError(mode domain.SourceMode, warnings []string) e
 	switch mode {
 	case domain.SourceModeProvided:
 		cause = fmt.Errorf("the supplied sources could not provide enough readable evidence: %s", warningsToErr(warnings))
+		return svc.insufficientEvidenceError(mode, cause)
 	case domain.SourceModeHybrid:
 		cause = fmt.Errorf("provided and discovered sources could not provide enough readable evidence: %s", warningsToErr(warnings))
 	case domain.SourceModeDiscovered:
 		if !svc.cfg.DiscoveryEnabled {
-			cause = errors.New("source discovery is disabled; cannot generate without grounded evidence")
-			break
+			return failure.New(
+				failure.CodeSourceDiscoveryUnavailable,
+				failure.CategoryInfrastructure,
+				"source_discovery",
+				true,
+				failure.PublicDelayed,
+				errors.New("source discovery is disabled; cannot generate without grounded evidence"),
+			)
 		}
 		cause = fmt.Errorf("source discovery could not provide enough readable evidence: %s", warningsToErr(warnings))
 	default:
 		cause = fmt.Errorf("no usable sources found: %s", warningsToErr(warnings))
 	}
+	return svc.insufficientEvidenceError(mode, cause)
+}
+
+func (svc *Service) insufficientEvidenceError(
+	mode domain.SourceMode,
+	cause error,
+) error {
+	if mode == domain.SourceModeProvided {
+		return failure.New(
+			failure.CodeSourceEvidenceNeedsAttention,
+			failure.CategoryUserActionable,
+			"source_intelligence",
+			false,
+			failure.PublicSources,
+			cause,
+		)
+	}
 	return failure.New(
-		"insufficient_source_evidence",
+		failure.CodeNoWorthwhileEvidence,
 		failure.CategoryInsufficientEvidence,
 		"source_intelligence",
 		false,
-		failure.PublicSources,
+		failure.PublicNoEvidence,
 		cause,
 	)
 }
@@ -699,9 +897,49 @@ func itemLimit(spec domain.SourceSpec) int {
 	return spec.ItemLimit
 }
 
-func encodeSnapshotMetadata(spec domain.SourceSpec) string {
-	value, _ := json.Marshal(snapshotMetadata{Source: sourceName(spec), Origin: spec.Origin})
+func encodeSnapshotMetadata(spec domain.SourceSpec, qualitySignals []string) string {
+	value, _ := json.Marshal(snapshotMetadata{
+		Source: sourceName(spec), Origin: spec.Origin, Role: spec.Role,
+		RankingVersion: spec.RankingVersion, QualitySignals: qualitySignals,
+	})
 	return string(value)
+}
+
+func resolvedQualitySignals(
+	spec domain.SourceSpec,
+	author, raw, canonicalURL, fetchedURL string,
+	publishedAt *time.Time,
+) []string {
+	lower := strings.ToLower(raw)
+	var signals []string
+	if containsAny(lower, "originally published", "syndicated from", "republished with permission") {
+		signals = append(signals, "syndication_marker")
+	}
+	canonical, canonicalErr := url.Parse(canonicalURL)
+	fetched, fetchedErr := url.Parse(fetchedURL)
+	if canonicalErr == nil && fetchedErr == nil && canonical.Hostname() != "" &&
+		fetched.Hostname() != "" &&
+		!strings.EqualFold(canonical.Hostname(), fetched.Hostname()) {
+		signals = append(signals, "cross_domain_canonical")
+	}
+	if strings.TrimSpace(author) == "" &&
+		(spec.Role == domain.SourceRolePractitioner ||
+			spec.Role == domain.SourceRoleReporting ||
+			spec.Role == domain.SourceRoleCounterweight) &&
+		containsAny(lower, " should ", " must ", "recommend", "best practice") {
+		signals = append(signals, "unattributed_advice")
+	}
+	if publishedAt != nil && time.Since(publishedAt.UTC()) > 3*365*24*time.Hour {
+		parsed, _ := url.Parse(canonicalURL)
+		path := ""
+		if parsed != nil {
+			path = strings.ToLower(parsed.Path)
+		}
+		if containsAny(path, "/v1/", "/v2/", "/v3/", "/version/") {
+			signals = append(signals, "stale_versioned_material")
+		}
+	}
+	return signals
 }
 
 func normalizeEvidenceURL(value string) string {

@@ -99,15 +99,7 @@ export default function ReviewPage() {
                 <button
                   className="atelier-primary"
                   type="button"
-                  onClick={() => {
-                    setContextOpen(true);
-                    void apiJSON(
-                      `/api/issues/${encodeURIComponent(active.issueId)}/review-attempted`,
-                      { method: "POST" },
-                    ).catch(() => {
-                      // Activation measurement must never interrupt review.
-                    });
-                  }}
+                  onClick={() => setContextOpen(true)}
                 >
                   Reveal lesson context
                 </button>

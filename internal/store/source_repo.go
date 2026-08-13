@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -17,9 +18,11 @@ func (s *Store) ListActiveSourceSpecs(ctx context.Context, newsletterID string) 
 		       input_url, COALESCE(canonical_url, ''), scope,
 		       COALESCE(kind, ''), item_limit,
 		       COALESCE(discovery_reason, ''), COALESCE(rank_score, 0),
+		       COALESCE(source_role, ''), COALESCE(ranking_version, ''),
+		       score_components::text, preference,
 		       created_at, updated_at
 		FROM source_specs
-		WHERE newsletter_id = $1 AND state = 'active'
+		WHERE newsletter_id = $1 AND state = 'active' AND preference <> 'blocked'
 		ORDER BY origin DESC, created_at
 	`, newsletterID)
 	if err != nil {
@@ -30,17 +33,25 @@ func (s *Store) ListActiveSourceSpecs(ctx context.Context, newsletterID string) 
 	for rows.Next() {
 		var spec domain.SourceSpec
 		var kindStr string
+		var role string
+		var scoreComponents string
 		if err := rows.Scan(
 			&spec.ID, &spec.NewsletterID, &spec.Origin, &spec.State,
 			&spec.DisplayName, &spec.InputURL, &spec.CanonicalURL,
 			&spec.Scope, &kindStr, &spec.ItemLimit,
 			&spec.DiscoveryReason, &spec.RankScore,
+			&role, &spec.RankingVersion, &scoreComponents,
+			&spec.Preference,
 			&spec.CreatedAt, &spec.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan source spec: %w", err)
 		}
 		if kindStr != "" {
 			spec.Kind = domain.SourceKind(kindStr)
+		}
+		spec.Role = domain.SourceRole(role)
+		if err := json.Unmarshal([]byte(scoreComponents), &spec.ScoreComponents); err != nil {
+			return nil, fmt.Errorf("decode source score components: %w", err)
 		}
 		specs = append(specs, spec)
 	}
@@ -254,6 +265,49 @@ func (s *Store) InsertIssueSources(ctx context.Context, issueID string, links []
 	return true, nil
 }
 
+func (s *Store) HasNovelIssueEvidence(
+	ctx context.Context,
+	newsletterID, issueID string,
+) (bool, error) {
+	var novel bool
+	err := s.pool.QueryRow(ctx, `
+		WITH previous_issue AS (
+			SELECT candidate.id
+			FROM issues candidate
+			WHERE candidate.newsletter_id = $1
+			  AND candidate.id <> $2
+			  AND candidate.status = 'generated'
+			  AND EXISTS (
+				SELECT 1 FROM issue_sources prior_source
+				WHERE prior_source.issue_id = candidate.id
+			  )
+			ORDER BY candidate.completed_at DESC NULLS LAST, candidate.created_at DESC
+			LIMIT 1
+		),
+		current_sources AS (
+			SELECT source_snapshot_id FROM issue_sources WHERE issue_id = $2
+		),
+		previous_sources AS (
+			SELECT source_snapshot_id
+			FROM issue_sources
+			WHERE issue_id = (SELECT id FROM previous_issue)
+		)
+		SELECT
+			NOT EXISTS (SELECT 1 FROM previous_issue)
+			OR EXISTS (
+				(SELECT source_snapshot_id FROM current_sources
+				 EXCEPT SELECT source_snapshot_id FROM previous_sources)
+				UNION ALL
+				(SELECT source_snapshot_id FROM previous_sources
+				 EXCEPT SELECT source_snapshot_id FROM current_sources)
+			)
+	`, newsletterID, issueID).Scan(&novel)
+	if err != nil {
+		return false, fmt.Errorf("compare Issue evidence: %w", err)
+	}
+	return novel, nil
+}
+
 func (s *Store) GetSourceSummary(ctx context.Context, newsletterID string) (domain.SourceSummary, error) {
 	var summary domain.SourceSummary
 	var lastChecked *time.Time
@@ -286,31 +340,55 @@ func (s *Store) UpsertDiscoveredSourceSpec(
 		spec.ID = uuid.NewString()
 	}
 	now := time.Now().UTC()
-	err := s.pool.QueryRow(ctx, `
+	scoreComponents, err := json.Marshal(spec.ScoreComponents)
+	if err != nil {
+		return domain.SourceSpec{}, fmt.Errorf("encode source score components: %w", err)
+	}
+	err = s.pool.QueryRow(ctx, `
 		INSERT INTO source_specs (
 			id, newsletter_id, origin, state, display_name, input_url,
 			canonical_url, scope, kind, item_limit, discovery_reason,
-			discovery_query, rank_score, created_at, updated_at
+			discovery_query, rank_score, source_role, ranking_version,
+			score_components, preference, created_at, updated_at
 		)
-		VALUES ($1, $2, 'discovered', $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, $12, $13, $13)
+		VALUES ($1, $2, 'discovered', $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, $12, NULLIF($13, ''), NULLIF($14, ''), $15::jsonb, COALESCE(NULLIF($16, ''), 'neutral'), $17, $17)
 		ON CONFLICT (newsletter_id, canonical_url) WHERE canonical_url IS NOT NULL
-		DO UPDATE SET updated_at = EXCLUDED.updated_at
+		DO UPDATE SET
+			display_name = EXCLUDED.display_name,
+			discovery_reason = EXCLUDED.discovery_reason,
+			discovery_query = EXCLUDED.discovery_query,
+			rank_score = EXCLUDED.rank_score,
+			source_role = EXCLUDED.source_role,
+			ranking_version = EXCLUDED.ranking_version,
+			score_components = EXCLUDED.score_components,
+			preference = CASE
+				WHEN source_specs.preference = 'blocked' THEN 'blocked'
+				ELSE EXCLUDED.preference
+			END,
+			updated_at = EXCLUDED.updated_at
 		RETURNING id::text, newsletter_id::text, origin, state, display_name,
 		          input_url, COALESCE(canonical_url, ''), scope,
 		          COALESCE(kind, ''), item_limit, COALESCE(discovery_reason, ''),
 		          COALESCE(discovery_query, ''), COALESCE(rank_score, 0),
+		          COALESCE(source_role, ''), COALESCE(ranking_version, ''),
+		          score_components::text, preference,
 		          created_at, updated_at
 	`, spec.ID, spec.NewsletterID, spec.State, spec.DisplayName, spec.InputURL,
 		spec.CanonicalURL, spec.Scope, spec.Kind, spec.ItemLimit,
 		nullString(spec.DiscoveryReason), nullString(spec.DiscoveryQuery),
-		spec.RankScore, now).Scan(
+		spec.RankScore, spec.Role, spec.RankingVersion, string(scoreComponents),
+		spec.Preference, now).Scan(
 		&spec.ID, &spec.NewsletterID, &spec.Origin, &spec.State,
 		&spec.DisplayName, &spec.InputURL, &spec.CanonicalURL, &spec.Scope,
 		&spec.Kind, &spec.ItemLimit, &spec.DiscoveryReason,
-		&spec.DiscoveryQuery, &spec.RankScore, &spec.CreatedAt, &spec.UpdatedAt,
+		&spec.DiscoveryQuery, &spec.RankScore, &spec.Role, &spec.RankingVersion,
+		&scoreComponents, &spec.Preference, &spec.CreatedAt, &spec.UpdatedAt,
 	)
 	if err != nil {
 		return domain.SourceSpec{}, fmt.Errorf("upsert discovered source spec: %w", err)
+	}
+	if err := json.Unmarshal(scoreComponents, &spec.ScoreComponents); err != nil {
+		return domain.SourceSpec{}, fmt.Errorf("decode source score components: %w", err)
 	}
 	return spec, nil
 }
@@ -385,6 +463,7 @@ func (s *Store) ListSourceCatalog(
 		         ELSE COALESCE(se.health, 'unknown')
 		       END,
 		       COALESCE(ss.discovery_reason, ''),
+		       COALESCE(ss.source_role, ''), COALESCE(ss.ranking_version, ''), ss.preference,
 		       se.last_checked_at, se.last_success_at,
 		       CASE
 		         WHEN ss.state IN ('unhealthy', 'rejected')
@@ -415,7 +494,8 @@ func (s *Store) ListSourceCatalog(
 		if err := rows.Scan(
 			&item.ID, &item.DisplayName, &item.CanonicalURL, &item.Origin,
 			&item.Scope, &item.Kind, &item.State, &item.Health,
-			&item.DiscoveryReason, &item.LastCheckedAt,
+			&item.DiscoveryReason, &item.Role, &item.RankingVersion, &item.Preference,
+			&item.LastCheckedAt,
 			&item.LastSuccessfulAt, &item.Error,
 		); err != nil {
 			return nil, fmt.Errorf("scan source catalog: %w", err)

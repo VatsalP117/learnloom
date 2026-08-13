@@ -107,7 +107,7 @@ pgx v5; no explicit minimum server version is asserted in code.
 
 | Table | Purpose, principal writers/readers, key constraints/indexes |
 |---|---|
-| `accounts` | identity projection; webhooks/EnsureAccount write, all owner flows read. UUID PK, unique Clerk ID, status check. Deleted rows retained. |
+| `accounts` | identity projection; webhooks/EnsureAccount write, all owner flows read. UUID PK, unique Clerk ID, status check. Deleted status immediately disables access/work; the deletion worker later erases the row and cascading personal data after artifact cleanup. |
 | `personal_sites` | publishing identity/settings. unique owner and username, FK cascade, lowercase check; migration 005 adds public-only indexing. |
 | `newsletters` | stream settings/schedule. owner FK cascade, duration/time checks, JSON source compatibility column, unique owner slug; owner-created and due partial indexes. |
 | `issues` | queue/current projection. stream FK cascade, status/trigger/publication checks, claim/generated checks, unique public ID and scheduled local day; claim/expiry/history indexes. |
@@ -136,6 +136,16 @@ is present—modern PostgreSQL supplies it, but older deployment assumptions
 would need checking.
 
 ## Migration evolution and implications
+
+```mermaid
+flowchart LR
+  M1["001 · hosted core, sites, queue/claims, delivery"] --> M2["002 · source intelligence + frozen evidence"]
+  M2 --> M3["003 · failure history + checkpoints"]
+  M3 --> M4["004 · durable lesson progress"]
+  M4 --> M5["005 · indexing consent — public ≠ indexed"]
+  M1 -.->|compat JSON| J["newsletters.sources"]
+  M2 -.->|canonical| J
+```
 
 1. `001_initial.sql` created the hosted core, public sites, queue/claims,
    delivery, history, webhook deletion/rate/runtime controls.
@@ -186,9 +196,11 @@ replicas × configured pool.
 
 ## Integrity, retention, and recovery
 
-- Most owner data cascades on physical Account deletion, but current deletion
-  marks status and retains row; application data therefore remains until an
-  external/manual hard-delete policy is applied. Artifact deletion is queued.
+- Account deletion immediately marks the identity unavailable, stops work, and
+  queues artifact deletion. After idempotent prefix-wide artifact removal, the
+  worker transactionally writes an identity tombstone and privacy-minimal
+  receipt, then physically deletes the Account so cascading personal data is
+  erased. Failed artifact cleanup retries before relational erasure.
 - Operational webhook/rate rows older than 30 days are cleaned hourly.
   Checkpoints are removed on successful completion; attempt history persists
   with Issue.
@@ -211,7 +223,21 @@ replicas × configured pool.
 3. No DB RLS means a missed owner predicate is a tenant leak. Current reviewed
    control queries include owner scope, but this remains a high-consequence
    review obligation.
-4. Account soft deletion retains personal DB content with no declared purge
-   deadline; only object artifacts are durably removed.
-5. Object orphan cleanup is not implemented. A failed post-upload DB commit
-   attempts delete, but outages can strand objects.
+4. Deletion completion depends on the artifact queue draining. Alerting and
+   staging evidence must prove prolonged object-store failure cannot leave a
+   deleted Account pending without operator visibility.
+5. Immutable artifacts are registered in a durable cleanup queue before upload.
+   Successful Issue completion clears the intent transactionally; failed or
+   ambiguous completion leaves an expiring claim for idempotent worker cleanup.
+   A cleanup claim excludes keys referenced by generated Issues.
+
+> [!CAUTION] Tenant safety is a convention, not a constraint
+> There is no row-level security. Every owner-facing SQL query must carry an
+> `owner_account_id` predicate (directly or through Newsletter joins); a single
+> missed predicate is a tenant leak. This is the highest-consequence review
+> obligation in the codebase.
+
+> [!WARNING] Deletion is asynchronous
+> Access and work stop immediately, but relational erasure waits for confirmed
+> artifact deletion. Monitor and rehearse the deletion queue; do not tell a user
+> erasure is complete until the privacy receipt exists.

@@ -1,12 +1,46 @@
 package source
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
 )
+
+type testURLPolicy struct {
+	blocked string
+	err     error
+}
+
+func (p testURLPolicy) SourceURLAllowed(_ context.Context, rawURL string) (bool, error) {
+	if p.err != nil {
+		return false, p.err
+	}
+	return rawURL != p.blocked, nil
+}
+
+func TestURLPolicyFailsClosedAndChecksRedirectTargets(t *testing.T) {
+	t.Parallel()
+	blocked := "https://blocked.example/article"
+	if err := checkURLPolicy(context.Background(), testURLPolicy{blocked: blocked}, blocked); err == nil {
+		t.Fatal("blocked initial source URL was accepted")
+	}
+	policyErr := errors.New("policy store unavailable")
+	if err := checkURLPolicy(context.Background(), testURLPolicy{err: policyErr}, "https://example.com"); !errors.Is(err, policyErr) {
+		t.Fatalf("policy error = %v", err)
+	}
+	request, err := http.NewRequest(http.MethodGet, blocked, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := redirectPolicy(3, testURLPolicy{blocked: blocked})(request, nil); err == nil {
+		t.Fatal("redirect into a blocked source URL was accepted")
+	}
+}
 
 func TestPublicAddressPolicy(t *testing.T) {
 	t.Parallel()

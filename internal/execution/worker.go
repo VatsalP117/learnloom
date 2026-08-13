@@ -16,6 +16,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/delivery"
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/dossier"
+	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/VatsalP117/learnloom/internal/source"
 	"github.com/VatsalP117/learnloom/internal/store"
 	"github.com/VatsalP117/learnloom/internal/telemetry"
@@ -35,12 +36,20 @@ type Lifecycle interface {
 	LoadLearnerState(context.Context, string, string, int) (domain.LearnerState, error)
 	CompleteIssue(context.Context, string, store.CompleteIssueInput) error
 	FailIssue(context.Context, string, string, error, int, time.Time) error
+	DeferIssue(context.Context, string, string, error, time.Time) error
+	AwaitSourceApproval(context.Context, string, string, time.Time) error
 	DispatchWeeklyRecaps(context.Context, time.Time, int) (int, error)
 	ClaimNextWeeklyRecap(context.Context, time.Time, time.Duration, int) (*store.WeeklyRecapClaim, error)
 	RenewWeeklyRecapClaim(context.Context, string, string, time.Time) error
 	CompleteWeeklyRecap(context.Context, string, string, string, time.Time) error
 	FailWeeklyRecap(context.Context, string, string, error, int, time.Time) error
 	MarkWeeklyRecapUnknown(context.Context, string, string, error, time.Time) error
+	DispatchPublicFollowUpdates(context.Context, time.Time, int) (int, error)
+	ClaimNextPublicFollowDelivery(context.Context, time.Time, time.Duration, int) (*store.PublicFollowClaim, error)
+	RenewPublicFollowDeliveryClaim(context.Context, string, string, time.Time) error
+	CompletePublicFollowDelivery(context.Context, string, string, string, time.Time) error
+	FailPublicFollowDelivery(context.Context, string, string, error, int, time.Time) error
+	MarkPublicFollowDeliveryUnknown(context.Context, string, string, error, time.Time) error
 	ClaimNextDelivery(context.Context, time.Time, time.Duration, int) (*store.DeliveryClaim, error)
 	RenewDeliveryClaim(context.Context, string, string, time.Time) error
 	CompleteDelivery(context.Context, string, string, string, time.Time) error
@@ -49,11 +58,24 @@ type Lifecycle interface {
 	ClaimAccountDeletion(context.Context, time.Time, time.Duration) (*store.DeletionClaim, error)
 	CompleteAccountDeletion(context.Context, string, string, time.Time) error
 	FailAccountDeletion(context.Context, string, string, error, time.Time) error
+	RegisterArtifactCleanup(context.Context, string, string, time.Time) error
+	ClaimArtifactCleanup(context.Context, time.Time, time.Duration) (*store.ArtifactCleanupClaim, error)
+	CompleteArtifactCleanup(context.Context, string, string) error
+	CancelArtifactCleanup(context.Context, string) error
+	FailArtifactCleanup(context.Context, string, string, error, time.Time) error
 	CleanupOperationalState(context.Context, time.Time) (int64, error)
 }
 
 type Producer interface {
 	Generate(context.Context, dossier.GenerateRequest) (dossier.GenerateResult, error)
+}
+
+type SourcePreparer interface {
+	PrepareIssue(
+		context.Context,
+		domain.Newsletter,
+		string,
+	) (source.PrepareIssueResult, error)
 }
 
 type Artifacts interface {
@@ -90,7 +112,7 @@ type Worker struct {
 	producer    Producer
 	artifacts   Artifacts
 	mailer      Mailer
-	sourceSvc   *source.Service
+	sourceSvc   SourcePreparer
 	cfg         Config
 	logger      *slog.Logger
 	now         func() time.Time
@@ -100,35 +122,43 @@ type Worker struct {
 }
 
 type workerMetrics struct {
-	cycles            atomic.Uint64
-	generated         atomic.Uint64
-	generationFailed  atomic.Uint64
-	delivered         atomic.Uint64
-	deliveryFailed    atomic.Uint64
-	deletions         atomic.Uint64
-	recoveredClaims   atomic.Uint64
-	renewalFailures   atomic.Uint64
-	releasedClaims    atomic.Uint64
-	activeIssues      atomic.Int64
-	activeDeliveries  atomic.Int64
-	lastCycleUnixNano atomic.Int64
-	durations         *telemetry.HistogramFamily
+	cycles                     atomic.Uint64
+	generated                  atomic.Uint64
+	generationFailed           atomic.Uint64
+	generationDeferred         atomic.Uint64
+	generationTruncated        atomic.Uint64
+	generationAwaitingApproval atomic.Uint64
+	delivered                  atomic.Uint64
+	deliveryFailed             atomic.Uint64
+	deletions                  atomic.Uint64
+	artifactCleanups           atomic.Uint64
+	recoveredClaims            atomic.Uint64
+	renewalFailures            atomic.Uint64
+	releasedClaims             atomic.Uint64
+	activeIssues               atomic.Int64
+	activeDeliveries           atomic.Int64
+	lastCycleUnixNano          atomic.Int64
+	durations                  *telemetry.HistogramFamily
 }
 
 type Snapshot struct {
-	Cycles           uint64    `json:"cycles"`
-	Generated        uint64    `json:"generated"`
-	GenerationFailed uint64    `json:"generationFailed"`
-	Delivered        uint64    `json:"delivered"`
-	DeliveryFailed   uint64    `json:"deliveryFailed"`
-	Deletions        uint64    `json:"deletions"`
-	RecoveredClaims  uint64    `json:"recoveredClaims"`
-	RenewalFailures  uint64    `json:"renewalFailures"`
-	ReleasedClaims   uint64    `json:"releasedClaims"`
-	ActiveIssues     int64     `json:"activeIssues"`
-	ActiveDeliveries int64     `json:"activeDeliveries"`
-	Draining         bool      `json:"draining"`
-	LastCycleAt      time.Time `json:"lastCycleAt"`
+	Cycles                     uint64    `json:"cycles"`
+	Generated                  uint64    `json:"generated"`
+	GenerationFailed           uint64    `json:"generationFailed"`
+	GenerationDeferred         uint64    `json:"generationDeferred"`
+	GenerationTruncated        uint64    `json:"generationTruncated"`
+	GenerationAwaitingApproval uint64    `json:"generationAwaitingApproval"`
+	Delivered                  uint64    `json:"delivered"`
+	DeliveryFailed             uint64    `json:"deliveryFailed"`
+	Deletions                  uint64    `json:"deletions"`
+	ArtifactCleanups           uint64    `json:"artifactCleanups"`
+	RecoveredClaims            uint64    `json:"recoveredClaims"`
+	RenewalFailures            uint64    `json:"renewalFailures"`
+	ReleasedClaims             uint64    `json:"releasedClaims"`
+	ActiveIssues               int64     `json:"activeIssues"`
+	ActiveDeliveries           int64     `json:"activeDeliveries"`
+	Draining                   bool      `json:"draining"`
+	LastCycleAt                time.Time `json:"lastCycleAt"`
 }
 
 func New(
@@ -136,7 +166,7 @@ func New(
 	producer Producer,
 	artifacts Artifacts,
 	mailer Mailer,
-	sourceSvc *source.Service,
+	sourceSvc SourcePreparer,
 	cfg Config,
 	logger *slog.Logger,
 ) (*Worker, error) {
@@ -242,10 +272,21 @@ func (w *Worker) Cycle(ctx context.Context) error {
 	if err := w.processWeeklyRecaps(ctx); err != nil {
 		return err
 	}
+	if dispatched, err := w.lifecycle.DispatchPublicFollowUpdates(ctx, now, 100); err != nil {
+		return err
+	} else if dispatched > 0 {
+		w.logger.InfoContext(ctx, "dispatched public path updates", "count", dispatched)
+	}
+	if err := w.processPublicFollowDeliveries(ctx); err != nil {
+		return err
+	}
 	if w.draining.Load() {
 		return nil
 	}
 	if err := w.processDeletion(ctx); err != nil {
+		return err
+	}
+	if err := w.processArtifactCleanup(ctx); err != nil {
 		return err
 	}
 	if w.lastCleanup.IsZero() || now.Sub(w.lastCleanup) >= time.Hour {
@@ -258,6 +299,131 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		w.lastCleanup = now
 	}
 	return nil
+}
+
+func (w *Worker) processPublicFollowDeliveries(ctx context.Context) error {
+	for count := 0; count < w.cfg.GlobalConcurrency; count++ {
+		if w.draining.Load() {
+			return nil
+		}
+		claim, err := w.lifecycle.ClaimNextPublicFollowDelivery(
+			ctx, w.now(), w.cfg.ClaimDuration, w.cfg.MaxDeliveryAttempts,
+		)
+		if err != nil {
+			return err
+		}
+		if claim == nil {
+			return nil
+		}
+		if err := w.processPublicFollowDelivery(ctx, claim); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *Worker) processPublicFollowDelivery(
+	ctx context.Context,
+	claim *store.PublicFollowClaim,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	renewed := make(chan error, 1)
+	go w.renewPublicFollowDeliveryClaim(ctx, claim, cancel, renewed)
+	appOrigin := strings.TrimRight(w.cfg.AppOrigin, "/")
+	subject := "Confirm your Learnloom path follow"
+	var htmlBody, textBody string
+	if claim.Kind == "update" {
+		dossierURL := "https://" + claim.SiteUsername + "." + w.cfg.RootDomain + "/d/" +
+			claim.IssuePublicID + "/" + claim.IssuePublicSlug
+		unsubscribeURL := appOrigin + "/public-follow/unsubscribe?token=" + claim.Token
+		subject = claim.IssueTitle
+		htmlBody = `<p>A new Dossier was published in <strong>` + html.EscapeString(claim.NewsletterName) + `</strong>.</p>` +
+			`<p><a href="` + html.EscapeString(dossierURL) + `">` + html.EscapeString(claim.IssueTitle) + `</a></p>` +
+			`<p><a href="` + html.EscapeString(unsubscribeURL) + `">Unsubscribe from this path</a></p>`
+		textBody = "A new Dossier was published in " + claim.NewsletterName + ":\n\n" +
+			claim.IssueTitle + "\n" + dossierURL + "\n\nUnsubscribe: " + unsubscribeURL + "\n"
+	} else {
+		confirmationURL := appOrigin + "/public-follow/confirm?token=" + claim.Token
+		htmlBody = `<p>Confirm that you want to follow <strong>` + html.EscapeString(claim.NewsletterName) + `</strong>.</p>` +
+			`<p><a href="` + html.EscapeString(confirmationURL) + `">Confirm this follow</a></p>` +
+			`<p>If you did not request this, ignore this email.</p>`
+		textBody = "Confirm that you want to follow " + claim.NewsletterName + ":\n\n" + confirmationURL +
+			"\n\nIf you did not request this, ignore this email.\n"
+	}
+	externalID, err := w.mailer.Deliver(ctx, delivery.Message{
+		IdempotencyKey: "public-follow/" + claim.ID,
+		To:             claim.Email, Subject: subject,
+		HTML: htmlBody, Text: textBody,
+	})
+	if err == nil {
+		err = w.lifecycle.CompletePublicFollowDelivery(
+			ctx, claim.ID, claim.ClaimToken, externalID, w.now(),
+		)
+		if err != nil {
+			err = &delivery.OutcomeUnknownError{Cause: err}
+		}
+	}
+	cancel()
+	renewErr := <-renewed
+	if err == nil && renewErr != nil && !errors.Is(renewErr, context.Canceled) {
+		err = renewErr
+	}
+	if err == nil {
+		w.metrics.delivered.Add(1)
+		return nil
+	}
+	w.metrics.deliveryFailed.Add(1)
+	var unknown *delivery.OutcomeUnknownError
+	var transitionErr error
+	if errors.As(err, &unknown) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		transitionErr = w.lifecycle.MarkPublicFollowDeliveryUnknown(
+			context.Background(), claim.ID, claim.ClaimToken, err, w.now(),
+		)
+	} else {
+		transitionErr = w.lifecycle.FailPublicFollowDelivery(
+			context.Background(), claim.ID, claim.ClaimToken, err,
+			w.cfg.MaxDeliveryAttempts, w.now(),
+		)
+	}
+	if transitionErr != nil && !errors.Is(transitionErr, store.ErrClaimLost) {
+		return errors.Join(err, transitionErr)
+	}
+	return fmt.Errorf("deliver public follow confirmation %s: %w", claim.ID, err)
+}
+
+func (w *Worker) renewPublicFollowDeliveryClaim(
+	ctx context.Context,
+	claim *store.PublicFollowClaim,
+	cancel context.CancelFunc,
+	result chan<- error,
+) {
+	interval := min(w.cfg.ClaimDuration/3, 30*time.Second)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	currentExpiry := claim.ExpiresAt
+	for {
+		select {
+		case <-ctx.Done():
+			result <- ctx.Err()
+			return
+		case <-ticker.C:
+			expires := w.now().Add(w.cfg.ClaimDuration)
+			err := w.lifecycle.RenewPublicFollowDeliveryClaim(
+				ctx, claim.ID, claim.ClaimToken, expires,
+			)
+			if err != nil {
+				w.metrics.renewalFailures.Add(1)
+				if errors.Is(err, store.ErrClaimLost) || !w.now().Before(currentExpiry) {
+					cancel()
+					result <- err
+					return
+				}
+				continue
+			}
+			currentExpiry = expires
+		}
+	}
 }
 
 func (w *Worker) processWeeklyRecaps(ctx context.Context) error {
@@ -398,9 +564,14 @@ func renderWeeklyRecap(
 	payload store.WeeklyRecapPayload,
 	appOrigin string,
 ) (string, string) {
-	concepts := payload.Concepts
-	if len(concepts) == 0 {
-		concepts = []string{"Your recent learning thread"}
+	capabilities := payload.Capabilities
+	if len(capabilities) == 0 {
+		for _, concept := range payload.Concepts {
+			capabilities = append(capabilities, "Can explain the core idea behind "+concept)
+		}
+	}
+	if len(capabilities) == 0 {
+		capabilities = []string{"Your recent learning thread is ready to reconnect"}
 	}
 	var htmlBody strings.Builder
 	var textBody strings.Builder
@@ -410,18 +581,18 @@ func renderWeeklyRecap(
 	}
 	fmt.Fprintf(
 		&htmlBody,
-		"<h1>Your week in learning</h1><p>You completed %d lesson%s.</p><h2>Concepts learned</h2><ul>",
+		"<h1>Your week in learning</h1><p>You completed %d lesson%s.</p><h2>Capabilities gained</h2><ul>",
 		payload.LessonsCompleted,
 		map[bool]string{true: "", false: "s"}[payload.LessonsCompleted == 1],
 	)
 	fmt.Fprintf(
 		&textBody,
-		"Your week in learning\n\nYou completed %d lesson(s).\n\nConcepts learned:\n",
+		"Your week in learning\n\nYou completed %d lesson(s).\n\nCapabilities gained:\n",
 		payload.LessonsCompleted,
 	)
-	for _, concept := range concepts {
-		fmt.Fprintf(&htmlBody, "<li>%s</li>", html.EscapeString(concept))
-		fmt.Fprintf(&textBody, "- %s\n", concept)
+	for _, capability := range capabilities {
+		fmt.Fprintf(&htmlBody, "<li>%s</li>", html.EscapeString(capability))
+		fmt.Fprintf(&textBody, "- %s\n", capability)
 	}
 	fmt.Fprintf(
 		&htmlBody,
@@ -496,6 +667,7 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 	renewed := make(chan error, 1)
 	go w.renewIssueClaim(ctx, claim, cancel, renewed)
 	var err error
+	awaitingSourceApproval := false
 	phaseStarted := time.Now()
 	history, err := w.lifecycle.LoadLearningHistory(
 		ctx,
@@ -524,14 +696,32 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 		phaseStarted = time.Now()
 		prepared, err = w.sourceSvc.PrepareIssue(ctx, claim.Issue.Newsletter, claim.Issue.ID)
 		w.logIssuePhase(ctx, claim.Issue.ID, "source_intelligence", phaseStarted, err)
-		if err == nil {
+		if err == nil &&
+			claim.Issue.Newsletter.RhythmMode == domain.RhythmEvidenceLed &&
+			!prepared.HasNovelEvidence {
+			err = failure.New(
+				failure.CodeNoNewEvidence,
+				failure.CategoryInsufficientEvidence,
+				"evidence_rhythm",
+				false,
+				failure.PublicNoEvidence,
+				errors.New("evidence-led rhythm found no source changes since the previous lesson"),
+			)
+		}
+		if err == nil &&
+			claim.Issue.Newsletter.SourceReviewMode == domain.SourceReviewBeforeLesson &&
+			claim.Issue.Newsletter.SourceApprovedAt == nil {
+			awaitingSourceApproval = true
+		}
+		if err == nil && !awaitingSourceApproval {
 			generateRequest := dossier.GenerateRequest{
-				Newsletter:    claim.Issue.Newsletter,
-				History:       history,
-				LearnerState:  learnerState,
-				Now:           w.now(),
-				PreparedItems: prepared.Items,
-				Warnings:      prepared.Warnings,
+				Newsletter:          claim.Issue.Newsletter,
+				History:             history,
+				LearnerState:        learnerState,
+				Now:                 w.now(),
+				RequestedLessonType: claim.Issue.RequestedLessonType,
+				PreparedItems:       prepared.Items,
+				Warnings:            prepared.Warnings,
 			}
 			fingerprint, fingerprintErr := dossier.GenerationFingerprint(
 				generateRequest,
@@ -629,14 +819,27 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 			w.logIssuePhase(ctx, claim.Issue.ID, "dossier_generation", phaseStarted, err)
 			if err == nil {
 				generationID := uuid.NewString()
+				artifactKey, keyErr := artifact.KeyFor(
+					claim.AccountID, claim.Issue.NewsletterID,
+					claim.Issue.ID, generationID,
+				)
+				if keyErr != nil {
+					err = keyErr
+				} else {
+					err = w.lifecycle.RegisterArtifactCleanup(
+						ctx, artifactKey, claim.Issue.ID, w.now(),
+					)
+				}
 				var saved artifact.PutResult
-				phaseStarted = time.Now()
-				saved, err = w.artifacts.Put(ctx, artifact.PutInput{
-					AccountID: claim.AccountID, NewsletterID: claim.Issue.NewsletterID,
-					IssueID: claim.Issue.ID, GenerationID: generationID,
-					Artifact: result.Artifact,
-				})
-				w.logIssuePhase(ctx, claim.Issue.ID, "artifact_storage", phaseStarted, err)
+				if err == nil {
+					phaseStarted = time.Now()
+					saved, err = w.artifacts.Put(ctx, artifact.PutInput{
+						AccountID: claim.AccountID, NewsletterID: claim.Issue.NewsletterID,
+						IssueID: claim.Issue.ID, GenerationID: generationID,
+						Artifact: result.Artifact,
+					})
+					w.logIssuePhase(ctx, claim.Issue.ID, "artifact_storage", phaseStarted, err)
+				}
 				if err == nil {
 					phaseStarted = time.Now()
 					err = w.lifecycle.CompleteIssue(ctx, claim.Issue.ID, store.CompleteIssueInput{
@@ -647,7 +850,9 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 					})
 					w.logIssuePhase(ctx, claim.Issue.ID, "completion_transaction", phaseStarted, err)
 					if err != nil {
-						_ = w.artifacts.Delete(context.Background(), saved.Key)
+						if deleteErr := w.artifacts.Delete(context.Background(), saved.Key); deleteErr == nil {
+							_ = w.lifecycle.CancelArtifactCleanup(context.Background(), saved.Key)
+						}
 					}
 				}
 			}
@@ -655,13 +860,45 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 	}
 	cancel()
 	renewErr := <-renewed
+	if awaitingSourceApproval {
+		if renewErr != nil && !errors.Is(renewErr, context.Canceled) {
+			return fmt.Errorf("await source approval for Issue %s: %w", claim.Issue.ID, renewErr)
+		}
+		if transitionErr := w.lifecycle.AwaitSourceApproval(
+			context.Background(),
+			claim.Issue.ID,
+			claim.Token,
+			w.now(),
+		); transitionErr != nil {
+			return fmt.Errorf("await source approval for Issue %s: %w", claim.Issue.ID, transitionErr)
+		}
+		w.metrics.generationAwaitingApproval.Add(1)
+		w.logIssuePhase(ctx, claim.Issue.ID, "total", issueStarted, nil)
+		return nil
+	}
 	if err == nil && renewErr != nil && !errors.Is(renewErr, context.Canceled) {
 		err = renewErr
 	}
 	if err != nil {
-		w.metrics.generationFailed.Add(1)
+		detail := failure.Describe(err)
+		if detail.Code == "model_output_truncated" {
+			w.metrics.generationTruncated.Add(1)
+		}
 		var failErr error
-		if w.draining.Load() && errors.Is(err, context.Canceled) {
+		if detail.Category == failure.CategoryInsufficientEvidence {
+			failErr = w.lifecycle.DeferIssue(
+				context.Background(),
+				claim.Issue.ID,
+				claim.Token,
+				err,
+				w.now(),
+			)
+			if failErr == nil {
+				w.metrics.generationDeferred.Add(1)
+				w.logIssuePhase(ctx, claim.Issue.ID, "total", issueStarted, err)
+				return nil
+			}
+		} else if w.draining.Load() && errors.Is(err, context.Canceled) {
 			failErr = w.lifecycle.ReleaseIssueClaim(
 				context.Background(),
 				claim.Issue.ID,
@@ -673,6 +910,7 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 				w.metrics.releasedClaims.Add(1)
 			}
 		} else {
+			w.metrics.generationFailed.Add(1)
 			failErr = w.lifecycle.FailIssue(
 				context.Background(),
 				claim.Issue.ID,
@@ -981,6 +1219,29 @@ func (w *Worker) processDeletion(ctx context.Context) error {
 	return nil
 }
 
+func (w *Worker) processArtifactCleanup(ctx context.Context) error {
+	claim, err := w.lifecycle.ClaimArtifactCleanup(
+		ctx, w.now(), w.cfg.ClaimDuration,
+	)
+	if err != nil || claim == nil {
+		return err
+	}
+	if err := w.artifacts.Delete(ctx, claim.Key); err != nil {
+		transitionErr := w.lifecycle.FailArtifactCleanup(
+			context.Background(), claim.Key, claim.Token, err, w.now(),
+		)
+		if transitionErr != nil && !errors.Is(transitionErr, store.ErrClaimLost) {
+			return errors.Join(err, transitionErr)
+		}
+		return fmt.Errorf("clean orphaned artifact: %w", err)
+	}
+	if err := w.lifecycle.CompleteArtifactCleanup(ctx, claim.Key, claim.Token); err != nil {
+		return err
+	}
+	w.metrics.artifactCleanups.Add(1)
+	return nil
+}
+
 func (w *Worker) Snapshot() Snapshot {
 	last := w.metrics.lastCycleUnixNano.Load()
 	var lastCycle time.Time
@@ -989,17 +1250,21 @@ func (w *Worker) Snapshot() Snapshot {
 	}
 	return Snapshot{
 		Cycles: w.metrics.cycles.Load(), Generated: w.metrics.generated.Load(),
-		GenerationFailed: w.metrics.generationFailed.Load(),
-		Delivered:        w.metrics.delivered.Load(),
-		DeliveryFailed:   w.metrics.deliveryFailed.Load(),
-		Deletions:        w.metrics.deletions.Load(),
-		RecoveredClaims:  w.metrics.recoveredClaims.Load(),
-		RenewalFailures:  w.metrics.renewalFailures.Load(),
-		ReleasedClaims:   w.metrics.releasedClaims.Load(),
-		ActiveIssues:     w.metrics.activeIssues.Load(),
-		ActiveDeliveries: w.metrics.activeDeliveries.Load(),
-		Draining:         w.draining.Load(),
-		LastCycleAt:      lastCycle,
+		GenerationFailed:           w.metrics.generationFailed.Load(),
+		GenerationDeferred:         w.metrics.generationDeferred.Load(),
+		GenerationTruncated:        w.metrics.generationTruncated.Load(),
+		GenerationAwaitingApproval: w.metrics.generationAwaitingApproval.Load(),
+		Delivered:                  w.metrics.delivered.Load(),
+		DeliveryFailed:             w.metrics.deliveryFailed.Load(),
+		Deletions:                  w.metrics.deletions.Load(),
+		ArtifactCleanups:           w.metrics.artifactCleanups.Load(),
+		RecoveredClaims:            w.metrics.recoveredClaims.Load(),
+		RenewalFailures:            w.metrics.renewalFailures.Load(),
+		ReleasedClaims:             w.metrics.releasedClaims.Load(),
+		ActiveIssues:               w.metrics.activeIssues.Load(),
+		ActiveDeliveries:           w.metrics.activeDeliveries.Load(),
+		Draining:                   w.draining.Load(),
+		LastCycleAt:                lastCycle,
 	}
 }
 

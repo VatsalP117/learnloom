@@ -9,6 +9,7 @@ import TodayPage from "./TodayPage";
 import type { Site } from "./types";
 
 const IssueDetail = lazy(() => import("./IssueDetail"));
+const FirstLessonWelcome = lazy(() => import("./FirstLessonWelcome"));
 const NewsletterCreate = lazy(() => import("./NewsletterCreate"));
 const NewsletterDetail = lazy(() => import("./NewsletterDetail"));
 const SettingsPage = lazy(() => import("./SettingsPage"));
@@ -69,6 +70,11 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }: Ap
     return routePage(
       <NewsletterCreate sourceDiscovery={Boolean(capabilities.sourceDiscovery)} />,
     );
+  }
+
+  const welcomeMatch = /^\/welcome\/([a-z0-9_-]+)$/.exec(path);
+  if (welcomeMatch) {
+    return routePage(<FirstLessonWelcome newsletterId={welcomeMatch[1]} />);
   }
 
   const detailMatch = /^\/newsletters\/([a-z0-9_-]+)$/.exec(path);

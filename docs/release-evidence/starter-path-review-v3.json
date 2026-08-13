@@ -1,0 +1,132 @@
+{
+  "version": "starter-path-review-v3",
+  "catalogVersion": 3,
+  "reviews": [
+    {
+      "templateId": "ai-evaluation-governance",
+      "templateVersion": 1,
+      "name": "Evaluate an AI system",
+      "sourceUrls": [
+        "https://www.nist.gov/itl/ai-risk-management-framework",
+        "https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence",
+        "https://airc.nist.gov/",
+        "https://airc.nist.gov/technical-reports/"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    },
+    {
+      "templateId": "production-rag-quality",
+      "templateVersion": 1,
+      "name": "Build reliable RAG",
+      "sourceUrls": [
+        "https://platform.openai.com/docs/guides/retrieval",
+        "https://learn.microsoft.com/en-us/azure/search/retrieval-augmented-generation-overview",
+        "https://arxiv.org/abs/2005.11401",
+        "https://platform.openai.com/docs/guides/evals"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    },
+    {
+      "templateId": "reliable-ai-agents",
+      "templateVersion": 1,
+      "name": "Engineer reliable AI agents",
+      "sourceUrls": [
+        "https://www.anthropic.com/engineering/building-effective-agents",
+        "https://platform.openai.com/docs/guides/agents",
+        "https://modelcontextprotocol.io/docs/learn/architecture",
+        "https://arxiv.org/abs/2210.03629"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    },
+    {
+      "templateId": "llm-application-security",
+      "templateVersion": 1,
+      "name": "Threat-model an LLM app",
+      "sourceUrls": [
+        "https://genai.owasp.org/llm-top-10/",
+        "https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence",
+        "https://atlas.mitre.org/",
+        "https://saif.google/"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    },
+    {
+      "templateId": "context-engineering",
+      "templateVersion": 1,
+      "name": "Engineer model context",
+      "sourceUrls": [
+        "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+        "https://platform.openai.com/docs/guides/prompt-engineering",
+        "https://arxiv.org/abs/2307.03172",
+        "https://modelcontextprotocol.io/docs/learn/architecture"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    },
+    {
+      "templateId": "production-ai-observability",
+      "templateVersion": 1,
+      "name": "Operate AI inference",
+      "sourceUrls": [
+        "https://opentelemetry.io/docs/specs/semconv/gen-ai/",
+        "https://platform.openai.com/docs/guides/latency-optimization",
+        "https://arxiv.org/abs/2309.06180",
+        "https://nvidia.github.io/TensorRT-LLM/"
+      ],
+      "lessonArtifact": "",
+      "reviewer": "",
+      "reviewedOn": "",
+      "decision": "pending",
+      "outcomeUseful": false,
+      "sourcesVerified": false,
+      "lessonAnswerable": false,
+      "claimsChecked": false,
+      "findings": [],
+      "notes": ""
+    }
+  ]
+}

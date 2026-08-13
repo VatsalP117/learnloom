@@ -122,9 +122,9 @@ func renderExamplesDocument(
 		}
 		body.WriteString(`</section>`)
 	}
-	body.WriteString(`<section class="seo-cta"><p class="eyebrow">Build your own learning home</p><h2>Let each lesson become part of something larger.</h2><p>Choose a subject, bring the sources you trust, and decide privately what you want to share.</p><a class="primary" href="`)
+	body.WriteString(`<section class="seo-cta"><p class="eyebrow">Build your own learning path</p><h2>Let each lesson become part of something larger.</h2><p>Start with a subject. Learnloom can establish the source environment, while you decide privately what you want to share.</p><a class="primary" href="`)
 	body.WriteString(html.EscapeString(strings.TrimRight(appOrigin, "/") + "/sign-up"))
-	body.WriteString(`">Create your learning stream <span>↗</span></a></section></main>`)
+	body.WriteString(`">Build your learning path <span>↗</span></a></section></main>`)
 	body.WriteString(renderSEOFooter(appOrigin))
 	body.WriteString(`</body></html>`)
 	return body.String()

@@ -30,6 +30,20 @@ func TestArtifactKeyValidation(t *testing.T) {
 	}
 }
 
+func TestArtifactKeyForMatchesPutNamespace(t *testing.T) {
+	t.Parallel()
+	key, err := KeyFor("account", "stream", "issue", "generation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key != "accounts/account/newsletters/stream/issues/issue/generation.json.gz" {
+		t.Fatalf("key=%q", key)
+	}
+	if _, err := KeyFor("../account", "stream", "issue", "generation"); err == nil {
+		t.Fatal("unsafe artifact namespace was accepted")
+	}
+}
+
 func TestCompressedCanonicalArtifactRoundTrip(t *testing.T) {
 	t.Parallel()
 	dossierValue := domain.Dossier{

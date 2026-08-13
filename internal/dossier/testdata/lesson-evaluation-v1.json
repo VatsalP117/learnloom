@@ -1,0 +1,126 @@
+{
+  "version": "lesson-eval-v1",
+  "labelStatus": "product_labeled",
+  "cases": [
+    {
+      "id": "usefulness-concrete-decision",
+      "dimension": "usefulness",
+      "learnerContext": "Intermediate product manager who wants to choose an AI evaluation threshold.",
+      "priorLearning": "Knows precision and recall but has not connected metrics to release decisions.",
+      "evidence": "[S1] Evaluation thresholds should reflect intended use, consequences, and deployment context.",
+      "candidateLesson": "Explains the threshold mechanism, works through a support-assistant release decision, names a costly false positive, and ends with a threshold-setting exercise [S1].",
+      "expectedPass": true,
+      "expectedFindings": ["decision-relevant mechanism", "usable worked example"]
+    },
+    {
+      "id": "usefulness-generic-summary",
+      "dimension": "usefulness",
+      "learnerContext": "Intermediate product manager who wants to choose an AI evaluation threshold.",
+      "priorLearning": "Already knows common metric definitions.",
+      "evidence": "[S1] Evaluation thresholds should reflect intended use, consequences, and deployment context.",
+      "candidateLesson": "Lists precision, recall, accuracy, and F1 definitions, then says teams should choose the right metric.",
+      "expectedPass": false,
+      "expectedFindings": ["does not advance the learner goal", "no decision or transfer task"]
+    },
+    {
+      "id": "continuity-explicit-bridge",
+      "dimension": "continuity",
+      "learnerContext": "Intermediate learner building a systems-thinking path.",
+      "priorLearning": "Previous lesson distinguished reinforcing and balancing loops.",
+      "evidence": "[S1] Delays can cause balancing interventions to overshoot or oscillate.",
+      "candidateLesson": "Retrieves the prior loop distinction, then adds delay as the mechanism that explains overshoot in a staffing example [S1].",
+      "expectedPass": true,
+      "expectedFindings": ["retrieves prior concept", "adds a genuinely new connection"]
+    },
+    {
+      "id": "continuity-repeated-introduction",
+      "dimension": "continuity",
+      "learnerContext": "Intermediate learner building a systems-thinking path.",
+      "priorLearning": "Previous lesson already introduced reinforcing and balancing loops with a staffing example.",
+      "evidence": "[S1] Reinforcing feedback amplifies change while balancing feedback opposes it.",
+      "candidateLesson": "Defines reinforcing and balancing feedback and repeats the same staffing example [S1].",
+      "expectedPass": false,
+      "expectedFindings": ["repeats prior objective", "no continuity advance"]
+    },
+    {
+      "id": "difficulty-beginner-scaffolded",
+      "dimension": "difficulty_fit",
+      "learnerContext": "Beginner who has never read a macroeconomic time series.",
+      "priorLearning": "No prior lessons.",
+      "evidence": "[S1] A rate of change describes how quickly a level changes over a period.",
+      "candidateLesson": "Defines level and rate of change in plain language, walks through a two-row example, and checks the distinction before using an inflation chart [S1].",
+      "expectedPass": true,
+      "expectedFindings": ["prerequisites are scaffolded", "example fits beginner level"]
+    },
+    {
+      "id": "difficulty-beginner-jargon",
+      "dimension": "difficulty_fit",
+      "learnerContext": "Beginner who has never read a macroeconomic time series.",
+      "priorLearning": "No prior lessons.",
+      "evidence": "[S1] A rate of change describes how quickly a level changes over a period.",
+      "candidateLesson": "Opens with annualized log differences, seasonal adjustment, base effects, and output-gap decomposition without definitions.",
+      "expectedPass": false,
+      "expectedFindings": ["unmet prerequisites", "too advanced for stated learner"]
+    },
+    {
+      "id": "unsupported-bounded-claim",
+      "dimension": "unsupported_claims",
+      "learnerContext": "Advanced analyst evaluating a policy brief.",
+      "priorLearning": "Can distinguish observation from causal inference.",
+      "evidence": "[S1] The observational study found an association; participants were not randomized.",
+      "candidateLesson": "States that the variables were associated in this sample, explains why the design does not establish causality, and names confounding as a limitation [S1].",
+      "expectedPass": true,
+      "expectedFindings": ["claim matches evidence", "causal limitation is explicit"]
+    },
+    {
+      "id": "unsupported-invented-causality",
+      "dimension": "unsupported_claims",
+      "learnerContext": "Advanced analyst evaluating a policy brief.",
+      "priorLearning": "Can distinguish observation from causal inference.",
+      "evidence": "[S1] The observational study found an association; participants were not randomized.",
+      "candidateLesson": "Concludes that the intervention caused the outcome and recommends nationwide adoption [S1].",
+      "expectedPass": false,
+      "expectedFindings": ["unsupported causal claim", "recommendation exceeds evidence"]
+    },
+    {
+      "id": "redundancy-new-transfer",
+      "dimension": "redundancy",
+      "learnerContext": "Intermediate learner studying calibrated forecasting.",
+      "priorLearning": "Defined base rates and wrote a resolvable forecast.",
+      "evidence": "[S1] Proper scores reward accurate probabilities and penalize overconfidence.",
+      "candidateLesson": "Builds on the existing forecast by introducing the Brier score, then asks the learner to compare two probability sequences [S1].",
+      "expectedPass": true,
+      "expectedFindings": ["new concept direction", "prior knowledge is reused rather than repeated"]
+    },
+    {
+      "id": "redundancy-paraphrased-repeat",
+      "dimension": "redundancy",
+      "learnerContext": "Intermediate learner studying calibrated forecasting.",
+      "priorLearning": "Defined base rates and wrote a resolvable forecast using the same evidence.",
+      "evidence": "[S1] Base rates provide an outside-view starting probability.",
+      "candidateLesson": "Renames base rates as historical frequencies and repeats the same outside-view example and retrieval question [S1].",
+      "expectedPass": false,
+      "expectedFindings": ["semantic repetition", "same evidence and application"]
+    },
+    {
+      "id": "time-fit-twelve-minute",
+      "dimension": "time_fit",
+      "learnerContext": "Intermediate learner with 12 focused minutes available.",
+      "priorLearning": "One related foundation lesson.",
+      "evidence": "[S1] The supplied evidence supports one central mechanism and boundary.",
+      "candidateLesson": "Final rendered body is 1,080 words with one mechanism, worked example, limitation, three retrieval prompts, and one short application.",
+      "expectedPass": true,
+      "expectedFindings": ["rendered length fits focused budget", "scope is coherent"]
+    },
+    {
+      "id": "time-fit-underfilled",
+      "dimension": "time_fit",
+      "learnerContext": "Intermediate learner with 12 focused minutes available.",
+      "priorLearning": "One related foundation lesson.",
+      "evidence": "[S1] The supplied evidence supports one central mechanism and boundary.",
+      "candidateLesson": "Final rendered body is 220 words, gives two definitions, and has no worked example or application.",
+      "expectedPass": false,
+      "expectedFindings": ["far below rendered reading-time budget", "insufficient learning depth"]
+    }
+  ]
+}

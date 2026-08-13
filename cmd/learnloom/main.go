@@ -97,14 +97,21 @@ func runWeb(
 		MaxFeedBytes:   cfg.Limits.MaxFeedBytes,
 		MaxConcurrency: 3,
 		MaxRedirects:   3,
+		URLPolicy:      database,
 	})
 	handler, err := httpapp.NewServer(
 		httpapp.Config{
+			Environment: cfg.Environment, ReleaseVersion: cfg.ReleaseVersion,
 			RootDomain: cfg.HTTP.RootDomain, ApexOrigin: cfg.HTTP.ApexOrigin,
 			AppOrigin: cfg.HTTP.AppOrigin, CSRFSecret: cfg.HTTP.CSRFSecret,
 			ClerkSecretKey: cfg.Clerk.SecretKey, ClerkJWTKey: cfg.Clerk.JWTKey,
 			ClerkWebhookSecret:       cfg.Clerk.WebhookSecret,
 			ClerkFrontendOrigin:      cfg.Clerk.FrontendOrigin,
+			PaddleWebhookSecret:      cfg.Paddle.WebhookSecret,
+			PaddleAPIKey:             cfg.Paddle.APIKey,
+			PaddleAPIBaseURL:         cfg.Paddle.APIBaseURL,
+			PaddleProPriceID:         cfg.Paddle.ProPriceID,
+			PaidCommerceApproved:     cfg.Paddle.CommerceApproved,
 			MaxRequestBodyBytes:      cfg.Limits.RequestBodyBytes,
 			MaxNewsletters:           cfg.Limits.MaxNewslettersPerAccount,
 			DailyAccountLimit:        cfg.Worker.DailyAccountLimit,
@@ -130,6 +137,28 @@ func runWeb(
 	) ([]domain.SourceItem, []string, error) {
 		return sourceValidator.Fetch(ctx, []domain.SourceDefinition{definition}, 3)
 	})
+	if cfg.SourceIntelligence.DiscoveryEnabled {
+		previewSearcher, err := source.NewSearXNG(source.SearXNGConfig{
+			BaseURL: cfg.SourceIntelligence.SearXNGBaseURL,
+			Timeout: cfg.SourceIntelligence.SearXNGTimeout,
+		})
+		if err != nil {
+			return err
+		}
+		handler.SetPortfolioPlanner(func(
+			ctx context.Context,
+			topic string,
+		) (source.PortfolioPreview, error) {
+			return source.PreviewPortfolio(
+				ctx,
+				previewSearcher,
+				topic,
+				cfg.SourceIntelligence.DiscoveryMaxQueries,
+				cfg.SourceIntelligence.DiscoveryMaxCandidates,
+				cfg.SourceIntelligence.DiscoveryMaxActive,
+			)
+		})
+	}
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
 		Handler:           handler,
@@ -211,6 +240,7 @@ func runWorker(
 		MaxArticleBytes:      cfg.Limits.MaxArticleBytes,
 		MaxArticleCharacters: cfg.Limits.MaxArticleCharacters,
 		MaxConcurrency:       cfg.SourceIntelligence.MaxConcurrency,
+		URLPolicy:            database,
 	})
 	producer, err := dossier.NewGenerator(
 		acquisition,

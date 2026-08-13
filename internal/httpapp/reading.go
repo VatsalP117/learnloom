@@ -1,7 +1,12 @@
 package httpapp
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -11,6 +16,7 @@ import (
 
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/google/uuid"
 )
 
 func (s *Server) handleReading(
@@ -18,12 +24,20 @@ func (s *Server) handleReading(
 	request *http.Request,
 	host RequestHost,
 ) {
+	route := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
 	if request.Method == http.MethodPost {
-		route := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
 		if len(route) == 2 && route[0] == "report" {
 			s.handlePublicContentReport(response, request, host, route[1])
 			return
 		}
+		if len(route) == 2 && route[0] == "follow" {
+			s.handlePublicPathFollow(response, request, host, route[1])
+			return
+		}
+	}
+	if request.Method == http.MethodGet && len(route) == 3 && route[0] == "go" {
+		s.handlePublicGrowthClick(response, request, host, route[1], route[2])
+		return
 	}
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		methodNotAllowed(response, http.MethodGet, http.MethodHead)
@@ -50,7 +64,6 @@ func (s *Server) handleReading(
 		s.renderPublicHome(response, request, site, origin)
 		return
 	}
-	route := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
 	if len(route) == 2 && route[0] == "topics" {
 		s.renderPublicTopic(response, request, site, origin, route[1])
 		return
@@ -206,7 +219,23 @@ func (s *Server) renderPublicDossier(
 		http.Redirect(response, request, origin+canonicalPath, http.StatusPermanentRedirect)
 		return
 	}
+	if request.Method == http.MethodGet && !isLikelyAutomatedVisitor(request.UserAgent()) {
+		fingerprint := s.publicVisitorFingerprint(response, request)
+		if err := s.store.RecordPublicGrowthEvent(
+			request.Context(), site.Username, issue.PublicID,
+			store.PublicGrowthView, "", fingerprint, time.Now().UTC(),
+		); err != nil {
+			s.logger.WarnContext(request.Context(), "record public Dossier view", "error", err)
+		}
+	}
 	artifactValue, err := s.artifacts.Get(request.Context(), issue.ArtifactKey)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	related, err := s.store.ListRelatedPublicIssues(
+		request.Context(), site.Username, issue.NewsletterID, issue.ID, 3,
+	)
 	if err != nil {
 		s.internalError(response, request, err)
 		return
@@ -229,6 +258,7 @@ func (s *Server) renderPublicDossier(
 		1,
 	)
 	document = decoratePublicDossier(document, site, issue)
+	document = decoratePublicGrowth(document, site, issue, canonical, related)
 	corrections, err := s.store.ListPublicCorrections(request.Context(), issue.ID)
 	if err != nil {
 		s.internalError(response, request, err)
@@ -497,6 +527,202 @@ func decoratePublicDossier(
 	return strings.Replace(document, "<body>", `<body class="public-dossier">`+header, 1)
 }
 
+func decoratePublicGrowth(
+	document string,
+	site domain.PersonalSite,
+	issue store.PublicIssue,
+	canonical string,
+	related []store.PublicIssue,
+) string {
+	var relatedHTML strings.Builder
+	for _, item := range related {
+		href := "/d/" + url.PathEscape(item.PublicID) + "/" + url.PathEscape(item.PublicSlug)
+		fmt.Fprintf(
+			&relatedHTML,
+			`<a href="%s"><small>%s</small><strong>%s</strong><span>Read Dossier →</span></a>`,
+			href,
+			html.EscapeString(item.CompletedAt.Format("02 Jan 2006")),
+			html.EscapeString(item.Title),
+		)
+	}
+	if relatedHTML.Len() == 0 {
+		relatedHTML.WriteString(`<p class="growth-empty">More Dossiers will appear as this path develops.</p>`)
+	}
+	startURL := "/go/" + url.PathEscape(issue.PublicID) + "/start"
+	panel := `<section class="public-growth" aria-label="Continue this learning path">` +
+		`<div class="public-path-context"><p class="growth-label">A path maintained by ` + html.EscapeString(site.DisplayName) + `</p>` +
+		`<h2>` + html.EscapeString(issue.NewsletterOutcome) + `</h2>` +
+		`<p>` + html.EscapeString(issue.NewsletterTopic) + `</p>` +
+		`<a href="/topics/` + url.PathEscape(issue.NewsletterPublicSlug) + `">See the complete path →</a></div>` +
+		`<div class="public-follow"><p class="growth-label">Follow this path</p>` +
+		`<p>Get an email when ` + html.EscapeString(site.DisplayName) + ` publishes the next Dossier in this path.</p>` +
+		`<form method="post" action="/follow/` + url.PathEscape(issue.PublicID) + `">` +
+		`<label>Email address<input type="email" name="email" maxlength="320" autocomplete="email" required></label>` +
+		`<label class="follow-honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>` +
+		`<button type="submit">Send confirmation</button></form>` +
+		`<small>Double opt-in. Unsubscribe in one click.</small></div>` +
+		`<div class="public-share"><p class="growth-label">Share this Dossier</p>` +
+		`<a href="/go/` + url.PathEscape(issue.PublicID) + `/linkedin" rel="noreferrer">LinkedIn</a>` +
+		`<a href="/go/` + url.PathEscape(issue.PublicID) + `/x" rel="noreferrer">X</a>` +
+		`<a href="/go/` + url.PathEscape(issue.PublicID) + `/email">Email</a></div>` +
+		`<div class="public-related"><p class="growth-label">Continue reading</p><div>` + relatedHTML.String() + `</div></div>` +
+		`<div class="public-build"><p class="growth-label">Build your own path</p>` +
+		`<h2>Give Learnloom a topic. It finds and ranks useful sources, then builds connected lessons that remember where you are.</h2>` +
+		`<a href="` + html.EscapeString(startURL) + `">Start your private learning path →</a></div></section>`
+	return strings.Replace(document, "</body>", panel+"</body>", 1)
+}
+
+func (s *Server) handlePublicPathFollow(
+	response http.ResponseWriter,
+	request *http.Request,
+	host RequestHost,
+	publicID string,
+) {
+	expectedOrigin := "https://" + host.Hostname
+	if origin := strings.TrimSuffix(request.Header.Get("Origin"), "/"); origin != expectedOrigin {
+		writeProblem(response, http.StatusForbidden, "origin_rejected", "The follow origin is invalid.")
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, s.cfg.MaxRequestBodyBytes)
+	if err := request.ParseForm(); err != nil || request.PostForm.Get("website") != "" {
+		writeProblem(response, http.StatusBadRequest, "invalid_follow", "The follow request could not be read.")
+		return
+	}
+	site, err := s.store.GetPublicSite(request.Context(), host.Username)
+	if err != nil {
+		s.readingNotFound(response, request)
+		return
+	}
+	issue, err := s.store.GetPublicIssue(request.Context(), site.Username, publicID)
+	if err != nil {
+		s.readingNotFound(response, request)
+		return
+	}
+	fingerprint := s.publicVisitorFingerprint(response, request)
+	allowed, err := s.store.AllowRequest(
+		request.Context(), fingerprint, "public-path-follow", time.Hour, 5, time.Now().UTC(),
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	if !allowed {
+		writeProblem(response, http.StatusTooManyRequests, "rate_limited", "Please wait before requesting another confirmation.")
+		return
+	}
+	if err := s.store.RequestPublicPathFollow(
+		request.Context(), site.Username, issue.PublicID,
+		request.PostForm.Get("email"), time.Now().UTC(),
+	); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.readingNotFound(response, request)
+			return
+		}
+		writeProblem(response, http.StatusBadRequest, "invalid_follow", "Enter a valid email address.")
+		return
+	}
+	body := `<main id="main-content"><section class="report-thanks">` +
+		`<p class="eyebrow">Check your inbox</p><h1>Confirm this path follow.</h1>` +
+		`<p>We sent a confirmation link. Nothing will be delivered unless you confirm it.</p>` +
+		`<a class="text-link" href="/d/` + url.PathEscape(issue.PublicID) + `/` + url.PathEscape(issue.PublicSlug) + `">Return to the Dossier <span>→</span></a>` +
+		`</section></main>`
+	s.sendReadingPage(response, request, "Confirm your follow", "Check your inbox to confirm.", expectedOrigin, body, false)
+	response.Header().Set("Cache-Control", "private, no-store")
+}
+
+func (s *Server) handlePublicGrowthClick(
+	response http.ResponseWriter,
+	request *http.Request,
+	host RequestHost,
+	publicID, action string,
+) {
+	site, err := s.store.GetPublicSite(request.Context(), host.Username)
+	if err != nil {
+		s.readingNotFound(response, request)
+		return
+	}
+	issue, err := s.store.GetPublicIssue(request.Context(), site.Username, publicID)
+	if err != nil {
+		s.readingNotFound(response, request)
+		return
+	}
+	canonical := "https://" + host.Hostname + "/d/" + url.PathEscape(issue.PublicID) + "/" + url.PathEscape(issue.PublicSlug)
+	event := store.PublicGrowthShare
+	channel := action
+	var destination string
+	switch action {
+	case "linkedin":
+		destination = "https://www.linkedin.com/sharing/share-offsite/?url=" + url.QueryEscape(canonical)
+	case "x":
+		destination = "https://twitter.com/intent/tweet?text=" +
+			url.QueryEscape(issue.Title+" — a Learnloom Dossier") + "&url=" + url.QueryEscape(canonical)
+	case "email":
+		destination = "mailto:?subject=" + url.QueryEscape(issue.Title+" — a Learnloom Dossier") +
+			"&body=" + url.QueryEscape(canonical)
+	case "start":
+		event = store.PublicGrowthCTAClick
+		channel = ""
+		destination = strings.TrimRight(s.cfg.AppOrigin, "/") +
+			"/sign-up?utm_source=public_dossier&utm_medium=referral&utm_campaign=build_path&source_dossier=" +
+			url.QueryEscape(issue.PublicID)
+	default:
+		s.readingNotFound(response, request)
+		return
+	}
+	fingerprint := s.publicVisitorFingerprint(response, request)
+	if !isLikelyAutomatedVisitor(request.UserAgent()) {
+		if err := s.store.RecordPublicGrowthEvent(
+			request.Context(), site.Username, issue.PublicID,
+			event, channel, fingerprint, time.Now().UTC(),
+		); err != nil {
+			s.logger.WarnContext(request.Context(), "record public growth click", "error", err)
+		}
+	}
+	response.Header().Set("Cache-Control", "private, no-store")
+	http.Redirect(response, request, destination, http.StatusFound)
+}
+
+const publicReferralCookie = "ll_public_ref"
+
+func (s *Server) publicVisitorFingerprint(
+	response http.ResponseWriter,
+	request *http.Request,
+) string {
+	value := ""
+	if cookie, err := request.Cookie(publicReferralCookie); err == nil {
+		value = strings.TrimSpace(cookie.Value)
+	}
+	if decoded, err := hex.DecodeString(value); err != nil || len(decoded) != 32 {
+		raw := make([]byte, 32)
+		if _, err := rand.Read(raw); err != nil {
+			raw = []byte(uuid.NewString() + uuid.NewString())[:32]
+		}
+		value = hex.EncodeToString(raw)
+		http.SetCookie(response, &http.Cookie{
+			Name: publicReferralCookie, Value: value, Path: "/",
+			Domain: "." + s.cfg.RootDomain, MaxAge: 30 * 24 * 60 * 60,
+			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
+	}
+	return s.publicReferralFingerprint(value)
+}
+
+func (s *Server) publicReferralFingerprint(value string) string {
+	mac := hmac.New(sha256.New, []byte(s.cfg.CSRFSecret))
+	_, _ = mac.Write([]byte("learnloom-public-referral\x00" + value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func isLikelyAutomatedVisitor(userAgent string) bool {
+	value := strings.ToLower(userAgent)
+	for _, marker := range []string{"bot", "crawler", "spider", "preview", "slurp", "headless"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return value == ""
+}
+
 const readingCSS = `
 :root{color-scheme:light;--ink:#17211b;--muted:#5f6b63;--paper:#f7f6f0;--paper-warm:#f1eee4;--card:rgba(255,255,251,.78);--green:#496b4c;--green-deep:#1d2c22;--lime:#abc477;--line:rgba(23,33,27,.12);--serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:"Avenir Next",Avenir,"Segoe UI",ui-sans-serif,sans-serif}
 *{box-sizing:border-box}html{scroll-behavior:smooth;background:var(--paper)}body{min-width:320px;margin:0;overflow-x:hidden;background:var(--paper);color:var(--ink);font:15px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
@@ -529,7 +755,8 @@ body.public-dossier{min-width:320px!important;margin:0!important;background:radi
 .public-dossier *{box-sizing:border-box}.article-header{width:min(1120px,calc(100% - 64px));height:88px;display:flex;align-items:center;justify-content:space-between;margin:auto;border-bottom:1px solid var(--article-line)}.article-brand{display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none}.article-brand>span:last-child{display:grid}.article-brand strong{font-size:14px;letter-spacing:-.03em}.article-brand small{color:var(--article-muted);font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.public-dossier .brand-mark{width:32px;height:32px;display:inline-grid;place-items:center;border-radius:9px;background:var(--article-deep);color:#eef6ec;font-size:14px}.article-back{color:#314538;font-size:11px;font-weight:700;text-decoration:none}
 body.public-dossier>main{max-width:820px!important;margin:0 auto!important;padding:72px 24px 110px!important}body.public-dossier>main>div{padding:clamp(30px,6vw,64px)!important;border:1px solid rgba(23,33,27,.1)!important;border-radius:20px!important;background:rgba(255,255,251,.78)!important;box-shadow:0 24px 70px rgba(35,64,43,.08)!important;backdrop-filter:blur(16px)}
 body.public-dossier>main>div>p:first-child{color:var(--article-green)!important;font-size:10px!important;letter-spacing:.14em!important}body.public-dossier>main>div>h1{margin-bottom:36px!important;font-family:var(--article-serif)!important;font-size:clamp(38px,6vw,60px)!important;font-weight:400!important;line-height:1.02!important;letter-spacing:-.045em!important}body.public-dossier h2,body.public-dossier h3,body.public-dossier h4{font-family:var(--article-serif)!important;font-weight:400!important;letter-spacing:-.025em!important}body.public-dossier h2{font-size:29px!important}body.public-dossier p,body.public-dossier li{color:#344039;line-height:1.78!important}body.public-dossier hr{border-color:var(--article-line)!important;margin:42px 0!important}body.public-dossier a{color:var(--article-green)!important}body.public-dossier code{background:#eef0e8!important;color:#294232!important}body.public-dossier details{padding:18px 20px;border:1px solid var(--article-line);border-radius:12px;background:rgba(247,246,240,.7)}
-@media(max-width:580px){.article-header{width:calc(100% - 40px);height:74px}.article-brand small{display:none}.article-back{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}body.public-dossier>main{padding:45px 18px 75px!important}body.public-dossier>main>div{padding:30px 23px!important;border-radius:16px!important}}
+.public-growth{width:min(980px,calc(100% - 48px));display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin:0 auto 90px;padding-top:12px}.public-growth>div{padding:25px;border:1px solid var(--article-line);border-radius:16px;background:rgba(255,255,251,.78);box-shadow:0 14px 45px rgba(35,64,43,.06)}.growth-label{margin:0 0 10px!important;color:var(--article-green)!important;font-size:9px!important;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.public-growth h2{margin:0 0 10px!important;font-size:clamp(23px,3vw,34px)!important;line-height:1.15!important}.public-growth p{margin:0 0 13px}.public-growth a{font-size:11px;font-weight:750;text-decoration:none}.public-share{align-content:start;display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:8px}.public-share .growth-label{grid-column:1/-1}.public-share a{padding:8px 10px;border:1px solid var(--article-line);border-radius:999px}.public-follow{grid-column:1/-1}.public-follow form{display:flex;gap:8px}.public-follow label{flex:1;color:var(--article-muted);font-size:9px}.public-follow input{width:100%;min-height:42px;margin-top:5px;padding:0 12px;border:1px solid var(--article-line);border-radius:8px;background:#fff;color:var(--article-ink)}.public-follow button{align-self:end;min-height:42px;padding:0 15px;border:0;border-radius:8px;background:var(--article-deep);color:#fff;font-weight:750;cursor:pointer}.public-follow>small{color:var(--article-muted);font-size:8px}.follow-honeypot{position:absolute!important;left:-10000px!important}.public-related,.public-build{grid-column:1/-1}.public-related>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.public-related>div>a{display:grid;gap:5px;padding:14px;border:1px solid var(--article-line);border-radius:11px;background:rgba(247,246,240,.7)}.public-related small,.public-related span{color:var(--article-muted);font-size:8px}.public-related strong{font-family:var(--article-serif);font-size:17px;font-weight:400;line-height:1.25}.public-build{color:#eef6ec;background:var(--article-deep)!important}.public-build .growth-label,.public-build p{color:#bbcabf!important}.public-build h2,.public-build a{color:#fff!important}.public-build a{display:inline-flex;margin-top:8px;padding:11px 14px;border-radius:999px;background:#eef6ec;color:var(--article-deep)!important}.growth-empty{color:var(--article-muted)!important;font-size:11px}
+@media(max-width:700px){.public-growth{grid-template-columns:1fr}.public-follow,.public-related,.public-build{grid-column:auto}.public-follow form{display:grid}.public-related>div{grid-template-columns:1fr}.article-header{width:calc(100% - 40px);height:74px}.article-brand small{display:none}.article-back{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}body.public-dossier>main{padding:45px 18px 75px!important}body.public-dossier>main>div{padding:30px 23px!important;border-radius:16px!important}}
 `
 
 func firstReadingText(values ...string) string {

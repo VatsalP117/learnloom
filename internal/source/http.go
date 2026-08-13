@@ -62,13 +62,15 @@ func secureTransport() *http.Transport {
 	}
 }
 
-func redirectPolicy(maximum int) func(*http.Request, []*http.Request) error {
+func redirectPolicy(maximum int, policy URLPolicy) func(*http.Request, []*http.Request) error {
 	return func(request *http.Request, via []*http.Request) error {
 		if len(via) > maximum {
 			return errors.New("source redirected too many times")
 		}
-		_, err := validateWebURL(request.URL.String())
-		return err
+		if _, err := validateWebURL(request.URL.String()); err != nil {
+			return err
+		}
+		return checkURLPolicy(request.Context(), policy, request.URL.String())
 	}
 }
 

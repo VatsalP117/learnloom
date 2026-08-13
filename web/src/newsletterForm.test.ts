@@ -16,6 +16,7 @@ const defaults = {
   emailEnabled: false,
   aiExplorationEnabled: false,
   siteVisible: false,
+  sourceReviewMode: "auto" as const,
   sources: [],
   templateId: undefined,
   templateVersion: undefined,
@@ -26,12 +27,17 @@ describe("Newsletter source mode payloads", () => {
     const values = {
       ...defaults,
       sourceMode: "discovered",
+      sourceReviewMode: "auto" as const,
+      onboardingDraftId: "a5aa94e1-f83b-4d24-bf40-76048a3fc1f0",
+      onboardingDraftRevision: 4,
       sources: [{ name: "", url: "", limit: 8 }],
     };
     expect(canSubmitNewsletter(values)).toBe(true);
     expect(buildNewsletterPayload(values)).toMatchObject({
       topic: "LLM inference",
       sourceMode: "discovered",
+      onboardingDraftId: "a5aa94e1-f83b-4d24-bf40-76048a3fc1f0",
+      onboardingDraftRevision: 4,
       sources: [],
       siteVisible: false,
     });
@@ -67,5 +73,14 @@ describe("Newsletter source mode payloads", () => {
       templateId: "ai-systems-evidence",
       templateVersion: 2,
     });
+  });
+
+  it("can pause after source discovery for learner approval", () => {
+    const payload = buildNewsletterPayload({
+      ...defaults,
+      sourceMode: "discovered",
+      sourceReviewMode: "review",
+    });
+    expect(payload.sourceReviewMode).toBe("review");
   });
 });

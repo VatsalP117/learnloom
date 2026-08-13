@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { LessonFeedbackPanel } from "./IssueDetail";
+import { LessonFeedbackPanel, readerAudienceLabel } from "./IssueDetail";
 
 describe("LessonFeedbackPanel", () => {
   it("hydrates durable learner signals and keeps them optional", () => {
@@ -20,5 +20,17 @@ describe("LessonFeedbackPanel", () => {
     expect(markup).toContain('aria-pressed="true">Very relevant');
     expect(markup).toContain('aria-pressed="true">Partial');
     expect(markup).toContain("These signals are private");
+  });
+});
+
+describe("reader audience label", () => {
+  const stream = { siteVisible: true };
+  const site = { visibility: "public", searchIndexing: false };
+
+  it("reports content state and effective publishing gates", () => {
+    expect(readerAudienceLabel({ publicationState: "draft" }, stream, site)).toBe("Audience: draft, only you");
+    expect(readerAudienceLabel({ publicationState: "published" }, stream, { ...site, visibility: "private" }))
+      .toContain("site private");
+    expect(readerAudienceLabel({ publicationState: "published" }, stream, site)).toBe("Audience: public by link");
   });
 });

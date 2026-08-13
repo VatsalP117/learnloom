@@ -12,6 +12,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type IssueClaim struct {
@@ -172,6 +173,20 @@ func (s *Store) EnqueueManualIssue(
 	if !allowed {
 		return domain.Issue{}, ErrForbidden
 	}
+	var activeIssueID string
+	err = tx.QueryRow(ctx, `
+		SELECT id::text
+		FROM issues
+		WHERE newsletter_id = $1 AND status IN ('queued', 'generating')
+		ORDER BY created_at, id
+		LIMIT 1
+	`, newsletterID).Scan(&activeIssueID)
+	if err == nil {
+		return getIssueTx(ctx, tx, accountID, activeIssueID)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.Issue{}, err
+	}
 	var today int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*)
@@ -189,12 +204,17 @@ func (s *Store) EnqueueManualIssue(
 	now := time.Now().UTC()
 	id := uuid.New()
 	publicID := uuid.New()
+	if err := reserveGenerationUsageTx(ctx, tx, accountID, id.String(), now); err != nil {
+		return domain.Issue{}, err
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO issues (
 			id, newsletter_id, trigger, status, available_at, public_id,
 			publication_state, created_at
 		)
-		VALUES ($1, $2, 'manual', 'queued', $3, $4, 'published', $3)
+		SELECT $1, $2, 'manual', 'queued', $3, $4,
+		       lesson_publication_default, $3
+		FROM newsletters WHERE id = $2
 	`, id, newsletterID, now, publicID); err != nil {
 		return domain.Issue{}, fmt.Errorf("enqueue manual Issue: %w", err)
 	}
@@ -223,7 +243,10 @@ func (s *Store) DispatchDue(
 	defer rollback(tx)
 	rows, err := tx.Query(ctx, `
 		SELECT n.id::text, n.time_zone, n.schedule_hour, n.schedule_minute,
-		       n.next_run_at
+		       n.owner_account_id::text,
+		       n.next_run_at, n.rhythm_mode, n.selected_weekdays,
+		       n.effective_rhythm_mode, n.auto_throttle_enabled,
+		       n.unopened_lesson_limit, n.rhythm_throttled_at
 		FROM newsletters n
 		JOIN accounts a ON a.id = n.owner_account_id
 		WHERE n.active AND a.status = 'active' AND n.next_run_at <= $1
@@ -235,16 +258,36 @@ func (s *Store) DispatchDue(
 		return 0, fmt.Errorf("select due Newsletters: %w", err)
 	}
 	type dueNewsletter struct {
-		id     string
-		zone   string
-		hour   int
-		minute int
-		dueAt  time.Time
+		id            string
+		accountID     string
+		zone          string
+		hour          int
+		minute        int
+		dueAt         time.Time
+		desiredMode   domain.RhythmMode
+		weekdays      []int16
+		effectiveMode domain.RhythmMode
+		autoThrottle  bool
+		unopenedLimit int
+		throttledAt   *time.Time
 	}
 	var due []dueNewsletter
 	for rows.Next() {
 		var item dueNewsletter
-		if err := rows.Scan(&item.id, &item.zone, &item.hour, &item.minute, &item.dueAt); err != nil {
+		if err := rows.Scan(
+			&item.id,
+			&item.zone,
+			&item.hour,
+			&item.minute,
+			&item.accountID,
+			&item.dueAt,
+			&item.desiredMode,
+			&item.weekdays,
+			&item.effectiveMode,
+			&item.autoThrottle,
+			&item.unopenedLimit,
+			&item.throttledAt,
+		); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -256,33 +299,121 @@ func (s *Store) DispatchDue(
 	}
 	dispatched := 0
 	for _, newsletter := range due {
+		unopened, err := unopenedLessonCount(ctx, tx, newsletter.id)
+		if err != nil {
+			return 0, err
+		}
+		weekdays := weekdayInts(newsletter.weekdays)
+		effectiveMode := newsletter.desiredMode
+		reason := rhythmPreferenceReason(newsletter.desiredMode, weekdays)
+		var throttledAt *time.Time
+		decision := "dispatch"
+		skipDispatch := false
+		if newsletter.autoThrottle && newsletter.desiredMode != domain.RhythmWeeklySynthesis &&
+			unopened >= newsletter.unopenedLimit {
+			effectiveMode = domain.RhythmWeeklySynthesis
+			reason = backlogRhythmReason(unopened, newsletter.unopenedLimit)
+			throttledAt = newsletter.throttledAt
+			if throttledAt == nil {
+				value := now.UTC()
+				throttledAt = &value
+				decision = "throttle"
+			} else {
+				decision = "defer"
+			}
+			skipDispatch = true
+		} else if newsletter.throttledAt != nil ||
+			newsletter.effectiveMode != newsletter.desiredMode {
+			decision = "recover"
+		}
 		location, err := time.LoadLocation(newsletter.zone)
 		if err != nil {
 			return 0, fmt.Errorf("Newsletter %s timezone: %w", newsletter.id, err)
 		}
 		localDate := newsletter.dueAt.In(location).Format(time.DateOnly)
-		tag, err := tx.Exec(ctx, `
-			INSERT INTO issues (
-				id, newsletter_id, trigger, scheduled_local_date, status,
-				available_at, public_id, publication_state, created_at
-			)
-			VALUES ($1, $2, 'scheduled', $3::date, 'queued', $4, $5, 'published', $4)
-			ON CONFLICT (newsletter_id, scheduled_local_date)
-				WHERE trigger = 'scheduled'
-			DO NOTHING
-		`, uuid.New(), newsletter.id, localDate, now, uuid.New())
-		if err != nil {
-			return 0, fmt.Errorf("dispatch Newsletter %s: %w", newsletter.id, err)
+		var issueID any
+		if !skipDispatch {
+			newIssueID := uuid.New()
+			issueID = newIssueID
+			if err := reserveGenerationUsageTx(
+				ctx, tx, newsletter.accountID, newIssueID.String(), now,
+			); err != nil {
+				if errors.Is(err, ErrEntitlementRequired) {
+					skipDispatch = true
+					issueID = nil
+					decision = "entitlement_deferred"
+					reason = "Your learned content remains available. New lessons are paused until generation allowance renews or billing is updated."
+				} else {
+					return 0, err
+				}
+			}
+			var requestedLessonType any
+			if effectiveMode == domain.RhythmWeeklySynthesis {
+				requestedLessonType = domain.LessonSynthesis
+			}
+			var tag pgconn.CommandTag
+			if !skipDispatch {
+				tag, err = tx.Exec(ctx, `
+				INSERT INTO issues (
+					id, newsletter_id, trigger, scheduled_local_date, status,
+					available_at, public_id, publication_state,
+					requested_lesson_type, created_at
+				)
+				SELECT $1, $2, 'scheduled', $3::date, 'queued', $4, $5,
+				       n.lesson_publication_default, $6, $4
+				FROM newsletters n WHERE n.id = $2
+				ON CONFLICT (newsletter_id, scheduled_local_date)
+					WHERE trigger = 'scheduled'
+				DO NOTHING
+				`, newIssueID, newsletter.id, localDate, now, uuid.New(), requestedLessonType)
+			}
+			if err != nil {
+				return 0, fmt.Errorf("dispatch Newsletter %s: %w", newsletter.id, err)
+			}
+			dispatched += int(tag.RowsAffected())
+			if tag.RowsAffected() == 0 {
+				issueID = nil
+				if !skipDispatch {
+					if _, releaseErr := tx.Exec(ctx, `
+						DELETE FROM generation_usage_reservations
+						WHERE issue_id = $1 AND state = 'reserved'
+					`, newIssueID); releaseErr != nil {
+						return 0, releaseErr
+					}
+				}
+			}
 		}
-		dispatched += int(tag.RowsAffected())
-		next, err := NextOccurrence(now, newsletter.zone, newsletter.hour, newsletter.minute)
+		next, err := NextRhythmOccurrence(
+			now,
+			newsletter.zone,
+			newsletter.hour,
+			newsletter.minute,
+			effectiveMode,
+			weekdays,
+		)
 		if err != nil {
 			return 0, err
 		}
 		if _, err := tx.Exec(ctx, `
-			UPDATE newsletters SET next_run_at = $2, updated_at = $3 WHERE id = $1
-		`, newsletter.id, next, now); err != nil {
+			UPDATE newsletters SET
+				next_run_at = $2,
+				effective_rhythm_mode = $3,
+				rhythm_reason = $4,
+				rhythm_throttled_at = $5,
+				updated_at = $6
+			WHERE id = $1
+		`, newsletter.id, next, effectiveMode, reason, throttledAt, now); err != nil {
 			return 0, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO rhythm_decisions (
+				newsletter_id, issue_id, decision, desired_mode,
+				effective_mode, unopened_count, reason, decided_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`, newsletter.id, issueID, decision, newsletter.desiredMode,
+			effectiveMode, unopened, reason, now); err != nil {
+			return 0, fmt.Errorf("record rhythm decision for Newsletter %s: %w", newsletter.id, err)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -294,7 +425,7 @@ func (s *Store) DispatchDue(
 func (s *Store) RecoverExpiredClaims(
 	ctx context.Context,
 	now time.Time,
-	maxIssueAttempts, _ int,
+	maxIssueAttempts, maxDeliveryAttempts int,
 ) (int64, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -384,10 +515,27 @@ func (s *Store) RecoverExpiredClaims(
 	if err != nil {
 		return 0, fmt.Errorf("recover weekly Recap Claims: %w", err)
 	}
+	publicFollowDeliveries, err := tx.Exec(ctx, `
+		UPDATE public_follow_deliveries SET
+			status = CASE WHEN attempt_count >= $2 THEN 'unknown' ELSE 'failed' END,
+			available_at = $1 + make_interval(
+				secs => LEAST(3600, 30 * power(2, GREATEST(0, attempt_count - 1)))::int
+			),
+			claim_token = NULL,
+			claim_expires_at = NULL,
+			error = 'Worker claim expired before completion',
+			completed_at = CASE WHEN attempt_count >= $2 THEN $1 ELSE NULL END,
+			updated_at = $1
+		WHERE status = 'delivering' AND claim_expires_at <= $1
+	`, now, maxDeliveryAttempts)
+	if err != nil {
+		return 0, fmt.Errorf("recover public follow delivery claims: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return issues + deliveries.RowsAffected() + recaps.RowsAffected(), nil
+	return issues + deliveries.RowsAffected() + recaps.RowsAffected() +
+		publicFollowDeliveries.RowsAffected(), nil
 }
 
 func (s *Store) ClaimNextIssue(
@@ -708,6 +856,18 @@ func (s *Store) CompleteIssue(
 		return fmt.Errorf("complete Issue: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
+		DELETE FROM artifact_cleanup_queue WHERE artifact_key = $1
+	`, input.ArtifactKey); err != nil {
+		return fmt.Errorf("clear committed artifact cleanup: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE generation_usage_reservations SET
+		  state = 'consumed', consumed_at = $2
+		WHERE issue_id = $1 AND state = 'reserved'
+	`, issueID, input.CompletedAt); err != nil {
+		return fmt.Errorf("consume generation usage: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE issue_attempts SET
 			status = 'completed', completed_at = $3, last_renewed_at = $3
 		WHERE id = $2 AND issue_id = $1 AND status = 'running'
@@ -823,17 +983,15 @@ func (s *Store) CompleteIssue(
 			return fmt.Errorf("enqueue Delivery Receipt: %w", err)
 		}
 	}
+	if err := insertProductEvent(
+		ctx, tx, accountID, ProductEventLessonGenerated,
+		"lesson", issueID, input.CompletedAt,
+	); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	_ = s.RecordProductEvent(
-		ctx,
-		accountID,
-		ProductEventLessonGenerated,
-		"lesson",
-		issueID,
-		input.CompletedAt,
-	)
 	return nil
 }
 
@@ -894,6 +1052,88 @@ func (s *Store) FailIssue(
 		return fmt.Errorf("fail Issue: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) DeferIssue(
+	ctx context.Context,
+	issueID, token string,
+	cause error,
+	now time.Time,
+) error {
+	detail := failure.Describe(cause)
+	if detail.Category != failure.CategoryInsufficientEvidence {
+		return errors.New("only insufficient evidence can defer an Issue")
+	}
+	message := truncateStore(detail.Internal, 500)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	tag, err := tx.Exec(ctx, `
+		WITH deferred_attempt AS (
+			UPDATE issue_attempts SET
+				status = 'deferred',
+				completed_at = $3::timestamptz,
+				failure_code = $4,
+				failure_category = $5,
+				failure_stage = NULLIF($6, ''),
+				failure_retryable = false,
+				internal_error = $7,
+				incident_id = $8::uuid
+			WHERE id = $2::uuid AND issue_id = $1::uuid AND status = 'running'
+		)
+		UPDATE issues SET
+			status = 'deferred',
+			claim_token = NULL,
+			claim_expires_at = NULL,
+			error = $7,
+			failure_code = $4,
+			failure_category = $5,
+			failure_stage = NULLIF($6, ''),
+			failure_retryable = false,
+			public_error = $9,
+			incident_id = $8::uuid,
+			completed_at = $3::timestamptz
+		WHERE id = $1::uuid AND claim_token = $2::uuid AND status = 'generating'
+	`, issueID, token, now, detail.Code, detail.Category, detail.Stage,
+		message, detail.IncidentID, detail.PublicMessage)
+	if err != nil {
+		return fmt.Errorf("defer Issue: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrClaimLost
+	}
+	if detail.Code == "no_new_evidence" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO rhythm_decisions (
+				newsletter_id, issue_id, decision, desired_mode,
+				effective_mode, unopened_count, reason, decided_at
+			)
+			SELECT n.id, i.id, 'defer', n.rhythm_mode,
+			       n.effective_rhythm_mode,
+			       (
+				 SELECT count(*)::int
+				 FROM issues lesson
+				 WHERE lesson.newsletter_id = n.id
+				   AND lesson.status = 'generated'
+				   AND NOT EXISTS (
+					 SELECT 1 FROM product_events event
+					 WHERE event.event_name = 'lesson_opened'
+					   AND event.subject_type = 'lesson'
+					   AND event.subject_id = lesson.id::text
+				   )
+			       ),
+			       $2,
+			       $3
+			FROM issues i
+			JOIN newsletters n ON n.id = i.newsletter_id
+			WHERE i.id = $1
+		`, issueID, detail.PublicMessage, now); err != nil {
+			return fmt.Errorf("record evidence-led rhythm deferral: %w", err)
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) RecordIssueStage(
@@ -1266,26 +1506,119 @@ func (s *Store) RetryIssue(
 	return nil
 }
 
+type PublicationChange struct {
+	State             domain.PublicationState
+	AudienceConfirmed bool
+	Now               time.Time
+}
+
 func (s *Store) SetIssuePublication(
 	ctx context.Context,
 	accountID, issueID string,
-	state domain.PublicationState,
-) error {
-	if state != domain.PublicationPublished && state != domain.PublicationHidden {
-		return errors.New("Issue publication state is invalid")
+	change PublicationChange,
+) (domain.Issue, error) {
+	if change.State != domain.PublicationPublished &&
+		change.State != domain.PublicationDraft &&
+		change.State != domain.PublicationPrivate {
+		return domain.Issue{}, errors.New("Issue publication state is invalid")
+	}
+	if change.Now.IsZero() {
+		change.Now = time.Now().UTC()
+	}
+	if change.State == domain.PublicationPublished && !change.AudienceConfirmed {
+		return domain.Issue{}, errors.New("publishing requires audience confirmation")
 	}
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE issues i SET publication_state = $3
+		UPDATE issues i SET
+			publication_state = $3,
+			publication_updated_at = $4,
+			first_publish_reviewed_at = CASE
+			  WHEN $3 = 'published' THEN COALESCE(first_publish_reviewed_at, $4)
+			  ELSE first_publish_reviewed_at
+			END,
+			published_at = CASE
+			  WHEN $3 = 'published' THEN COALESCE(published_at, $4)
+			  ELSE NULL
+			END
 		FROM newsletters n
 		WHERE i.newsletter_id = n.id AND n.owner_account_id = $1 AND i.id = $2
-	`, accountID, issueID, state)
+	`, accountID, issueID, change.State, change.Now)
 	if err != nil {
-		return err
+		return domain.Issue{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+		return domain.Issue{}, ErrNotFound
 	}
-	return nil
+	return s.GetIssue(ctx, accountID, issueID)
+}
+
+func (s *Store) BulkSetIssuePublication(
+	ctx context.Context,
+	accountID, newsletterID string,
+	issueIDs []string,
+	change PublicationChange,
+) (int64, error) {
+	if len(issueIDs) < 1 || len(issueIDs) > 100 {
+		return 0, errors.New("bulk publication requires from 1 to 100 lessons")
+	}
+	for _, issueID := range issueIDs {
+		if _, err := uuid.Parse(issueID); err != nil {
+			return 0, errors.New("bulk publication contains an invalid lesson ID")
+		}
+	}
+	if change.State != domain.PublicationPublished &&
+		change.State != domain.PublicationDraft &&
+		change.State != domain.PublicationPrivate {
+		return 0, errors.New("Issue publication state is invalid")
+	}
+	if change.State == domain.PublicationPublished && !change.AudienceConfirmed {
+		return 0, errors.New("publishing requires audience confirmation")
+	}
+	if change.Now.IsZero() {
+		change.Now = time.Now().UTC()
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer rollback(tx)
+	var ownedCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)::int
+		FROM issues issue
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE newsletter.owner_account_id = $1
+		  AND newsletter.id = $2
+		  AND issue.id = ANY($3::uuid[])
+		  AND issue.status = 'generated'
+	`, accountID, newsletterID, issueIDs).Scan(&ownedCount); err != nil {
+		return 0, err
+	}
+	if ownedCount != len(issueIDs) {
+		return 0, ErrNotFound
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE issues SET
+			publication_state = $4,
+			publication_updated_at = $5,
+			first_publish_reviewed_at = CASE
+			  WHEN $4 = 'published' THEN COALESCE(first_publish_reviewed_at, $5)
+			  ELSE first_publish_reviewed_at
+			END,
+			published_at = CASE
+			  WHEN $4 = 'published' THEN COALESCE(published_at, $5)
+			  ELSE NULL
+			END
+		WHERE newsletter_id = $2
+		  AND id = ANY($3::uuid[])
+	`, accountID, newsletterID, issueIDs, change.State, change.Now)
+	if err != nil {
+		return 0, fmt.Errorf("bulk update lesson publication: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 func getIssueTx(
@@ -1327,12 +1660,20 @@ const workerIssueColumns = `
 		COALESCE(i.failure_category, ''), COALESCE(i.failure_stage, ''),
 		COALESCE(i.failure_retryable, false), COALESCE(i.incident_id::text, ''),
 		'dossier-' || i.public_id::text,
-		COALESCE(i.public_slug, ''), i.publication_state, i.created_at,
+		COALESCE(i.public_slug, ''), i.publication_state,
+		i.publication_updated_at, i.first_publish_reviewed_at, i.published_at,
+		i.created_at,
+		COALESCE(i.requested_lesson_type, ''),
 		i.started_at, i.completed_at,
 		n.id::text, n.owner_account_id::text, n.name, n.topic, n.learner_level,
 		n.learner_goal, n.lesson_minutes, n.source_mode,
+		n.source_review_mode, n.source_approved_at,
 		` + providedSourcesProjection + `, n.schedule_hour,
-		n.schedule_minute, n.time_zone, n.active, n.next_run_at,
+		n.schedule_minute, n.time_zone, n.rhythm_mode, n.selected_weekdays,
+		n.effective_rhythm_mode, n.auto_throttle_enabled,
+		n.unopened_lesson_limit, n.rhythm_reason, n.rhythm_throttled_at,
+		n.lesson_publication_default, n.lesson_publication_default_reviewed_at,
+		n.active, n.next_run_at,
 		n.email_enabled, n.ai_exploration_enabled, n.public_slug,
 		n.site_visible, n.created_at, n.updated_at,
 		a.id::text, COALESCE(a.primary_email, '')
@@ -1349,6 +1690,7 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 	var newsletter domain.Newsletter
 	var scheduledDate *string
 	var rawSources []byte
+	var selectedWeekdays []int16
 	var accountID, email string
 	err := row.Scan(
 		&issue.ID,
@@ -1370,7 +1712,11 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 		&issue.PublicID,
 		&issue.PublicSlug,
 		&issue.PublicationState,
+		&issue.PublicationUpdatedAt,
+		&issue.FirstPublishReviewedAt,
+		&issue.PublishedAt,
 		&issue.CreatedAt,
+		&issue.RequestedLessonType,
 		&issue.StartedAt,
 		&issue.CompletedAt,
 		&newsletter.ID,
@@ -1381,10 +1727,21 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 		&newsletter.LearnerGoal,
 		&newsletter.LessonMinutes,
 		&newsletter.SourceMode,
+		&newsletter.SourceReviewMode,
+		&newsletter.SourceApprovedAt,
 		&rawSources,
 		&newsletter.ScheduleHour,
 		&newsletter.ScheduleMinute,
 		&newsletter.TimeZone,
+		&newsletter.RhythmMode,
+		&selectedWeekdays,
+		&newsletter.EffectiveRhythmMode,
+		&newsletter.AutoThrottleEnabled,
+		&newsletter.UnopenedLessonLimit,
+		&newsletter.RhythmReason,
+		&newsletter.RhythmThrottledAt,
+		&newsletter.LessonPublicationDefault,
+		&newsletter.LessonPublicationDefaultReviewedAt,
 		&newsletter.Active,
 		&newsletter.NextRunAt,
 		&newsletter.EmailEnabled,
@@ -1404,6 +1761,7 @@ func scanWorkerIssue(row scanner) (domain.Issue, string, string, error) {
 	} else if err := json.Unmarshal(rawSources, &newsletter.Sources); err != nil {
 		return domain.Issue{}, "", "", err
 	}
+	newsletter.SelectedWeekdays = weekdayInts(selectedWeekdays)
 	issue.ScheduledLocalDate = scheduledDate
 	issue.Newsletter = newsletter
 	return issue, accountID, email, nil

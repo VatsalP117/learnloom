@@ -10,10 +10,12 @@ import { rootDomain } from "./config";
 import "./entry.css";
 
 const MarketingLanding = lazy(() => import("./MarketingLanding"));
+const CanonicalDossier = lazy(() => import("./CanonicalDossier"));
 const LegalPage = lazy(() => import("./LegalPage"));
 const ProductRoot = lazy(() => import("./ProductRoot"));
 const hostname = window.location.hostname.toLowerCase();
 const isLegalPage = ["/privacy", "/terms"].includes(window.location.pathname);
+const isExamplePage = ["/examples", "/examples/ai-evaluation"].includes(window.location.pathname);
 const isMarketingPage =
   hostname === rootDomain ||
   hostname === `www.${rootDomain}` ||
@@ -66,7 +68,7 @@ if (!root) throw new Error("The application root element is missing.");
 createRoot(root).render(
   <StrictMode>
     <Suspense fallback={<CalmLoader label="Opening Learnloom…" />}>
-      {isLegalPage ? <LegalPage /> : isMarketingPage ? <MarketingLanding /> : <ProductRoot />}
+      {isLegalPage ? <LegalPage /> : isExamplePage ? <CanonicalDossier /> : isMarketingPage ? <MarketingLanding /> : <ProductRoot />}
     </Suspense>
   </StrictMode>,
 );

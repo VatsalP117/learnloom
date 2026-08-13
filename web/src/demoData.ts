@@ -7,26 +7,46 @@ const createdAt = (daysAgo: number, hour = 8) => {
   return value.toISOString();
 };
 
+let demoOnboardingDraft = null;
+let demoCreatedNewsletter: any = null;
+let demoCreatedIssue: any = null;
+const demoProgress: Record<string, { progress: number; completedAt?: string; updatedAt: string }> = {};
+const demoRetrievals: Record<string, Array<{
+  issueId: string;
+  promptKey: string;
+  response?: string;
+  skipped: boolean;
+  revealedAt?: string;
+  updatedAt: string;
+}>> = {};
+const demoModeration: Record<string, {
+  state: "clear" | "held";
+  reason: string;
+  corrections: Array<{ id: string; body: string; createdAt: string }>;
+  reports: any[];
+  actions: any[];
+}> = {};
+
 const newsletters = [
   {
-    id: "urban-systems",
-    name: "Urban Systems Field Notes",
-    topic: "How hidden infrastructure, ecology, and policy shape the cities we inherit.",
+    id: "ai-evaluation",
+    name: "Production AI Evaluation",
+    topic: "How to evaluate AI systems against real tasks, risks, and release decisions.",
     learnerLevel: "intermediate",
-    learnerGoal: "See a city as a living system—and recognize the forces that keep shaping it long after they disappear from view.",
-    lessonMinutes: 18,
+    learnerGoal: "Design an evaluation practice that catches costly failures before an AI feature ships.",
+    lessonMinutes: 12,
     sources: [
-      { name: "MIT Urban Studies", url: "https://dusp.mit.edu/", limit: 6 },
-      { name: "Places Journal", url: "https://placesjournal.org/", limit: 6 },
-      { name: "The Nature of Cities", url: "https://www.thenatureofcities.com/", limit: 5 },
+      { name: "NIST AI RMF", url: "https://airc.nist.gov/airmf-resources/airmf/5-sec-core/", limit: 6 },
+      { name: "OpenAI Evals", url: "https://platform.openai.com/docs/guides/evals", limit: 6 },
+      { name: "LLM-as-a-Judge research", url: "https://arxiv.org/abs/2306.05685", limit: 5 },
     ],
     scheduleTime: "08:00",
     timeZone: "Asia/Kolkata",
     active: true,
     emailEnabled: true,
-    emailRecipients: ["maya@example.com"],
+    emailRecipients: ["alex@example.com"],
     aiExplorationEnabled: true,
-    publicSlug: "urban-systems-field-notes",
+    publicSlug: "production-ai-evaluation",
     siteVisible: true,
     issueCount: 14,
     generatedCount: 14,
@@ -34,39 +54,39 @@ const newsletters = [
   },
   {
     id: "intelligence",
-    name: "Intelligence, Explained",
-    topic: "Mental models for understanding modern AI systems without losing sight of their limits.",
+    name: "Reliable RAG Systems",
+    topic: "Retrieval quality, grounding, evaluation, and failure diagnosis for production RAG.",
     learnerLevel: "advanced",
-    learnerGoal: "Build an accurate, durable model of how modern AI systems learn, reason, fail, and affect real institutions.",
-    lessonMinutes: 22,
+    learnerGoal: "Separate retrieval failures from generation failures and improve each with evidence.",
+    lessonMinutes: 12,
     sources: [
-      { name: "Distill", url: "https://distill.pub/", limit: 5 },
-      { name: "Anthropic Research", url: "https://www.anthropic.com/research", limit: 5 },
-      { name: "Stanford HAI", url: "https://hai.stanford.edu/news", limit: 5 },
+      { name: "OpenAI Retrieval", url: "https://platform.openai.com/docs/guides/retrieval", limit: 5 },
+      { name: "Azure AI Search", url: "https://learn.microsoft.com/en-us/azure/search/retrieval-augmented-generation-overview", limit: 5 },
+      { name: "RAG paper", url: "https://arxiv.org/abs/2005.11401", limit: 5 },
     ],
     scheduleTime: "07:30",
     timeZone: "Asia/Kolkata",
     active: true,
     emailEnabled: true,
-    emailRecipients: ["maya@example.com"],
+    emailRecipients: ["alex@example.com"],
     aiExplorationEnabled: false,
-    publicSlug: "intelligence-explained",
+    publicSlug: "reliable-rag-systems",
     siteVisible: true,
     issueCount: 21,
     generatedCount: 20,
     sentCount: 20,
   },
   {
-    id: "climate",
-    name: "Climate Signals",
-    topic: "Reading the evidence behind climate risk, adaptation, and planetary change.",
+    id: "agents",
+    name: "Reliable AI Agents",
+    topic: "Agent architecture, tool boundaries, trajectory evaluation, and production oversight.",
     learnerLevel: "intermediate",
-    learnerGoal: "Separate meaningful climate signals from daily noise and connect global evidence to local decisions.",
-    lessonMinutes: 15,
+    learnerGoal: "Build agents that complete useful work without hiding control, security, or reliability failures.",
+    lessonMinutes: 12,
     sources: [
-      { name: "Carbon Brief", url: "https://www.carbonbrief.org/", limit: 6 },
-      { name: "NASA Climate", url: "https://climate.nasa.gov/", limit: 5 },
-      { name: "Our World in Data", url: "https://ourworldindata.org/climate-change", limit: 5 },
+      { name: "Anthropic: Building effective agents", url: "https://www.anthropic.com/engineering/building-effective-agents", limit: 6 },
+      { name: "OpenAI Agents guide", url: "https://platform.openai.com/docs/guides/agents", limit: 5 },
+      { name: "ReAct paper", url: "https://arxiv.org/abs/2210.03629", limit: 5 },
     ],
     scheduleTime: "18:00",
     timeZone: "Asia/Kolkata",
@@ -74,7 +94,7 @@ const newsletters = [
     emailEnabled: false,
     emailRecipients: [],
     aiExplorationEnabled: false,
-    publicSlug: "climate-signals",
+    publicSlug: "reliable-ai-agents",
     siteVisible: true,
     issueCount: 12,
     generatedCount: 12,
@@ -83,11 +103,11 @@ const newsletters = [
 ];
 
 const issueTitles = [
-  "Why cities remember the shape of their rivers",
-  "The infrastructure we notice only when it fails",
-  "How street grids preserve old systems of power",
-  "What urban heat islands reveal about inequality",
-  "Why informal transit often outperforms the map",
+  "Why polished output is not reliable output",
+  "Build an evaluation set from real failure costs",
+  "Turn a rubric into an inspectable release rule",
+  "Calibrate model judges against human decisions",
+  "Monitor evaluation drift after release",
 ];
 
 const issuesByNewsletter = Object.fromEntries(
@@ -108,7 +128,7 @@ const issuesByNewsletter = Object.fromEntries(
       trigger: index === 1 ? "manual" : "scheduled",
       scheduledLocalDate: createdAt(index).slice(0, 10),
       status: "generated",
-      publicationState: index === 4 ? "hidden" : "published",
+      publicationState: index === 4 ? "private" : "published",
       createdAt: createdAt(index),
       delivery: newsletter.emailEnabled
         ? {
@@ -135,57 +155,57 @@ const dossierByIssue: Record<string, {
   retrieval: string[];
   application: string;
 }> = {
-  "urban-systems-issue-1": {
-    readTime: 18,
+  "ai-evaluation-issue-1": {
+    readTime: 12,
     deck:
-      "A river can disappear from the map without disappearing from the city. Trace the old water, and streets, density, and risk start to make more sense.",
+      "A fluent AI answer can still be stale, unsupported, or unsafe. Turn quality from an impression into a decision you can inspect.",
     objective:
-      "Use buried waterways as a mental model for reading how old infrastructure keeps shaping present-day urban life.",
+      "Distinguish a persuasive AI output from one that has passed representative cases, explicit criteria, and a release threshold.",
     sections: [
       {
         label: "The mechanism",
-        heading: "Cities keep the shape of what they cover.",
+        heading: "A demo proves possibility. An evaluation estimates reliability.",
         paragraphs: [
-          "When a stream is channelled, filled, or built over, its visible surface disappears first. The low ground, the soil, the drainage path, and the habits of settlement remain. A city inherits those constraints even when its maps tell a cleaner story.",
-          "That is why the same pattern appears across very different places: roads bend around old floodplains, dense development gathers on higher ground, and heavy rain exposes the routes water still wants to take. The buried river is not a metaphor. It is a piece of infrastructure with its interface removed.",
+          "A product demo usually selects a cooperative prompt and rewards an impressive response. Production sends ambiguous evidence, outdated documents, adversarial instructions, and requests whose mistakes have unequal costs.",
+          "An evaluation connects representative cases to atomic criteria and then to a decision: release, revise, block, or escalate. The score matters only because the decision rule gives it operational meaning.",
         ],
         callout:
-          "The useful question is not “Where did the river go?” but “What is the river still making possible—and difficult?”",
+          "Evaluation = cases × criteria × decision rule. A leaderboard number without a consequence is only a measurement.",
       },
       {
         label: "A worked example",
-        heading: "Read Bengaluru from the water outward.",
+        heading: "Build twelve cases around the work and its failure costs.",
         paragraphs: [
-          "Bengaluru’s lakes and interconnected drainage channels were designed as a system, not as isolated blue patches. As the city expanded, roads and buildings interrupted those connections. During intense rain, water follows the older topography, while the newer city experiences that movement as flooding.",
-          "This changes the design problem. The solution is not only to move water away faster; it is to restore room for the system to hold, slow, and share water. A map of lakes becomes a map of relationships between ecology, housing, roads, and public decisions.",
+          "For an AI research brief, combine routine, ambiguous, high-cost, and adversarial cases. Write the expected behavior and expensive failure before selecting a metric. This keeps the test anchored to actual use.",
+          "Score checkable criteria independently: every material claim is grounded, the evidence version is current, uncertainty is visible, and unresolved contradictions trigger escalation. A single quality score would hide which contract failed.",
         ],
       },
       {
         label: "Skeptical review",
         heading: "The model explains a lot. It does not explain everything.",
         paragraphs: [
-          "Old waterways are powerful evidence, but they are not a single-cause theory of urban risk. Drain maintenance, land use, rainfall intensity, construction quality, and unequal access to protection all matter. The same historical pattern can produce very different outcomes depending on who has the power to change it.",
-          "Treat the buried-river model as a starting lens. It helps you notice a hidden dependency, then asks you to look for the institutions and incentives that keep the dependency in place.",
+          "Twelve cases can reveal useful failures, but they cannot establish general safety. A model judge can add scale, yet order effects and correlated model errors mean it cannot serve as unquestioned ground truth.",
+          "Blind irrelevant presentation details, human-label an audit slice, swap pairwise answer order, and route disagreement or high-cost cases to people. Expand the set with meaningful production failures.",
         ],
       },
     ],
     retrieval: [
-      "Why can a covered stream continue to shape a city’s streets and flood risk?",
-      "What changes when a network of lakes is treated as one system?",
-      "Which factors would you check before blaming every flood on old waterways?",
+      "Why does a benchmark score become useful only when it connects to a decision?",
+      "What four kinds of cases would expose more than a polished demo?",
+      "When must a model-judge verdict route to a human?",
     ],
     application:
-      "Choose one familiar street that floods after heavy rain. Look for the low points, nearby water bodies, and recent construction. Sketch the path water might be trying to take—and note what your sketch cannot yet explain.",
+      "Choose an AI feature you know. Write one high-cost failure case, two binary success criteria, and the exact condition that blocks release or requires human review.",
   },
 };
 
 export const demoSite = {
-  username: "maya",
-  displayName: "Maya’s Learning Garden",
-  description: "Notes on cities, intelligence, and the systems quietly shaping everyday life.",
+  username: "alex",
+  displayName: "Alex’s AI Engineering Notes",
+  description: "Source-grounded lessons on evaluating and operating production AI systems.",
   visibility: "public",
   searchIndexing: true,
-  url: "https://maya.learnloom.blog",
+  url: "https://alex.learnloom.blog",
 };
 
 export function demoResponse(path: string, options: APIRequestOptions = {}) {
@@ -202,13 +222,13 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
       completedAt?: string;
       updatedAt: string;
     }> = {
-      "urban-systems-issue-1": {
-        issueId: "urban-systems-issue-1",
+      "ai-evaluation-issue-1": {
+        issueId: "ai-evaluation-issue-1",
         progress: 42,
         updatedAt: createdAt(0),
       },
-      "urban-systems-issue-2": {
-        issueId: "urban-systems-issue-2",
+      "ai-evaluation-issue-2": {
+        issueId: "ai-evaluation-issue-2",
         progress: 100,
         completedAt: createdAt(1),
         updatedAt: createdAt(1),
@@ -255,7 +275,7 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
       .filter((issue) => issue.status === "generated")
       .slice(0, 8)
       .flatMap((issue) => {
-        const dossier = dossierByIssue[issue.id] ?? dossierByIssue["urban-systems-issue-1"];
+        const dossier = dossierByIssue[issue.id] ?? dossierByIssue["ai-evaluation-issue-1"];
         return dossier.retrieval.slice(0, 1).map((prompt, index) => ({
           id: `${issue.id}-review-${index + 1}`,
           issueId: issue.id,
@@ -292,17 +312,163 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
   }
 
   if (path === "/api/newsletters" && method === "POST") {
-    return { newsletter: newsletters[0] };
+    demoCreatedNewsletter = {
+      id: "new-learning-path",
+      name: requestBody?.name || requestBody?.topic || "New learning path",
+      topic: requestBody?.topic || "A new subject",
+      learnerLevel: requestBody?.learnerLevel || "intermediate",
+      learnerGoal: requestBody?.learnerGoal || "Build a practical understanding.",
+      lessonMinutes: requestBody?.lessonMinutes || 12,
+      sourceMode: requestBody?.sourceMode || "discovered",
+      sourceReviewMode: requestBody?.sourceReviewMode || "auto",
+      sources: requestBody?.sources || [],
+      scheduleTime: requestBody?.scheduleTime || "08:00",
+      timeZone: requestBody?.timeZone || "UTC",
+      active: true,
+      emailEnabled: Boolean(requestBody?.emailEnabled),
+      aiExplorationEnabled: false,
+      siteVisible: false,
+      issueCount: 1,
+      generatedCount: 0,
+      sentCount: 0,
+    };
+    demoCreatedIssue = {
+      id: "new-learning-path-issue-1",
+      status: "queued",
+      publicationState: "private",
+      createdAt: new Date().toISOString(),
+    };
+    demoOnboardingDraft = null;
+    return { newsletter: demoCreatedNewsletter, issue: demoCreatedIssue };
+  }
+
+  if (path === "/api/onboarding/draft" && method === "GET") {
+    return { draft: demoOnboardingDraft };
+  }
+
+  if (path === "/api/onboarding/draft" && method === "PUT") {
+    demoOnboardingDraft = {
+        id: requestBody?.draftId ?? demoOnboardingDraft?.id ?? "demo-onboarding",
+        step: requestBody?.step ?? 1,
+        revision: (demoOnboardingDraft?.revision ?? 0) + 1,
+      payload: requestBody?.payload ?? {},
+      updatedAt: new Date().toISOString(),
+    };
+    return { draft: demoOnboardingDraft };
+  }
+
+  if (path === "/api/onboarding/draft" && method === "DELETE") {
+    demoOnboardingDraft = null;
+    return {};
+  }
+
+  if (path === "/api/sources/validate" && method === "POST") {
+    return {
+      sources: (requestBody?.sources ?? []).map((source) => ({
+        status: "ready",
+        itemCount: 8,
+        canonicalUrl: source.url,
+      })),
+    };
+  }
+
+  if (path === "/api/source-portfolio/preview" && method === "POST") {
+    const topic = requestBody?.topic ?? "your topic";
+    return {
+      rankingVersion: "source-rank-v2",
+      warnings: 0,
+      missingRoles: [],
+      researchPlan: {
+        initialConcepts: [
+          `Foundations and boundaries of ${topic}`,
+          "Core mechanisms and causal relationships",
+          "Evidence quality and counterarguments",
+          requestBody?.learnerGoal
+            ? `Apply the model to: ${requestBody.learnerGoal}`
+            : "Practical applications and failure modes",
+        ],
+        likelyFirstLesson: `Build a working model of ${topic}`,
+        objective: "Explain the core mechanisms, test the evidence, and recognize important limitations.",
+        minimumPreparationMinutes: 5,
+        maximumPreparationMinutes: 15,
+      },
+      items: [
+        {
+          title: `Primary institutions working on ${topic}`,
+          url: "https://www.nist.gov/",
+          registrableDomain: "nist.gov",
+          role: "official_primary",
+          selectionReason: "Primary institutional material with stable ownership and direct subject authority.",
+        },
+        {
+          title: `Current research evidence for ${topic}`,
+          url: "https://www.nature.com/",
+          registrableDomain: "nature.com",
+          role: "research",
+          selectionReason: "Research-led evidence that can test mechanisms and important claims.",
+        },
+        {
+          title: `How practitioners apply ${topic}`,
+          url: "https://spectrum.ieee.org/",
+          registrableDomain: "ieee.org",
+          role: "practitioner_explainer",
+          selectionReason: "A technically grounded explanation connecting evidence to real practice.",
+        },
+        {
+          title: `Limits and counterarguments around ${topic}`,
+          url: "https://www.rand.org/",
+          registrableDomain: "rand.org",
+          role: "counterweight",
+          selectionReason: "An independent perspective selected to expose limitations and contested assumptions.",
+        },
+      ],
+    };
   }
 
   const detail = /^\/api\/newsletters\/([^/]+)$/.exec(path);
   if (detail) {
+    if (detail[1] === "new-learning-path") {
+      demoCreatedNewsletter ??= {
+        id: "new-learning-path",
+        name: "Evaluating AI agents",
+        topic: "How to evaluate AI agents in production",
+        learnerLevel: "intermediate",
+        learnerGoal: "Design reliable evaluation systems",
+        lessonMinutes: 12,
+        sourceMode: "discovered",
+        sourceReviewMode: "auto",
+        sources: [],
+        scheduleTime: "08:00",
+        timeZone: "UTC",
+        active: true,
+        emailEnabled: false,
+        aiExplorationEnabled: false,
+        siteVisible: false,
+        issueCount: 1,
+        generatedCount: 0,
+        sentCount: 0,
+      };
+      demoCreatedIssue ??= {
+        id: "new-learning-path-issue-1",
+        status: "queued",
+        publicationState: "private",
+        createdAt: new Date().toISOString(),
+      };
+      return {
+        newsletter: demoCreatedNewsletter,
+        newsletters: [demoCreatedNewsletter, ...newsletters],
+        issues: [demoCreatedIssue],
+        sourceSummary: { provided: 0, discovered: 0, healthy: 0, needsAttention: 0 },
+        sourceCatalog: [],
+        resendConfigured: true,
+      };
+    }
     const newsletter =
       newsletters.find((item) => item.id === detail[1]) ?? newsletters[0];
     return {
       newsletter,
       newsletters,
-      issues: issuesByNewsletter[newsletter.id] ?? issuesByNewsletter["urban-systems"],
+      issues: issuesByNewsletter[newsletter.id] ?? issuesByNewsletter["ai-evaluation"],
       sourceSummary: {
         provided: newsletter.sources.length,
         discovered: 0,
@@ -322,6 +488,11 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
     };
   }
 
+  if (path === "/api/newsletters/new-learning-path/delivery" && method === "POST") {
+    if (demoCreatedNewsletter) demoCreatedNewsletter.emailEnabled = Boolean(requestBody?.enabled);
+    return { enabled: Boolean(requestBody?.enabled) };
+  }
+
   const issue = /^\/api\/issues\/([^/]+)$/.exec(path);
   if (issue && method === "GET") {
     const issueId = decodeURIComponent(issue[1]);
@@ -331,7 +502,8 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
     const newsletterIssues = issuesByNewsletter[newsletter.id] ?? [];
     const currentIssue = newsletterIssues.find((itemIssue) => itemIssue.id === issueId)
       ?? newsletterIssues[0];
-    const dossier = dossierByIssue[currentIssue.id] ?? dossierByIssue["urban-systems-issue-1"];
+    const currentIndex = newsletterIssues.findIndex((itemIssue) => itemIssue.id === currentIssue.id);
+    const dossier = dossierByIssue[currentIssue.id] ?? dossierByIssue["ai-evaluation-issue-1"];
     return {
       issue: currentIssue,
       newsletter,
@@ -341,16 +513,109 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
         name: source.name,
         url: source.url,
       })),
+      lessonProgress: demoProgress[issueId]
+        ? { issueId, ...demoProgress[issueId] }
+        : null,
+      retrievals: demoRetrievals[issueId] ?? [],
+      navigation: {
+        previous: newsletterIssues[currentIndex + 1]
+          ? {
+            issueId: newsletterIssues[currentIndex + 1].id,
+            title: newsletterIssues[currentIndex + 1].title,
+            createdAt: newsletterIssues[currentIndex + 1].createdAt,
+          }
+          : null,
+        next: currentIndex > 0
+          ? {
+            issueId: newsletterIssues[currentIndex - 1].id,
+            title: newsletterIssues[currentIndex - 1].title,
+            createdAt: newsletterIssues[currentIndex - 1].createdAt,
+          }
+          : null,
+        nextReviewAt: null,
+      },
     };
+  }
+
+  const moderation = /^\/api\/issues\/([^/]+)\/moderation$/.exec(requestURL.pathname);
+  if (moderation) {
+    const issueId = decodeURIComponent(moderation[1]);
+    const current = demoModeration[issueId] ?? {
+      state: "clear" as const,
+      reason: "",
+      corrections: [],
+      reports: [],
+      actions: [],
+    };
+    if (method === "POST") {
+      const nextState = requestBody?.state === "held" ? "held" : "clear";
+      current.state = nextState;
+      current.reason = requestBody?.reason ?? "";
+      current.actions = [{
+        id: `demo-moderation-${current.actions.length + 1}`,
+        action: nextState,
+        reason: current.reason,
+        createdAt: new Date().toISOString(),
+      }, ...current.actions];
+    }
+    demoModeration[issueId] = current;
+    return current;
+  }
+
+  const corrections = /^\/api\/issues\/([^/]+)\/corrections$/.exec(requestURL.pathname);
+  if (corrections && method === "POST") {
+    const issueId = decodeURIComponent(corrections[1]);
+    const current = demoModeration[issueId] ?? {
+      state: "clear" as const,
+      reason: "",
+      corrections: [],
+      reports: [],
+      actions: [],
+    };
+    const correction = {
+      id: `demo-correction-${current.corrections.length + 1}`,
+      body: requestBody?.body ?? "",
+      createdAt: new Date().toISOString(),
+    };
+    current.corrections = [...current.corrections, correction];
+    demoModeration[issueId] = current;
+    return correction;
   }
 
   const progress = /^\/api\/issues\/([^/]+)\/progress$/.exec(requestURL.pathname);
   if (progress && method === "POST") {
-    return {
+    const saved = {
       issueId: progress[1],
       progress: requestBody?.progress ?? 0,
       updatedAt: new Date().toISOString(),
     };
+    demoProgress[progress[1]] = saved;
+    return saved;
+  }
+
+  const retrieval = /^\/api\/issues\/([^/]+)\/retrievals\/([^/]+)$/.exec(requestURL.pathname);
+  if (retrieval && method === "POST") {
+    const issueId = decodeURIComponent(retrieval[1]);
+    const promptKey = decodeURIComponent(retrieval[2]);
+    const now = new Date().toISOString();
+    const existing = (demoRetrievals[issueId] ?? []).find((item) => item.promptKey === promptKey);
+    if (existing) {
+      existing.response = requestBody?.skipped ? "" : requestBody?.response ?? existing.response;
+      existing.skipped = Boolean(requestBody?.skipped);
+      existing.updatedAt = now;
+      if (method === "POST") existing.revealedAt = now;
+      return existing;
+    }
+    const saved = {
+      issueId,
+      promptKey,
+      response: requestBody?.skipped ? "" : requestBody?.response ?? "",
+      skipped: Boolean(requestBody?.skipped),
+      revealedAt: method === "POST" ? now : undefined,
+      updatedAt: now,
+    };
+    demoRetrievals[issueId] = [...(demoRetrievals[issueId] ?? []), saved];
+    return saved;
   }
 
   if (path === "/api/me/site/claim" && method === "POST") {

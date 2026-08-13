@@ -35,6 +35,10 @@ export interface NormalizedDossier {
   retrievalItems: RetrievalItem[];
   application: string;
   claims: EvidenceClaim[];
+  limitations: EvidenceClaim[];
+  lessonType: string;
+  evidenceStatus: string;
+  nextConcepts: string[];
 }
 
 interface RawDossier {
@@ -45,12 +49,16 @@ interface RawDossier {
   curation?: { rationale?: string };
   blueprint?: { continuityBridge?: string; learningObjective?: string };
   learning?: {
+    lessonType?: string;
+    evidenceStatus?: string;
     selectionRationale?: string;
     continuityBridge?: string;
     concepts?: Array<{ label?: string }>;
     retrieval?: RetrievalItem[];
     claims?: EvidenceClaim[];
+    limitations?: EvidenceClaim[];
     application?: string;
+    suggestedNextConcepts?: string[];
   };
   [key: string]: unknown;
 }
@@ -126,10 +134,17 @@ export function normalizeDossier(
   }
 
   const lessonSections = markdownSections(dossier?.lesson ?? "");
-  const critiqueSections = markdownSections(
-    dossier?.critique ?? "",
-    lessonSections.length,
-  );
+  const limitations = dossier?.learning?.limitations ?? [];
+  const critiqueSections = limitations.length
+    ? [{
+      label: String(lessonSections.length + 1).padStart(2, "0"),
+      heading: "Limits and verification",
+      paragraphs: limitations.map((limitation) => ({
+        text: limitation.text,
+        sourceIds: limitation.sourceIds,
+      })),
+    }]
+    : markdownSections(dossier?.critique ?? "", lessonSections.length);
   const retrieval = retrievalQuestions(dossier?.practice ?? "");
   const retrievalItems = dossier?.learning?.retrieval?.length
     ? dossier.learning.retrieval
@@ -163,5 +178,9 @@ export function normalizeDossier(
       dossier?.learning?.application ||
       sectionBody(dossier?.practice ?? "", "Application challenge"),
     claims: dossier?.learning?.claims ?? [],
+    limitations,
+    lessonType: dossier?.learning?.lessonType ?? "",
+    evidenceStatus: dossier?.learning?.evidenceStatus ?? "",
+    nextConcepts: dossier?.learning?.suggestedNextConcepts ?? [],
   };
 }

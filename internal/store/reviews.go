@@ -112,6 +112,20 @@ func (s *Store) AssessReview(
 	review.Stage = nextStage
 	review.DueAt = nextDue
 	review.LastReviewedAt = &now
+	for _, event := range []struct {
+		name      ProductEventName
+		subjectID string
+	}{
+		{ProductEventReviewAttempted, review.ID},
+		{ProductEventFirstRetrieval, "first"},
+		{ProductEventActivationCompleted, "first-cycle"},
+	} {
+		if err := insertProductEvent(
+			ctx, tx, accountID, event.name, "review", event.subjectID, now,
+		); err != nil {
+			return WorkspaceReview{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return WorkspaceReview{}, fmt.Errorf("commit Review Attempt: %w", err)
 	}

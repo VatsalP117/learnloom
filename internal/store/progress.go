@@ -16,6 +16,133 @@ type LessonProgress struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
+type LessonNavigationLink struct {
+	IssueID   string    `json:"issueId"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type LessonNavigation struct {
+	Previous     *LessonNavigationLink `json:"previous,omitempty"`
+	Next         *LessonNavigationLink `json:"next,omitempty"`
+	NextReviewAt *time.Time            `json:"nextReviewAt,omitempty"`
+}
+
+func (s *Store) GetLessonNavigation(
+	ctx context.Context,
+	accountID, issueID string,
+) (LessonNavigation, error) {
+	var newsletterID string
+	var createdAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT issue.newsletter_id::text, issue.created_at
+		FROM issues issue
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE issue.id = $2
+		  AND newsletter.owner_account_id = $1
+		  AND issue.status = 'generated'
+	`, accountID, issueID).Scan(&newsletterID, &createdAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LessonNavigation{}, ErrNotFound
+	}
+	if err != nil {
+		return LessonNavigation{}, fmt.Errorf("get Lesson navigation anchor: %w", err)
+	}
+	result := LessonNavigation{}
+	result.Previous, err = s.adjacentLesson(
+		ctx, accountID, newsletterID, issueID, createdAt, false,
+	)
+	if err != nil {
+		return LessonNavigation{}, err
+	}
+	result.Next, err = s.adjacentLesson(
+		ctx, accountID, newsletterID, issueID, createdAt, true,
+	)
+	if err != nil {
+		return LessonNavigation{}, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		SELECT min(review.due_at)
+		FROM review_items review
+		JOIN issues issue ON issue.id = review.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE review.account_id = $1
+		  AND review.issue_id = $2
+		  AND newsletter.owner_account_id = $1
+		  AND review.retired_at IS NULL
+	`, accountID, issueID).Scan(&result.NextReviewAt)
+	if err != nil {
+		return LessonNavigation{}, fmt.Errorf("get Lesson next Review: %w", err)
+	}
+	return result, nil
+}
+
+func (s *Store) adjacentLesson(
+	ctx context.Context,
+	accountID, newsletterID, issueID string,
+	createdAt time.Time,
+	newer bool,
+) (*LessonNavigationLink, error) {
+	comparison := "<"
+	ordering := "DESC"
+	if newer {
+		comparison = ">"
+		ordering = "ASC"
+	}
+	query := fmt.Sprintf(`
+		SELECT issue.id::text, COALESCE(issue.dossier_title, ''), issue.created_at
+		FROM issues issue
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE newsletter.owner_account_id = $1
+		  AND issue.newsletter_id = $2
+		  AND issue.id <> $3
+		  AND issue.status = 'generated'
+		  AND (issue.created_at, issue.id) %s ($4, $3::uuid)
+		ORDER BY issue.created_at %s, issue.id %s
+		LIMIT 1
+	`, comparison, ordering, ordering)
+	var result LessonNavigationLink
+	err := s.pool.QueryRow(
+		ctx, query, accountID, newsletterID, issueID, createdAt,
+	).Scan(&result.IssueID, &result.Title, &result.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get adjacent Lesson: %w", err)
+	}
+	return &result, nil
+}
+
+func (s *Store) GetLessonProgress(
+	ctx context.Context,
+	accountID, issueID string,
+) (*LessonProgress, error) {
+	var result LessonProgress
+	err := s.pool.QueryRow(ctx, `
+		SELECT progress.issue_id::text, progress.progress,
+		       progress.completed_at, progress.updated_at
+		FROM lesson_progress progress
+		JOIN issues issue ON issue.id = progress.issue_id
+		JOIN newsletters newsletter ON newsletter.id = issue.newsletter_id
+		WHERE progress.account_id = $1
+		  AND progress.issue_id = $2
+		  AND newsletter.owner_account_id = $1
+	`, accountID, issueID).Scan(
+		&result.IssueID,
+		&result.Progress,
+		&result.CompletedAt,
+		&result.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get Lesson Progress: %w", err)
+	}
+	return &result, nil
+}
+
 func (s *Store) SaveLessonProgress(
 	ctx context.Context,
 	accountID, issueID string,
@@ -101,7 +228,7 @@ func (s *Store) CompleteLesson(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE review_items
-		SET due_at = COALESCE(due_at, $3),
+		SET due_at = COALESCE(due_at, $3::timestamptz + interval '1 day'),
 		    updated_at = $3
 		WHERE account_id = $1
 		  AND issue_id = $2
@@ -126,17 +253,15 @@ func (s *Store) CompleteLesson(
 	`, accountID, issueID, now); err != nil {
 		return LessonProgress{}, fmt.Errorf("complete Learner Concepts: %w", err)
 	}
+	if err := insertProductEvent(
+		ctx, tx, accountID, ProductEventLessonCompleted,
+		"lesson", issueID, now,
+	); err != nil {
+		return LessonProgress{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return LessonProgress{}, fmt.Errorf("commit lesson completion: %w", err)
 	}
-	_ = s.RecordProductEvent(
-		ctx,
-		accountID,
-		ProductEventLessonCompleted,
-		"lesson",
-		issueID,
-		now,
-	)
 	return result, nil
 }
 

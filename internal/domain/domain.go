@@ -91,22 +91,71 @@ const (
 	SourceStateDisabled  SourceState = "disabled"
 )
 
+type SourceRole string
+
+const (
+	SourceRoleOfficialPrimary SourceRole = "official_primary"
+	SourceRoleResearch        SourceRole = "research"
+	SourceRolePractitioner    SourceRole = "practitioner_explainer"
+	SourceRoleReporting       SourceRole = "reporting_context"
+	SourceRoleCounterweight   SourceRole = "counterweight"
+)
+
+type SourcePreference string
+
+const (
+	SourcePreferenceNeutral   SourcePreference = "neutral"
+	SourcePreferencePreferred SourcePreference = "preferred"
+	SourcePreferenceBlocked   SourcePreference = "blocked"
+)
+
+type SourceReviewMode string
+
+const (
+	SourceReviewAuto         SourceReviewMode = "auto"
+	SourceReviewBeforeLesson SourceReviewMode = "review"
+)
+
+type SourceScoreComponents struct {
+	SearchRank    int `json:"searchRank"`
+	Relevance     int `json:"relevance"`
+	Authority     int `json:"authority"`
+	Primaryness   int `json:"primaryness"`
+	Recency       int `json:"recency"`
+	Usefulness    int `json:"usefulness"`
+	Independence  int `json:"independence"`
+	Accessibility int `json:"accessibility"`
+	Counterweight int `json:"counterweight"`
+	Negative      int `json:"negative"`
+}
+
+func (components SourceScoreComponents) Total() int {
+	return components.SearchRank + components.Relevance + components.Authority +
+		components.Primaryness + components.Recency + components.Usefulness +
+		components.Independence + components.Accessibility +
+		components.Counterweight + components.Negative
+}
+
 type SourceSpec struct {
-	ID              string       `json:"id"`
-	NewsletterID    string       `json:"newsletterId"`
-	Origin          SourceOrigin `json:"origin"`
-	State           SourceState  `json:"state"`
-	DisplayName     string       `json:"displayName"`
-	InputURL        string       `json:"inputUrl"`
-	CanonicalURL    string       `json:"canonicalUrl,omitempty"`
-	Scope           SourceScope  `json:"scope"`
-	Kind            SourceKind   `json:"kind,omitempty"`
-	ItemLimit       int          `json:"itemLimit"`
-	DiscoveryReason string       `json:"discoveryReason,omitempty"`
-	DiscoveryQuery  string       `json:"-"`
-	RankScore       int          `json:"-"`
-	CreatedAt       time.Time    `json:"createdAt"`
-	UpdatedAt       time.Time    `json:"updatedAt"`
+	ID              string                `json:"id"`
+	NewsletterID    string                `json:"newsletterId"`
+	Origin          SourceOrigin          `json:"origin"`
+	State           SourceState           `json:"state"`
+	DisplayName     string                `json:"displayName"`
+	InputURL        string                `json:"inputUrl"`
+	CanonicalURL    string                `json:"canonicalUrl,omitempty"`
+	Scope           SourceScope           `json:"scope"`
+	Kind            SourceKind            `json:"kind,omitempty"`
+	ItemLimit       int                   `json:"itemLimit"`
+	DiscoveryReason string                `json:"discoveryReason,omitempty"`
+	DiscoveryQuery  string                `json:"-"`
+	RankScore       int                   `json:"-"`
+	Role            SourceRole            `json:"role,omitempty"`
+	RankingVersion  string                `json:"-"`
+	ScoreComponents SourceScoreComponents `json:"-"`
+	Preference      SourcePreference      `json:"preference"`
+	CreatedAt       time.Time             `json:"createdAt"`
+	UpdatedAt       time.Time             `json:"updatedAt"`
 }
 
 type SourceEndpoint struct {
@@ -175,52 +224,77 @@ type SourceSummary struct {
 }
 
 type SourceCatalogItem struct {
-	ID               string       `json:"id"`
-	DisplayName      string       `json:"displayName"`
-	CanonicalURL     string       `json:"canonicalUrl"`
-	Origin           SourceOrigin `json:"origin"`
-	Scope            SourceScope  `json:"scope"`
-	Kind             SourceKind   `json:"kind,omitempty"`
-	State            SourceState  `json:"state"`
-	Health           string       `json:"health"`
-	DiscoveryReason  string       `json:"discoveryReason,omitempty"`
-	LastCheckedAt    *time.Time   `json:"lastCheckedAt,omitempty"`
-	LastSuccessfulAt *time.Time   `json:"lastSuccessfulAt,omitempty"`
-	Error            string       `json:"-"`
+	ID               string           `json:"id"`
+	DisplayName      string           `json:"displayName"`
+	CanonicalURL     string           `json:"canonicalUrl"`
+	Origin           SourceOrigin     `json:"origin"`
+	Scope            SourceScope      `json:"scope"`
+	Kind             SourceKind       `json:"kind,omitempty"`
+	State            SourceState      `json:"state"`
+	Health           string           `json:"health"`
+	DiscoveryReason  string           `json:"discoveryReason,omitempty"`
+	Role             SourceRole       `json:"role,omitempty"`
+	RankingVersion   string           `json:"rankingVersion,omitempty"`
+	Preference       SourcePreference `json:"preference"`
+	LastCheckedAt    *time.Time       `json:"lastCheckedAt,omitempty"`
+	LastSuccessfulAt *time.Time       `json:"lastSuccessfulAt,omitempty"`
+	Error            string           `json:"-"`
 }
 
 type Newsletter struct {
-	ID                   string             `json:"id"`
-	OwnerAccountID       string             `json:"-"`
-	Name                 string             `json:"name"`
-	Topic                string             `json:"topic"`
-	LearnerLevel         string             `json:"learnerLevel"`
-	LearnerGoal          string             `json:"learnerGoal"`
-	LessonMinutes        int                `json:"lessonMinutes"`
-	SourceMode           SourceMode         `json:"sourceMode"`
-	Sources              []SourceDefinition `json:"sources"`
-	ScheduleHour         int                `json:"-"`
-	ScheduleMinute       int                `json:"-"`
-	TimeZone             string             `json:"timeZone"`
-	Active               bool               `json:"active"`
-	NextRunAt            time.Time          `json:"nextRunAt"`
-	EmailEnabled         bool               `json:"emailEnabled"`
-	EmailRecipients      []string           `json:"emailRecipients"`
-	AIExplorationEnabled bool               `json:"aiExplorationEnabled"`
-	PublicSlug           string             `json:"publicSlug"`
-	SiteVisible          bool               `json:"siteVisible"`
-	CreatedAt            time.Time          `json:"createdAt"`
-	UpdatedAt            time.Time          `json:"updatedAt"`
+	ID                                 string             `json:"id"`
+	OwnerAccountID                     string             `json:"-"`
+	Name                               string             `json:"name"`
+	Topic                              string             `json:"topic"`
+	LearnerLevel                       string             `json:"learnerLevel"`
+	LearnerGoal                        string             `json:"learnerGoal"`
+	LessonMinutes                      int                `json:"lessonMinutes"`
+	SourceMode                         SourceMode         `json:"sourceMode"`
+	SourceReviewMode                   SourceReviewMode   `json:"sourceReviewMode"`
+	SourceApprovedAt                   *time.Time         `json:"sourceApprovedAt,omitempty"`
+	Sources                            []SourceDefinition `json:"sources"`
+	ScheduleHour                       int                `json:"-"`
+	ScheduleMinute                     int                `json:"-"`
+	TimeZone                           string             `json:"timeZone"`
+	RhythmMode                         RhythmMode         `json:"rhythmMode"`
+	SelectedWeekdays                   []int              `json:"selectedWeekdays"`
+	EffectiveRhythmMode                RhythmMode         `json:"effectiveRhythmMode"`
+	AutoThrottleEnabled                bool               `json:"autoThrottleEnabled"`
+	UnopenedLessonLimit                int                `json:"unopenedLessonLimit"`
+	RhythmReason                       string             `json:"rhythmReason,omitempty"`
+	RhythmThrottledAt                  *time.Time         `json:"rhythmThrottledAt,omitempty"`
+	LessonPublicationDefault           PublicationState   `json:"lessonPublicationDefault"`
+	LessonPublicationDefaultReviewedAt *time.Time         `json:"lessonPublicationDefaultReviewedAt,omitempty"`
+	Active                             bool               `json:"active"`
+	NextRunAt                          time.Time          `json:"nextRunAt"`
+	EmailEnabled                       bool               `json:"emailEnabled"`
+	EmailRecipients                    []string           `json:"emailRecipients"`
+	AIExplorationEnabled               bool               `json:"aiExplorationEnabled"`
+	PublicSlug                         string             `json:"publicSlug"`
+	SiteVisible                        bool               `json:"siteVisible"`
+	CreatedAt                          time.Time          `json:"createdAt"`
+	UpdatedAt                          time.Time          `json:"updatedAt"`
 }
+
+type RhythmMode string
+
+const (
+	RhythmEvidenceLed      RhythmMode = "evidence_led"
+	RhythmDaily            RhythmMode = "daily"
+	RhythmSelectedWeekdays RhythmMode = "selected_weekdays"
+	RhythmWeeklySynthesis  RhythmMode = "weekly_synthesis"
+)
 
 type IssueStatus string
 
 const (
-	IssueQueued     IssueStatus = "queued"
-	IssueGenerating IssueStatus = "generating"
-	IssueGenerated  IssueStatus = "generated"
-	IssueFailed     IssueStatus = "failed"
-	IssueCancelled  IssueStatus = "cancelled"
+	IssueQueued           IssueStatus = "queued"
+	IssueGenerating       IssueStatus = "generating"
+	IssueAwaitingApproval IssueStatus = "awaiting_approval"
+	IssueGenerated        IssueStatus = "generated"
+	IssueFailed           IssueStatus = "failed"
+	IssueDeferred         IssueStatus = "deferred"
+	IssueCancelled        IssueStatus = "cancelled"
 )
 
 type IssueTrigger string
@@ -234,34 +308,39 @@ type PublicationState string
 
 const (
 	PublicationPublished PublicationState = "published"
-	PublicationHidden    PublicationState = "hidden"
+	PublicationDraft     PublicationState = "draft"
+	PublicationPrivate   PublicationState = "private"
 )
 
 type Issue struct {
-	ID                 string           `json:"id"`
-	NewsletterID       string           `json:"newsletterId"`
-	Newsletter         Newsletter       `json:"newsletter"`
-	Trigger            IssueTrigger     `json:"trigger"`
-	ScheduledLocalDate *string          `json:"scheduledLocalDate,omitempty"`
-	Status             IssueStatus      `json:"status"`
-	Title              string           `json:"title,omitempty"`
-	GenerationID       string           `json:"generationId,omitempty"`
-	ArtifactKey        string           `json:"-"`
-	ArtifactSHA256     string           `json:"-"`
-	ArtifactBytes      int              `json:"-"`
-	Error              string           `json:"-"`
-	FailureCode        string           `json:"-"`
-	FailureCategory    string           `json:"-"`
-	FailureStage       string           `json:"-"`
-	FailureRetryable   bool             `json:"-"`
-	IncidentID         string           `json:"-"`
-	PublicID           string           `json:"publicId,omitempty"`
-	PublicSlug         string           `json:"publicSlug,omitempty"`
-	PublicationState   PublicationState `json:"publicationState"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	StartedAt          *time.Time       `json:"startedAt,omitempty"`
-	CompletedAt        *time.Time       `json:"completedAt,omitempty"`
-	Delivery           *DeliveryReceipt `json:"delivery,omitempty"`
+	ID                     string           `json:"id"`
+	NewsletterID           string           `json:"newsletterId"`
+	Newsletter             Newsletter       `json:"newsletter"`
+	Trigger                IssueTrigger     `json:"trigger"`
+	ScheduledLocalDate     *string          `json:"scheduledLocalDate,omitempty"`
+	Status                 IssueStatus      `json:"status"`
+	Title                  string           `json:"title,omitempty"`
+	GenerationID           string           `json:"generationId,omitempty"`
+	ArtifactKey            string           `json:"-"`
+	ArtifactSHA256         string           `json:"-"`
+	ArtifactBytes          int              `json:"-"`
+	Error                  string           `json:"-"`
+	FailureCode            string           `json:"-"`
+	FailureCategory        string           `json:"-"`
+	FailureStage           string           `json:"-"`
+	FailureRetryable       bool             `json:"-"`
+	IncidentID             string           `json:"-"`
+	PublicID               string           `json:"publicId,omitempty"`
+	PublicSlug             string           `json:"publicSlug,omitempty"`
+	PublicationState       PublicationState `json:"publicationState"`
+	PublicationUpdatedAt   time.Time        `json:"publicationUpdatedAt"`
+	FirstPublishReviewedAt *time.Time       `json:"firstPublishReviewedAt,omitempty"`
+	PublishedAt            *time.Time       `json:"publishedAt,omitempty"`
+	RequestedLessonType    LessonType       `json:"requestedLessonType,omitempty"`
+	CreatedAt              time.Time        `json:"createdAt"`
+	StartedAt              *time.Time       `json:"startedAt,omitempty"`
+	CompletedAt            *time.Time       `json:"completedAt,omitempty"`
+	Delivery               *DeliveryReceipt `json:"delivery,omitempty"`
 }
 
 type DeliveryStatus string
@@ -308,16 +387,34 @@ type Curation struct {
 }
 
 type LearningBlueprint struct {
-	LearningObjective     string   `json:"learningObjective"`
-	Prerequisites         []string `json:"prerequisites"`
-	Concepts              []string `json:"concepts"`
-	SuggestedNextConcepts []string `json:"suggestedNextConcepts"`
-	CentralMechanism      string   `json:"centralMechanism"`
-	WorkedExample         string   `json:"workedExample"`
-	Misconception         string   `json:"misconception"`
-	PracticalExperiment   string   `json:"practicalExperiment"`
-	ContinuityBridge      string   `json:"continuityBridge"`
+	LessonType            LessonType `json:"lessonType,omitempty"`
+	LearningObjective     string     `json:"learningObjective"`
+	Prerequisites         []string   `json:"prerequisites"`
+	Concepts              []string   `json:"concepts"`
+	SuggestedNextConcepts []string   `json:"suggestedNextConcepts"`
+	CentralMechanism      string     `json:"centralMechanism"`
+	WorkedExample         string     `json:"workedExample"`
+	Misconception         string     `json:"misconception"`
+	PracticalExperiment   string     `json:"practicalExperiment"`
+	ContinuityBridge      string     `json:"continuityBridge"`
 }
+
+type LessonType string
+
+const (
+	LessonFoundation  LessonType = "foundation"
+	LessonUpdate      LessonType = "update"
+	LessonDeepDive    LessonType = "deep_dive"
+	LessonSynthesis   LessonType = "synthesis"
+	LessonApplication LessonType = "application"
+	LessonReview      LessonType = "review"
+)
+
+type EvidenceStatus string
+
+const (
+	EvidenceSourceBounded EvidenceStatus = "source_bounded"
+)
 
 type LearningConcept struct {
 	ID    string `json:"id"`
@@ -331,6 +428,12 @@ type EvidenceClaim struct {
 	SourceIDs []string `json:"sourceIds"`
 }
 
+type ConceptChange struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Change string `json:"change"`
+}
+
 type RetrievalPrompt struct {
 	ID                    string   `json:"id"`
 	Prompt                string   `json:"prompt"`
@@ -341,12 +444,16 @@ type RetrievalPrompt struct {
 
 type LearningContract struct {
 	Version               int               `json:"version"`
+	LessonType            LessonType        `json:"lessonType"`
+	EvidenceStatus        EvidenceStatus    `json:"evidenceStatus"`
 	SelectionRationale    string            `json:"selectionRationale"`
 	LearningObjective     string            `json:"learningObjective"`
 	ContinuityBridge      string            `json:"continuityBridge"`
 	Concepts              []LearningConcept `json:"concepts"`
+	ConceptChanges        []ConceptChange   `json:"conceptChanges"`
 	Misconception         string            `json:"misconception"`
 	Claims                []EvidenceClaim   `json:"claims"`
+	Limitations           []EvidenceClaim   `json:"limitations"`
 	Retrieval             []RetrievalPrompt `json:"retrieval"`
 	SuggestedNextConcepts []string          `json:"suggestedNextConcepts"`
 	Application           string            `json:"application"`
@@ -366,6 +473,7 @@ type LearnerState struct {
 	Difficulty       string                   `json:"difficulty,omitempty"`
 	Relevance        string                   `json:"relevance,omitempty"`
 	RecallConfidence string                   `json:"recallConfidence,omitempty"`
+	OpenQuestions    []string                 `json:"openQuestions,omitempty"`
 }
 
 type QualityReport struct {
@@ -381,6 +489,7 @@ type Dossier struct {
 	ProfileID   string            `json:"profileId"`
 	Date        string            `json:"date"`
 	Title       string            `json:"title"`
+	LessonType  LessonType        `json:"lessonType"`
 	GeneratedAt time.Time         `json:"generatedAt"`
 	Model       string            `json:"model"`
 	Curation    Curation          `json:"curation"`
@@ -397,7 +506,9 @@ type Dossier struct {
 type LearningHistoryEntry struct {
 	Date                  string            `json:"date"`
 	GeneratedAt           time.Time         `json:"generatedAt"`
+	LessonType            LessonType        `json:"lessonType,omitempty"`
 	SourceTitles          []string          `json:"sourceTitles"`
+	SourceURLs            []string          `json:"sourceUrls,omitempty"`
 	LessonSummary         string            `json:"lessonSummary"`
 	RecallQuestions       []string          `json:"recallQuestions"`
 	RetrievalPrompts      []RetrievalPrompt `json:"retrievalPrompts,omitempty"`

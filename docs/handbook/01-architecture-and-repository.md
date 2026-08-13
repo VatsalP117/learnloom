@@ -19,6 +19,11 @@ A short-lived migrate process applies embedded SQL before web and worker start.
 Evidence: `README.md`; `cmd/learnloom/main.go`; `internal/httpapp/server.go`;
 `internal/execution/worker.go`; `internal/store/migrations/*.sql`.
 
+> [!TIP] Reading this chapter
+> Have two minutes? Read "Explain Learnloom in two minutes" and the three
+> diagrams below. The guided repository map and startup walkthrough are depth
+> for onboarding and ownership review.
+
 ## Architecture-review explanation
 
 Learnloom is a **hosted modular monolith with process separation**. The
@@ -264,6 +269,20 @@ content gates; `render.go` generates Markdown and escaped HTML.
   are not in the current tree and must not be treated as live alternatives.
 
 ## Runtime entry points and startup
+
+```mermaid
+flowchart TB
+  ENTRY["Container entry — /learnloom <web | worker | migrate>"] --> MAIN["main() — one role required, else exit 2"]
+  MAIN --> CFG["config.LoadFor(role) — env + defaults + role validation"]
+  CFG -->|"migrate"| MIG["runMigrate() — pgx pool, advisory lock, transactional files, exit"]
+  CFG -->|"web"| WEB["runWeb() — ping DB, S3 client/cache, FRONTEND_DIR, timeouts, 15s shutdown"]
+  CFG -->|"worker"| WRK["runWorker() — readiness, worker loop + metrics server, drain on SIGTERM"]
+  MIG --> P[(Postgres)]
+  WEB --> P
+  WRK --> P
+  WEB --> S3[("S3")]
+  WRK --> S3
+```
 
 ### Common start
 

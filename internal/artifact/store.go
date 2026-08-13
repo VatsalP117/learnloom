@@ -105,6 +105,23 @@ type PutResult struct {
 	Bytes    int
 }
 
+func KeyFor(accountID, newsletterID, issueID, generationID string) (string, error) {
+	for name, value := range map[string]string{
+		"Account ID": accountID, "Newsletter ID": newsletterID,
+		"Issue ID": issueID, "Generation ID": generationID,
+	} {
+		if !safePart(value) {
+			return "", fmt.Errorf("%s is invalid", name)
+		}
+	}
+	return path.Join(
+		"accounts", accountID,
+		"newsletters", newsletterID,
+		"issues", issueID,
+		generationID+".json.gz",
+	), nil
+}
+
 type storedArtifact struct {
 	FormatVersion int            `json:"formatVersion"`
 	RenderVersion int            `json:"renderVersion"`
@@ -112,13 +129,11 @@ type storedArtifact struct {
 }
 
 func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
-	for name, value := range map[string]string{
-		"Account ID": input.AccountID, "Newsletter ID": input.NewsletterID,
-		"Issue ID": input.IssueID, "Generation ID": input.GenerationID,
-	} {
-		if !safePart(value) {
-			return PutResult{}, fmt.Errorf("%s is invalid", name)
-		}
+	key, err := KeyFor(
+		input.AccountID, input.NewsletterID, input.IssueID, input.GenerationID,
+	)
+	if err != nil {
+		return PutResult{}, err
 	}
 	if input.Artifact.Dossier.Version < 1 {
 		return PutResult{}, errors.New("Dossier Artifact is incomplete")
@@ -140,12 +155,6 @@ func (s *Store) Put(ctx context.Context, input PutInput) (PutResult, error) {
 		return PutResult{}, fmt.Errorf("compress Dossier Artifact: %w", err)
 	}
 	storedChecksum := sha256.Sum256(compressed)
-	key := path.Join(
-		"accounts", input.AccountID,
-		"newsletters", input.NewsletterID,
-		"issues", input.IssueID,
-		input.GenerationID+".json.gz",
-	)
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:          aws.String(s.bucket),
 		Key:             aws.String(key),

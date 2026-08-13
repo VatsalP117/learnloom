@@ -23,6 +23,13 @@ import { AtelierError } from "./LearningShell";
 import { apiFetch, apiJSON } from "./api";
 import { normalizeDossier } from "./dossierView";
 import { lessonState, updateLessonState } from "./learningState";
+import {
+  canRevealRetrieval,
+  initialRetrievalState,
+  resumeLessonProgress,
+  type LessonRetrievalResponse,
+  type RetrievalResponseState,
+} from "./lessonSession";
 import type { IssueModerationResponse } from "./types";
 
 interface NoteDraft {
@@ -33,8 +40,49 @@ interface NoteDraft {
   quotedText: string;
 }
 
+interface LessonNavigationLink {
+  issueId: string;
+  title: string;
+  createdAt: string;
+}
+
+interface LessonNavigation {
+  previous: LessonNavigationLink | null;
+  next: LessonNavigationLink | null;
+  nextReviewAt: string | null;
+}
+
+interface IssueDetailSnapshot {
+  issue: any;
+  newsletter: any;
+  dossier: any;
+  sources: any[];
+  feedback: any;
+  notes: any[];
+  lessonProgress?: {
+    progress: number;
+    completedAt?: string;
+    updatedAt: string;
+  } | null;
+  retrievals?: LessonRetrievalResponse[];
+  navigation?: LessonNavigation;
+  site?: {
+    visibility: string;
+    searchIndexing: boolean;
+  } | null;
+}
+
+const emptyRetrievalResponse: RetrievalResponseState = {
+  response: "",
+  skipped: false,
+  revealed: false,
+  busy: false,
+  saving: false,
+  error: "",
+};
+
 export default function IssueDetail({ issueId }) {
-  const [snapshot, setSnapshot] = useState(null);
+  const [snapshot, setSnapshot] = useState<IssueDetailSnapshot | null>(null);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(() => lessonState(issueId).progress ?? 0);
   const [completionError, setCompletionError] = useState("");
@@ -44,11 +92,19 @@ export default function IssueDetail({ issueId }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    apiJSON(`/api/issues/${encodeURIComponent(issueId)}`, {
+    apiJSON<IssueDetailSnapshot>(`/api/issues/${encodeURIComponent(issueId)}`, {
       signal: controller.signal,
     })
       .then((nextSnapshot) => {
         setSnapshot(nextSnapshot);
+        const savedProgress = resumeLessonProgress(
+          lessonState(issueId).progress ?? 0,
+          nextSnapshot.lessonProgress?.progress ?? 0,
+        );
+        latestProgress.current = savedProgress;
+        renderedProgress.current = Math.round(savedProgress);
+        persistedProgress.current = Math.floor(savedProgress);
+        setProgress(savedProgress);
         void apiJSON(`/api/issues/${encodeURIComponent(issueId)}/opened`, {
           method: "POST",
         }).catch(() => {
@@ -60,6 +116,18 @@ export default function IssueDetail({ issueId }) {
       });
     return () => controller.abort();
   }, [issueId]);
+
+  useEffect(() => {
+    const savedProgress = snapshot?.lessonProgress?.progress ?? 0;
+    if (savedProgress < 1 || savedProgress >= 100) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const available = document.documentElement.scrollHeight - window.innerHeight;
+      if (available > 0) {
+        window.scrollTo({ top: available * (savedProgress / 100) });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [snapshot?.lessonProgress?.progress]);
 
   useEffect(() => {
     if (!snapshot?.issue?.title) return undefined;
@@ -170,14 +238,22 @@ function LessonReader({
   sources,
   feedback,
   notes: initialNotes = [],
+  retrievals: initialRetrievals = [],
+  navigation = { previous: null, next: null, nextReviewAt: null },
+  lessonProgress = null,
   progress,
   completionError,
   onComplete,
+  site = null,
 }) {
-  const [completed, setCompleted] = useState(() => lessonState(issue.id).completed);
+  const [completed, setCompleted] = useState(() =>
+    Boolean(lessonProgress?.completedAt || lessonState(issue.id).completed));
   const [completing, setCompleting] = useState(false);
   const [notes, setNotes] = useState(initialNotes);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
+  const lessonType = dossier.lessonType
+    ? `${dossier.lessonType.replace("_", " ")} lesson`
+    : "Today’s lesson";
 
   return (
     <div className="focus-reader">
@@ -198,7 +274,7 @@ function LessonReader({
       <article className="reader-paper">
         <header className="reader-hero">
           <div className="reader-meta">
-            <span><BookOpen size={14} /> Today’s lesson</span>
+            <span><BookOpen size={14} /> {lessonType}</span>
             <span><Clock3 size={14} />{dossier.readTime} min</span>
             <span>{formatDate(issue.createdAt)}</span>
           </div>
@@ -206,9 +282,10 @@ function LessonReader({
           <h1>{issue.title}</h1>
           <p className="reader-deck">{dossier.deck}</p>
           <div className="reader-grounding">
-            <span><Check size={13} /> Source-grounded</span>
+            <span><Check size={13} /> {dossier.evidenceStatus === "source_bounded" ? "Source-bounded evidence" : "Source-grounded"}</span>
             <span>Prepared from {sources.length} trusted sources</span>
             <span>{newsletter.learnerLevel} level</span>
+            <span>{readerAudienceLabel(issue, newsletter, site)}</span>
           </div>
         </header>
 
@@ -279,7 +356,13 @@ function LessonReader({
             ))}
 
             {dossier.claims?.length ? (
-              <section className="reader-claims">
+              <details className="reader-evidence-appendix">
+                <summary>
+                  <span><ShieldCheck size={16} /></span>
+                  <span><strong>Deeper evidence appendix</strong><small>Inspect claim mappings, limitations, and source notes.</small></span>
+                  <ArrowRight size={14} />
+                </summary>
+                <section className="reader-claims">
                 <p className="atelier-eyebrow">Evidence map</p>
                 <h2>Claims you can inspect</h2>
                 <div>
@@ -320,13 +403,34 @@ function LessonReader({
                     );
                   })}
                 </div>
+                {dossier.limitations?.length ? (
+                  <div className="reader-appendix-limits">
+                    <p className="atelier-eyebrow">Important limitations</p>
+                    {dossier.limitations.map((limitation) => (
+                      <p key={limitation.id}>{limitation.text}</p>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="reader-appendix-sources">
+                  <p className="atelier-eyebrow">Source notes</p>
+                  {sources.map((source, index) => (
+                    <article key={source.id ?? source.url}>
+                      <strong>[{index + 1}] {source.name}</strong>
+                      {source.summary ? <p>{source.summary}</p> : <p>No deeper source note was stored.</p>}
+                      <a href={source.url} target="_blank" rel="noreferrer">Open source <ExternalLink size={12} /></a>
+                    </article>
+                  ))}
+                </div>
               </section>
+              </details>
             ) : null}
 
             <RetrievalSection
+              issueId={issue.id}
               questions={dossier.retrievalItems?.length
                 ? dossier.retrievalItems
                 : dossier.retrieval}
+              initialResponses={initialRetrievals}
             />
 
             <section className="reader-application">
@@ -344,6 +448,24 @@ function LessonReader({
                   ? "This lesson is now part of your learning history."
                   : "Mark this lesson complete when you have finished the recall prompts or reflected on the central idea."}
               </p>
+              {completed ? (
+                <div className="reader-capability">
+                  <div>
+                    <p className="atelier-eyebrow">Capability gained</p>
+                    <strong>{dossier.objective || "Explain the lesson’s central mechanism and its evidence boundary."}</strong>
+                  </div>
+                  <div>
+                    <p className="atelier-eyebrow">Likely next direction</p>
+                    <strong>{dossier.nextConcepts?.[0] || "Apply the model in a new context."}</strong>
+                  </div>
+                  <div>
+                    <p className="atelier-eyebrow">Next review</p>
+                    <strong>{navigation.nextReviewAt
+                      ? formatRelativeReview(navigation.nextReviewAt)
+                      : "Ready now in Review"}</strong>
+                  </div>
+                </div>
+              ) : null}
               {!completed ? (
                 <button
                   className="atelier-primary"
@@ -365,6 +487,18 @@ function LessonReader({
               <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`}>
                 Return to this learning stream <ArrowRight size={15} />
               </a>
+              <div className="reader-adjacent">
+                {navigation.previous ? (
+                  <a href={`/issues/${encodeURIComponent(navigation.previous.issueId)}`}>
+                    <ArrowLeft size={14} /><span><small>Previous lesson</small>{navigation.previous.title}</span>
+                  </a>
+                ) : <span />}
+                {navigation.next ? (
+                  <a href={`/issues/${encodeURIComponent(navigation.next.issueId)}`}>
+                    <span><small>Next lesson</small>{navigation.next.title}</span><ArrowRight size={14} />
+                  </a>
+                ) : <span />}
+              </div>
             </section>
           </main>
 
@@ -417,6 +551,14 @@ function LessonReader({
   );
 }
 
+export function readerAudienceLabel(issue, newsletter, site) {
+  if (issue.publicationState === "private") return "Audience: only you";
+  if (issue.publicationState !== "published") return "Audience: draft, only you";
+  if (site?.visibility !== "public") return "Audience: not visible, site private";
+  if (!newsletter.siteVisible) return "Audience: not visible, stream private";
+  return site.searchIndexing ? "Audience: public + search" : "Audience: public by link";
+}
+
 function PublisherTrustPanel({ issue }) {
   const [moderation, setModeration] = useState(null);
   const [correction, setCorrection] = useState("");
@@ -430,6 +572,7 @@ function PublisherTrustPanel({ issue }) {
     );
     setModeration(next);
     setHoldReason(next.reason ?? "");
+    setStatus("");
   }, [issue.id]);
 
   useEffect(() => {
@@ -866,35 +1009,160 @@ function FeedbackChoice({ label, value, options, onChange }) {
   );
 }
 
-function RetrievalSection({ questions }) {
-  const [open, setOpen] = useState({});
+function RetrievalSection({ issueId, questions, initialResponses = [] }) {
+  const [responses, setResponses] = useState(() => initialRetrievalState(initialResponses));
+  const draftTimers = useRef<Record<string, number>>({});
+
+  useEffect(() => () => {
+    Object.values(draftTimers.current).forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  function updateResponse(promptKey, patch) {
+    setResponses((current) => ({
+      ...current,
+      [promptKey]: {
+        response: "",
+        skipped: false,
+        revealed: false,
+        busy: false,
+        saving: false,
+        error: "",
+        ...current[promptKey],
+        ...patch,
+      },
+    }));
+  }
+
+  function clearDraftTimer(promptKey) {
+    if (draftTimers.current[promptKey]) {
+      window.clearTimeout(draftTimers.current[promptKey]);
+      delete draftTimers.current[promptKey];
+    }
+  }
+
+  async function saveDraft(promptKey, response) {
+    const value = response.trim();
+    if (!canRevealRetrieval(value) || responses[promptKey]?.revealed) return;
+    clearDraftTimer(promptKey);
+    updateResponse(promptKey, { saving: true, error: "" });
+    try {
+      const saved = await apiJSON<LessonRetrievalResponse>(
+        `/api/issues/${encodeURIComponent(issueId)}/retrievals/${encodeURIComponent(promptKey)}`,
+        { method: "PUT", body: { response: value, skipped: false } },
+      );
+      updateResponse(promptKey, {
+        response: saved.response ?? value,
+        saving: false,
+      });
+    } catch (requestError) {
+      updateResponse(promptKey, {
+        saving: false,
+        error: requestError instanceof Error
+          ? requestError.message
+          : "Your draft answer could not be saved.",
+      });
+    }
+  }
+
+  function scheduleDraft(promptKey, response) {
+    clearDraftTimer(promptKey);
+    if (!canRevealRetrieval(response)) return;
+    draftTimers.current[promptKey] = window.setTimeout(() => {
+      delete draftTimers.current[promptKey];
+      void saveDraft(promptKey, response);
+    }, 700);
+  }
+
+  async function reveal(item, skipped) {
+    const promptKey = item.id;
+    const current = responses[promptKey] ?? emptyRetrievalResponse;
+    const response = skipped ? "" : (current.response ?? "").trim();
+    if (!skipped && !response) return;
+    clearDraftTimer(promptKey);
+    updateResponse(promptKey, { busy: true, error: "" });
+    try {
+      const saved = await apiJSON<LessonRetrievalResponse>(
+        `/api/issues/${encodeURIComponent(issueId)}/retrievals/${encodeURIComponent(promptKey)}`,
+        { method: "POST", body: { response, skipped } },
+      );
+      updateResponse(promptKey, {
+        response: saved.response ?? response,
+        skipped: Boolean(saved.skipped),
+        revealed: true,
+        busy: false,
+      });
+    } catch (requestError) {
+      updateResponse(promptKey, {
+        busy: false,
+        error: requestError instanceof Error
+          ? requestError.message
+          : "Your response could not be saved.",
+      });
+    }
+  }
+
   return (
     <section className="reader-retrieval" id="retrieval">
       <p className="atelier-eyebrow">Pause and retrieve</p>
       <h2>Can you explain it without looking back?</h2>
-      <p>Answer aloud or write a few words. Reveal each reflection only after trying.</p>
+      <p>Write what you remember before revealing the reflection. Your answer resumes on any device; skipping never counts against you.</p>
       <div>
         {questions.map((question, index) => {
           const item = typeof question === "string"
             ? { id: `question-${index + 1}`, prompt: question }
             : question;
+          const state = responses[item.id] ?? emptyRetrievalResponse;
           return (
           <article key={item.id ?? item.prompt}>
             <span>{String(index + 1).padStart(2, "0")}</span>
             <p>{item.prompt}</p>
-            <button
-              type="button"
-              aria-expanded={Boolean(open[index])}
-              onClick={() => setOpen((current) => ({ ...current, [index]: !current[index] }))}
-            >
-              {open[index] ? "Hide reflection" : "I’ve thought it through"}
-            </button>
-            {open[index] ? (
-              <small>
+            {!state.revealed ? (
+              <div className="retrieval-response">
+                <label>
+                  <span>Your answer</span>
+                  <textarea
+                    maxLength={2000}
+                    rows={3}
+                    value={state.response ?? ""}
+                    onChange={(event) => {
+                      updateResponse(item.id, { response: event.target.value, error: "" });
+                      scheduleDraft(item.id, event.target.value);
+                    }}
+                    onBlur={(event) => void saveDraft(item.id, event.target.value)}
+                    placeholder="A few words are enough. Name the mechanism and an important limit."
+                  />
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    disabled={state.busy || state.saving || !canRevealRetrieval(state.response)}
+                    onClick={() => void reveal(item, false)}
+                  >
+                    {state.busy ? "Saving…" : "Save and reveal"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={state.busy || state.saving}
+                    onClick={() => void reveal(item, true)}
+                  >
+                    Skip for now
+                  </button>
+                </div>
+                {state.saving ? <small>Saving draft…</small> : null}
+                {state.error ? <small role="alert">{state.error}</small> : null}
+              </div>
+            ) : (
+              <div className="retrieval-reveal">
+                {state.skipped
+                  ? <p>Skipped without penalty.</p>
+                  : <p><strong>Your answer:</strong> {state.response}</p>}
+                <small>
+                  <strong>Reflection:</strong>{" "}
                 {item.answerRubric || item.correctiveExplanation ||
                   "Return to the mechanism and evidence above. If your explanation names both the cause and its limits, you have the useful shape of the idea."}
-              </small>
-            ) : null}
+                </small>
+              </div>
+            )}
           </article>
           );
         })}
@@ -909,4 +1177,12 @@ function formatDate(value) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function formatRelativeReview(value) {
+  const due = new Date(value);
+  const days = Math.max(0, Math.ceil((due.getTime() - Date.now()) / 86_400_000));
+  if (days === 0) return "Ready now in Review";
+  if (days === 1) return "Tomorrow";
+  return `In ${days} days`;
 }

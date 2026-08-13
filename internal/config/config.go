@@ -6,10 +6,13 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var immutableReleaseVersionPattern = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
 type Config struct {
 	Environment                  string
@@ -22,6 +25,7 @@ type Config struct {
 	Model                        Model
 	Clerk                        Clerk
 	Resend                       Resend
+	Paddle                       Paddle
 	Worker                       Worker
 	Limits                       Limits
 	SourceIntelligence           SourceIntelligence
@@ -95,6 +99,15 @@ type Resend struct {
 	APIKey        string
 	From          string
 	SubjectPrefix string
+}
+
+type Paddle struct {
+	APIKey            string
+	APIBaseURL        string
+	WebhookSecret     string
+	ProPriceID        string
+	CommerceApproved  bool
+	ApprovalReference string
 }
 
 type Worker struct {
@@ -187,6 +200,14 @@ func Load() (Config, error) {
 			From:          os.Getenv("RESEND_FROM"),
 			SubjectPrefix: env("RESEND_SUBJECT_PREFIX", "Learnloom"),
 		},
+		Paddle: Paddle{
+			APIKey:            os.Getenv("PADDLE_API_KEY"),
+			APIBaseURL:        env("PADDLE_API_BASE_URL", "https://api.paddle.com"),
+			WebhookSecret:     os.Getenv("PADDLE_WEBHOOK_SECRET"),
+			ProPriceID:        os.Getenv("PADDLE_PRO_PRICE_ID"),
+			CommerceApproved:  envBool("PAID_COMMERCE_APPROVED", false),
+			ApprovalReference: os.Getenv("PAID_COMMERCE_APPROVAL_REFERENCE"),
+		},
 		Worker: Worker{
 			PollInterval:        envDuration("WORKER_POLL_INTERVAL", 2*time.Second),
 			ClaimDuration:       envDuration("WORKER_CLAIM_DURATION", 15*time.Minute),
@@ -222,7 +243,7 @@ func Load() (Config, error) {
 			DiscoveryEnabled:       envBool("SOURCE_DISCOVERY_ENABLED", false),
 			SearXNGBaseURL:         os.Getenv("SEARXNG_BASE_URL"),
 			SearXNGTimeout:         envDuration("SEARXNG_TIMEOUT", 8*time.Second),
-			DiscoveryMaxQueries:    envInt("SOURCE_DISCOVERY_MAX_QUERIES", 4),
+			DiscoveryMaxQueries:    envInt("SOURCE_DISCOVERY_MAX_QUERIES", 5),
 			DiscoveryMaxCandidates: envInt("SOURCE_DISCOVERY_MAX_CANDIDATES", 30),
 			DiscoveryMaxActive:     envInt("SOURCE_DISCOVERY_MAX_ACTIVE", 8),
 			MinUsableItems:         envInt("SOURCE_MIN_USABLE_ITEMS", 4),
@@ -250,6 +271,12 @@ func (c Config) ValidateFor(role string) error {
 		c.Environment != "production" {
 		problems = append(problems, errors.New("LEARNLOOM_ENV must be development, staging, or production"))
 	}
+	if (c.Environment == "staging" || c.Environment == "production") &&
+		!immutableReleaseVersionPattern.MatchString(c.ReleaseVersion) {
+		problems = append(problems, errors.New(
+			"LEARNLOOM_RELEASE_VERSION must be a full 40- or 64-character lowercase hexadecimal revision in staging and production",
+		))
+	}
 	required := map[string]string{
 		"DATABASE_URL": c.Database.URL,
 	}
@@ -276,6 +303,34 @@ func (c Config) ValidateFor(role string) error {
 	}
 	if role == "web" && c.Environment == "production" && strings.TrimSpace(c.Clerk.FrontendOrigin) == "" {
 		problems = append(problems, errors.New("CLERK_FRONTEND_ORIGIN is required in production"))
+	}
+	if (c.Paddle.APIKey != "" || c.Paddle.WebhookSecret != "" || c.Paddle.ProPriceID != "") &&
+		(c.Paddle.APIKey == "" || c.Paddle.WebhookSecret == "" || c.Paddle.ProPriceID == "") {
+		problems = append(problems, errors.New("PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_PRO_PRICE_ID must be set together"))
+	}
+	if c.Paddle.APIKey != "" {
+		parsed, err := url.Parse(c.Paddle.APIBaseURL)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+			(parsed.Path != "" && parsed.Path != "/") {
+			problems = append(problems, errors.New("PADDLE_API_BASE_URL must be an HTTPS origin without credentials or a path"))
+		}
+		if err == nil && c.Environment == "staging" && parsed.Hostname() != "sandbox-api.paddle.com" {
+			problems = append(problems, errors.New(
+				"PADDLE_API_BASE_URL must use sandbox-api.paddle.com in staging",
+			))
+		}
+		if err == nil && c.Environment == "production" && parsed.Hostname() != "api.paddle.com" {
+			problems = append(problems, errors.New(
+				"PADDLE_API_BASE_URL must use api.paddle.com in production",
+			))
+		}
+		if c.Environment == "production" && (!c.Paddle.CommerceApproved ||
+			strings.TrimSpace(c.Paddle.ApprovalReference) == "" ||
+			len(c.Paddle.ApprovalReference) > 160) {
+			problems = append(problems, errors.New(
+				"production Paddle billing requires PAID_COMMERCE_APPROVED=true and a bounded PAID_COMMERCE_APPROVAL_REFERENCE",
+			))
+		}
 	}
 	urls := map[string]string{}
 	if role == "web" {
@@ -363,7 +418,7 @@ func (c Config) ValidateFor(role string) error {
 		(c.Worker.IssueTimeout != 0 && c.Worker.IssueTimeout < time.Minute)) {
 		problems = append(problems, errors.New("worker limits are invalid"))
 	}
-	if role == "worker" {
+	if role == "worker" || (role == "web" && c.SourceIntelligence.DiscoveryEnabled) {
 		sourceCfg := c.SourceIntelligence
 		if sourceCfg.MinUsableItems < 1 ||
 			sourceCfg.TargetUsableItems < sourceCfg.MinUsableItems ||

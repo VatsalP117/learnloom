@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   Save,
   Search,
+	TrendingUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
@@ -16,6 +17,8 @@ import { personalSiteHost } from "./config";
 import { useWorkspace } from "./useWorkspace";
 import type {
   SiteMutationResponse,
+	PublicGrowthAnalytics,
+	PublicGrowthAnalyticsResponse,
   UsernameAvailabilityResponse,
 } from "./types";
 
@@ -28,11 +31,31 @@ export default function PublishingPage({ site, onSiteUpdate }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+	const [analytics, setAnalytics] = useState<PublicGrowthAnalytics | null>(null);
+	const [analyticsPeriod, setAnalyticsPeriod] = useState(30);
+	const [analyticsError, setAnalyticsError] = useState("");
 
   useEffect(() => {
     setDisplayName(site?.displayName ?? "");
     setDescription(site?.description ?? "");
   }, [site?.displayName, site?.description]);
+
+	useEffect(() => {
+		if (!site) return undefined;
+		const controller = new AbortController();
+		setAnalyticsError("");
+		apiJSON<PublicGrowthAnalyticsResponse>(
+			`/api/me/public-analytics?days=${analyticsPeriod}`,
+			{ signal: controller.signal },
+		)
+			.then((body) => setAnalytics(body.analytics))
+			.catch((requestError) => {
+				if (requestError.name !== "AbortError") {
+					setAnalyticsError("Public analytics are temporarily unavailable.");
+				}
+			});
+		return () => controller.abort();
+	}, [site, analyticsPeriod]);
 
   useEffect(() => {
     if (site) return undefined;
@@ -241,6 +264,25 @@ export default function PublishingPage({ site, onSiteUpdate }) {
             </form>
 
             <div className="publishing-right">
+			  <article className="publishing-analytics glass-panel">
+				<div className="publishing-analytics-heading">
+				  <div><span className="atelier-icon"><TrendingUp size={17} /></span><div><p className="atelier-eyebrow">Public path analytics</p><h2>What sharing leads to.</h2></div></div>
+				  <select aria-label="Analytics period" value={analyticsPeriod} onChange={(event) => setAnalyticsPeriod(Number(event.target.value))}>
+					<option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option>
+				  </select>
+				</div>
+				{analyticsError ? <p role="alert">{analyticsError}</p> : analytics ? (
+				  <><div className="publishing-analytics-grid">
+					<div><strong>{analytics.views}</strong><span>Dossier views</span></div>
+					<div><strong>{analytics.uniqueViewers}</strong><span>Unique readers</span></div>
+					<div><strong>{analytics.shares}</strong><span>Share actions</span></div>
+					<div><strong>{analytics.follows}</strong><span>Confirmed follows</span></div>
+					<div><strong>{analytics.ctaClicks}</strong><span>Path starts</span></div>
+					<div><strong>{analytics.attributedSignups}</strong><span>Signups</span></div>
+					<div><strong>{analytics.attributedActivations}</strong><span>Activated learners</span></div>
+				  </div><small>Counts are privacy-safe aggregates. Repeat activity is deduplicated by Dossier, action, and day; visitor identities and raw IP addresses are never shown.</small></>
+				) : <AtelierLoading label="Loading public analytics…" />}
+			  </article>
               <article className="site-preview glass-panel">
                 <div className="site-preview-heading">
                   <div>

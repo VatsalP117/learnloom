@@ -23,10 +23,23 @@ func RenderMarkdown(dossier domain.Dossier) string {
 		"> Generated from %d Source Items through curation, source enrichment, Learning Blueprint, research, skepticism, teaching, practice, and editorial validation.\n\n",
 		len(dossier.Sources),
 	)
-	for _, section := range []string{dossier.Lesson, dossier.Critique, dossier.Practice} {
+	for _, section := range []string{dossier.Lesson} {
 		output.WriteString(demoteHeading(section))
 		output.WriteString("\n\n")
 	}
+	if len(dossier.Learning.Limitations) > 0 {
+		output.WriteString("## Limits and verification\n\n")
+		for _, limitation := range dossier.Learning.Limitations {
+			fmt.Fprintf(&output, "- %s", escapeMarkdown(limitation.Text))
+			for _, sourceID := range limitation.SourceIDs {
+				fmt.Fprintf(&output, " [%s]", sourceID)
+			}
+			output.WriteString("\n")
+		}
+		output.WriteString("\n")
+	}
+	output.WriteString(demoteHeading(dossier.Practice))
+	output.WriteString("\n\n")
 	if dossier.Exploration != nil {
 		output.WriteString("## AI Exploration\n\n")
 		output.WriteString("> Opt-in synthetic exploration. These analogies, deductions, and scenarios extend beyond the cited sources and may be speculative.\n\n")
@@ -48,8 +61,7 @@ func RenderMarkdown(dossier domain.Dossier) string {
 	}
 	fmt.Fprintf(
 		&output,
-		"\nQuality gate: %d/100 · %d enriched sources · %d retrieval questions\n",
-		dossier.Quality.Score,
+		"\nEvidence boundary: source-bounded · %d enriched sources · %d retrieval questions\n",
 		dossier.Quality.Metrics["enrichedSources"],
 		dossier.Quality.Metrics["retrievalQuestions"],
 	)
@@ -65,7 +77,7 @@ func RenderMarkdown(dossier domain.Dossier) string {
 func RenderHTML(dossier domain.Dossier, webURL string) string {
 	sections := []string{
 		renderMarkdownFragment(dossier.Lesson),
-		renderMarkdownFragment(dossier.Critique),
+		renderLimitationsHTML(dossier.Learning.Limitations),
 		renderMarkdownFragment(dossier.Practice),
 	}
 	var exploration string
@@ -122,6 +134,26 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 		sources.String() + `</ol>
 <p style="margin-top:28px;color:#78716c;font-size:12px">Model output can be wrong. Verify important claims at linked sources.</p>
 </div></main></body></html>`
+}
+
+func renderLimitationsHTML(limitations []domain.EvidenceClaim) string {
+	if len(limitations) == 0 {
+		return ""
+	}
+	var output strings.Builder
+	output.WriteString(`<section><h2>Limits and verification</h2><ul>`)
+	for _, limitation := range limitations {
+		output.WriteString("<li>")
+		output.WriteString(html.EscapeString(limitation.Text))
+		for _, sourceID := range limitation.SourceIDs {
+			output.WriteString(" [")
+			output.WriteString(html.EscapeString(sourceID))
+			output.WriteString("]")
+		}
+		output.WriteString("</li>")
+	}
+	output.WriteString("</ul></section>")
+	return output.String()
 }
 
 func renderMarkdownFragment(markdown string) string {

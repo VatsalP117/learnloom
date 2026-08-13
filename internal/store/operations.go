@@ -277,11 +277,59 @@ func (s *Store) CleanupOperationalState(
 	if err != nil {
 		return 0, fmt.Errorf("clean privacy erasure receipts: %w", err)
 	}
+	draftTag, err := tx.Exec(ctx, `
+		WITH expired AS (
+		  DELETE FROM onboarding_drafts
+		  WHERE updated_at < $1
+		  RETURNING id, account_id
+		)
+		INSERT INTO product_events (
+		  account_id, event_name, subject_type, subject_id, occurred_at
+		)
+		SELECT account_id, 'onboarding_abandoned', 'onboarding', id::text, now()
+		FROM expired
+		ON CONFLICT (account_id, event_name, subject_id) DO NOTHING
+	`, before)
+	if err != nil {
+		return 0, fmt.Errorf("clean expired onboarding drafts: %w", err)
+	}
+	completionTag, err := tx.Exec(ctx, `
+		DELETE FROM onboarding_draft_completions WHERE completed_at < $1
+	`, before)
+	if err != nil {
+		return 0, fmt.Errorf("clean onboarding completion tombstones: %w", err)
+	}
+	pendingFollowerTag, err := tx.Exec(ctx, `
+		DELETE FROM public_path_followers
+		WHERE status = 'pending' AND requested_at < now() - interval '7 days'
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("clean expired public path follows: %w", err)
+	}
+	growthTag, err := tx.Exec(ctx, `
+		DELETE FROM public_growth_events
+		WHERE occurred_at < now() - interval '370 days'
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("clean expired public growth events: %w", err)
+	}
+	checkoutTag, err := tx.Exec(ctx, `
+		DELETE FROM billing_checkout_sessions
+		WHERE status <> 'pending' AND updated_at < now() - interval '400 days'
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("clean billing checkout sessions: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("commit operational cleanup: %w", err)
 	}
 	return rateTag.RowsAffected() +
 		webhookTag.RowsAffected() +
 		deletionTag.RowsAffected() +
-		receiptTag.RowsAffected(), nil
+		receiptTag.RowsAffected() +
+		draftTag.RowsAffected() +
+		completionTag.RowsAffected() +
+		pendingFollowerTag.RowsAffected() +
+		growthTag.RowsAffected() +
+		checkoutTag.RowsAffected(), nil
 }

@@ -2,16 +2,19 @@ package source
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
+	"github.com/VatsalP117/learnloom/internal/failure"
 )
 
 type memorySourceRepository struct {
@@ -114,6 +117,10 @@ func (repo *memorySourceRepository) InsertIssueSources(_ context.Context, issueI
 		return false, nil
 	}
 	repo.issueLinks[issueID] = append([]domain.IssueSource(nil), links...)
+	return true, nil
+}
+
+func (repo *memorySourceRepository) HasNovelIssueEvidence(context.Context, string, string) (bool, error) {
 	return true, nil
 }
 
@@ -260,6 +267,156 @@ func TestPrepareIssueFreezesExactEvidenceAndRetryMakesNoRequest(t *testing.T) {
 	}
 	if first.Items[0].Source != spec.DisplayName {
 		t.Fatalf("source provenance was not preserved: %#v", first.Items[0])
+	}
+}
+
+func TestPreferredEvidenceSortsAheadWithoutBypassingUsability(t *testing.T) {
+	t.Parallel()
+	service := NewService(nil, nil, ServiceConfig{MinItemCharacters: 20, MaxItems: 4})
+	newer := time.Now().UTC()
+	older := newer.Add(-24 * time.Hour)
+	selected := service.selectEvidence([]preparedEvidence{
+		{
+			Item:       domain.SourceItem{Title: "Newer", CanonicalURL: "https://new.example/a", Summary: strings.Repeat("evidence ", 10), PublishedAt: &newer},
+			Preference: domain.SourcePreferenceNeutral,
+		},
+		{
+			Item:       domain.SourceItem{Title: "Preferred", CanonicalURL: "https://preferred.example/b", Summary: strings.Repeat("evidence ", 10), PublishedAt: &older},
+			Preference: domain.SourcePreferencePreferred,
+		},
+		{
+			Item:       domain.SourceItem{Title: "Thin preferred", CanonicalURL: "https://preferred.example/thin", Summary: "short", PublishedAt: &older},
+			Preference: domain.SourcePreferencePreferred,
+		},
+	})
+	if len(selected) != 2 || selected[0].Item.Title != "Preferred" {
+		t.Fatalf("selected=%#v", selected)
+	}
+}
+
+func TestResolvedQualitySignalsBeatPreferenceAndRemoveCopiedEvidence(t *testing.T) {
+	t.Parallel()
+	service := NewService(nil, nil, ServiceConfig{MinItemCharacters: 20, MaxItems: 4})
+	content := strings.Repeat("A grounded mechanism with evidence and a worked boundary condition. ", 30)
+	selected := service.selectEvidence([]preparedEvidence{
+		{
+			Item:           domain.SourceItem{Title: "Syndicated copy", CanonicalURL: "https://copy.example/a", Summary: content},
+			Preference:     domain.SourcePreferencePreferred,
+			QualitySignals: []string{"syndication_marker"},
+		},
+		{
+			Item:       domain.SourceItem{Title: "Original evidence", CanonicalURL: "https://original.example/b", Summary: content},
+			Preference: domain.SourcePreferenceNeutral,
+		},
+	})
+	if len(selected) != 1 || selected[0].Item.Title != "Original evidence" {
+		t.Fatalf("copied evidence selection=%#v", selected)
+	}
+}
+
+func TestSnapshotExactPersistsResolvedAuthorshipSignals(t *testing.T) {
+	spec := sourceTestSpec(domain.SourceKindHTML)
+	spec.Origin = domain.SourceOriginDiscovered
+	spec.Role = domain.SourceRolePractitioner
+	spec.RankingVersion = "source-rank-v2"
+	repo := newMemorySourceRepository(spec)
+	body := `<html><head><link rel="canonical" href="https://original.example.org/guide"></head>` +
+		`<body><main><p>` + strings.Repeat("Teams should follow this best practice with evidence. ", 30) +
+		`</p></main></body></html>`
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return httpFixture(request, http.StatusOK, "text/html", body, nil), nil
+	}), ServiceConfig{MinUsableItems: 1, MinItemCharacters: 80})
+	result, err := service.PrepareIssue(
+		context.Background(),
+		domain.Newsletter{ID: spec.NewsletterID, SourceMode: domain.SourceModeDiscovered},
+		"issue-signals",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("items=%#v", result.Items)
+	}
+	var stored domain.SourceSnapshot
+	for _, snapshots := range repo.snapshots {
+		if len(snapshots) > 0 {
+			stored = snapshots[0]
+			break
+		}
+	}
+	var metadata snapshotMetadata
+	if err := json.Unmarshal([]byte(stored.Metadata), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Role != domain.SourceRolePractitioner ||
+		metadata.RankingVersion != "source-rank-v2" ||
+		!slices.Contains(metadata.QualitySignals, "cross_domain_canonical") ||
+		!slices.Contains(metadata.QualitySignals, "unattributed_advice") {
+		t.Fatalf("metadata=%#v", metadata)
+	}
+}
+
+func TestSnapshotExactPreservesResolvedAuthor(t *testing.T) {
+	spec := sourceTestSpec(domain.SourceKindHTML)
+	repo := newMemorySourceRepository(spec)
+	body := `<html><head><meta name="author" content="Ada Lovelace"></head>` +
+		`<body><main><p>` + strings.Repeat("Grounded evidence with a bounded mechanism. ", 30) +
+		`</p></main></body></html>`
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return httpFixture(request, http.StatusOK, "text/html", body, nil), nil
+	}), ServiceConfig{MinUsableItems: 1, MinItemCharacters: 80})
+	result, err := service.PrepareIssue(
+		context.Background(),
+		domain.Newsletter{ID: spec.NewsletterID, SourceMode: domain.SourceModeProvided},
+		"issue-author",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Author != "Ada Lovelace" {
+		t.Fatalf("resolved author was lost: %#v", result.Items)
+	}
+}
+
+func TestRefreshingSourceForNewIssueDoesNotChangeFrozenEvidence(t *testing.T) {
+	spec := sourceTestSpec(domain.SourceKindHTML)
+	repo := newMemorySourceRepository(spec)
+	requests := 0
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		version := "version one "
+		if requests > 1 {
+			version = "version two "
+		}
+		body := "<html><body><main><p>" + strings.Repeat(version+"grounded evidence. ", 40) +
+			"</p></main></body></html>"
+		return httpFixture(request, http.StatusOK, "text/html", body, nil), nil
+	}), ServiceConfig{
+		MinUsableItems: 1, MinItemCharacters: 80,
+		RefreshInterval: time.Hour, DefaultMaxStaleAge: 30 * 24 * time.Hour,
+	})
+	newsletter := domain.Newsletter{ID: spec.NewsletterID, SourceMode: domain.SourceModeProvided}
+	first, err := service.PrepareIssue(context.Background(), newsletter, "issue-original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := repo.endpoints[spec.ID]
+	stale := time.Now().UTC().Add(-2 * time.Hour)
+	endpoint.LastCheckedAt = &stale
+	repo.endpoints[spec.ID] = endpoint
+	second, err := service.PrepareIssue(context.Background(), newsletter, "issue-new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen, err := service.PrepareIssue(context.Background(), newsletter, "issue-original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || len(first.Items) != 1 || len(second.Items) != 1 || len(frozen.Items) != 1 ||
+		!strings.Contains(first.Items[0].Summary, "version one") ||
+		!strings.Contains(second.Items[0].Summary, "version two") ||
+		!strings.Contains(frozen.Items[0].Summary, "version one") || !frozen.HadPrior {
+		t.Fatalf("requests=%d first=%#v second=%#v frozen=%#v", requests, first, second, frozen)
 	}
 }
 
@@ -470,6 +627,92 @@ func TestDiscoveryFlagDoesNotWaiveEvidenceMinimum(t *testing.T) {
 	}
 }
 
+func TestDiscoveredInsufficientEvidenceIsAnHonestDeferral(t *testing.T) {
+	repo := newMemorySourceRepository()
+	searcher := &fakeSearcher{results: []SearchCandidate{{
+		Title: "One useful result", URL: "https://example.com/one",
+		Snippet: "a useful but incomplete result", Rank: 1,
+	}}}
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := "<html><body><main>" + strings.Repeat("useful evidence ", 12) + "</main></body></html>"
+		return httpFixture(request, http.StatusOK, "text/html", body, nil), nil
+	}), ServiceConfig{
+		DiscoveryEnabled:       true,
+		MinUsableItems:         4,
+		TargetUsableItems:      4,
+		DiscoveryMaxQueries:    3,
+		DiscoveryMaxCandidates: 20,
+		DiscoveryMaxActive:     4,
+		SubstantialCharacters:  10_000,
+	}).WithSearcher(searcher)
+
+	_, err := service.PrepareIssue(
+		context.Background(),
+		domain.Newsletter{
+			ID: "newsletter-1", Topic: "bounded topic",
+			SourceMode: domain.SourceModeDiscovered,
+		},
+		"issue-1",
+	)
+	detail := failure.Describe(err)
+	if detail.Code != "no_worthwhile_evidence" ||
+		detail.Category != failure.CategoryInsufficientEvidence ||
+		detail.Retryable {
+		t.Fatalf("detail=%#v, want non-retryable evidence deferral", detail)
+	}
+}
+
+func TestProvidedInsufficientEvidenceRequiresSourceCorrection(t *testing.T) {
+	t.Parallel()
+	spec := sourceTestSpec(domain.SourceKindRSS)
+	repo := newMemorySourceRepository(spec)
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return httpFixture(
+			request, http.StatusOK, "application/rss+xml",
+			`<rss version="2.0"><channel><title>Empty</title></channel></rss>`, nil,
+		), nil
+	}), ServiceConfig{MinUsableItems: 2})
+
+	_, err := service.PrepareIssue(
+		context.Background(),
+		domain.Newsletter{ID: spec.NewsletterID, SourceMode: domain.SourceModeProvided},
+		"issue-provided-empty",
+	)
+	detail := failure.Describe(err)
+	if detail.Code != "source_evidence_needs_attention" ||
+		detail.Category != failure.CategoryUserActionable ||
+		detail.Stage != "source_intelligence" || detail.Retryable ||
+		detail.PublicMessage != failure.PublicSources {
+		t.Fatalf("unexpected detail: %#v", detail)
+	}
+}
+
+func TestDiscoveryOutageIsRetryableInfrastructure(t *testing.T) {
+	repo := newMemorySourceRepository()
+	searcher := &fakeSearcher{err: errors.New("search unavailable")}
+	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, errors.New("unexpected source request")
+	}), ServiceConfig{
+		DiscoveryEnabled: true,
+		MinUsableItems:   4,
+	}).WithSearcher(searcher)
+
+	_, err := service.PrepareIssue(
+		context.Background(),
+		domain.Newsletter{
+			ID: "newsletter-1", Topic: "bounded topic",
+			SourceMode: domain.SourceModeDiscovered,
+		},
+		"issue-1",
+	)
+	detail := failure.Describe(err)
+	if detail.Code != "source_discovery_unavailable" ||
+		detail.Category != failure.CategoryInfrastructure ||
+		!detail.Retryable {
+		t.Fatalf("detail=%#v, want retryable discovery outage", detail)
+	}
+}
+
 func TestProvidedModeNeverSearches(t *testing.T) {
 	spec := sourceTestSpec(domain.SourceKindHTML)
 	repo := newMemorySourceRepository(spec)
@@ -564,7 +807,7 @@ func TestDiscoveredModeActivatesAndFreezesSearchResults(t *testing.T) {
 	}
 }
 
-func TestHybridDiscoveryFailureCannotMaskInsufficientEvidence(t *testing.T) {
+func TestHybridDiscoveryOutageRemainsRetryableWhenEvidenceIsInsufficient(t *testing.T) {
 	repo := newMemorySourceRepository()
 	searcher := &fakeSearcher{err: errors.New("search unavailable")}
 	service := sourceTestService(repo, roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -582,8 +825,11 @@ func TestHybridDiscoveryFailureCannotMaskInsufficientEvidence(t *testing.T) {
 		},
 		"issue-1",
 	)
-	if err == nil || !strings.Contains(err.Error(), "could not provide enough") {
-		t.Fatalf("err=%v, want total insufficiency", err)
+	detail := failure.Describe(err)
+	if detail.Code != "source_discovery_unavailable" ||
+		detail.Category != failure.CategoryInfrastructure ||
+		!detail.Retryable {
+		t.Fatalf("detail=%#v, want retryable discovery outage", detail)
 	}
 	if searcher.calls == 0 {
 		t.Fatal("hybrid gap did not invoke discovery")

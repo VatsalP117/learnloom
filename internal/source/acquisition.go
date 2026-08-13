@@ -23,6 +23,11 @@ type Config struct {
 	MaxRedirects         int
 	MinimumArticleChars  int
 	MaxConcurrency       int
+	URLPolicy            URLPolicy
+}
+
+type URLPolicy interface {
+	SourceURLAllowed(context.Context, string) (bool, error)
 }
 
 type Acquisition struct {
@@ -59,7 +64,7 @@ func New(cfg Config) *Acquisition {
 		Cfg: cfg,
 		Client: &http.Client{
 			Transport:     secureTransport(),
-			CheckRedirect: redirectPolicy(cfg.MaxRedirects),
+			CheckRedirect: redirectPolicy(cfg.MaxRedirects, cfg.URLPolicy),
 		},
 	}
 }
@@ -153,6 +158,9 @@ func (a *Acquisition) fetchFeed(
 	ctx context.Context,
 	definition domain.SourceDefinition,
 ) ([]domain.SourceItem, error) {
+	if err := checkURLPolicy(ctx, a.Cfg.URLPolicy, definition.URL); err != nil {
+		return nil, err
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, a.Cfg.FeedTimeout)
 	defer cancel()
 	result, err := doHTTP(requestCtx, a.Client, definition.URL, a.Cfg.MaxFeedBytes,
@@ -187,6 +195,9 @@ func (a *Acquisition) fetchFeed(
 }
 
 func (a *Acquisition) fetchArticle(ctx context.Context, rawURL string) (article, error) {
+	if err := checkURLPolicy(ctx, a.Cfg.URLPolicy, rawURL); err != nil {
+		return article{}, err
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, a.Cfg.ArticleTimeout)
 	defer cancel()
 	result, err := doHTTP(requestCtx, a.Client, rawURL, a.Cfg.MaxArticleBytes,
@@ -214,6 +225,20 @@ func (a *Acquisition) fetchArticle(ctx context.Context, rawURL string) (article,
 	default:
 		return article{}, fmt.Errorf("unsupported article content type %q", result.ContentType)
 	}
+}
+
+func checkURLPolicy(ctx context.Context, policy URLPolicy, rawURL string) error {
+	if policy == nil {
+		return nil
+	}
+	allowed, err := policy.SourceURLAllowed(ctx, rawURL)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return errors.New("source retrieval is blocked by operator policy")
+	}
+	return nil
 }
 
 func deduplicate(items []domain.SourceItem) []domain.SourceItem {

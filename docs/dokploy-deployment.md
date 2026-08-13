@@ -29,6 +29,8 @@ Have these accounts and values ready:
   `Learnloom <dossiers@learnloom.blog>`.
 - A private Cloudflare R2 bucket and bucket-scoped S3 credentials.
 - Access to the DNS provider for `learnloom.blog`.
+- A Paddle account approved for the business entity and payout country before
+  paid commerce is enabled.
 
 Generate URL-safe secrets locally. Do not paste the output into chat, source
 control, or deployment logs:
@@ -41,6 +43,38 @@ openssl rand -hex 32 # SEARXNG_SECRET
 
 Start from [`.env.dokploy.example`](../.env.dokploy.example). `POSTGRES_PASSWORD`
 must remain URL-safe because the Compose file inserts it into `DATABASE_URL`.
+Set `LEARNLOOM_RELEASE_VERSION` to the immutable git SHA being deployed; do not
+use a branch name, mutable tag, or `unknown`.
+
+### Paddle Billing
+
+Keep all Paddle credential fields blank until sandbox/staging verification is
+ready. When enabled, set `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, and
+`PADDLE_PRO_PRICE_ID` together. Production uses
+`PADDLE_API_BASE_URL=https://api.paddle.com`; staging uses
+`https://sandbox-api.paddle.com` with sandbox-only credentials and price IDs.
+Never mix sandbox and production identifiers.
+
+Paddle credentials do not authorize live sales. Keep
+`PAID_COMMERCE_APPROVED=false` until the exact entity, payout country, seller/
+merchant disclosures, tax and invoice treatment, refund/cancellation policy,
+support contact, and Paddle staging lifecycle have named approval evidence.
+Then set it to `true` and set `PAID_COMMERCE_APPROVAL_REFERENCE` to a bounded,
+non-secret internal evidence pointer. Production startup rejects credentials
+without both fields; staging rejects the live Paddle API, and production rejects
+the sandbox API.
+
+In Paddle, subscribe the endpoint
+`https://app.learnloom.blog/webhooks/paddle` (use the staging hostname in
+staging) to:
+
+- subscription created, activated, trialing, updated, past due, paused,
+  resumed, and canceled events;
+- transaction completed and payment failed events;
+- adjustment created and updated events.
+
+The API key needs transaction-write and customer-portal-session-write access.
+The webhook signing secret is distinct from the API key.
 
 ### Cloudflare R2
 
@@ -180,6 +214,12 @@ Click **Deploy** and watch the logs in this order:
 4. `worker` logs its metrics listener and begins polling.
 5. `searxng` and `searxng-valkey` remain healthy/running.
 
+Confirm the migration job applied schema version 39 before testing billing or
+generation. Version 37 adds durable cleanup for artifacts whose upload succeeds
+before an Issue completion transaction fails. Version 38 adds append-only,
+operator-controlled evidence classification so founder, test, and unclassified
+traffic cannot satisfy real-user product or commercial launch gates.
+
 The application does not create the production artifact bucket. Provision it
 in Cloudflare and grant the configured token access before deploying.
 
@@ -194,6 +234,34 @@ curl -I https://learnloom.blog/
 curl -I https://www.learnloom.blog/
 curl -I https://wutsell.learnloom.blog/
 ```
+
+Also confirm every response identifies the deployed revision and HSTS policy:
+
+```sh
+curl -fsSI https://app.learnloom.blog/healthz | grep -iE 'x-learnloom-release|strict-transport-security'
+```
+
+The release header must equal the immutable git SHA entered above.
+
+Run the fail-closed parity verifier from a clean checkout of that exact
+revision. It checks the full release header, one-year HSTS with subdomains,
+`no-store`, health/readiness payloads, app `noindex,nofollow`, the canonical
+`www` redirect, current topic-first marketing markers, and absence of known
+legacy example copy:
+
+```sh
+go run ./cmd/release-verify \
+  -apex-origin https://learnloom.blog \
+  -www-origin https://www.learnloom.blog \
+  -app-origin https://app.learnloom.blog \
+  -expected-release "$(git rev-parse HEAD)" \
+  > docs/release-evidence/private-or-redacted-release-verification.json
+```
+
+Do not commit a small-cohort or otherwise sensitive evidence record. A passing
+JSON report proves only the automated parity checks it lists; it does not
+replace the authenticated two-account, source-safety, payment, restore, alert,
+load, or second-person staging gates.
 
 Expected results:
 

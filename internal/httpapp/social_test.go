@@ -59,7 +59,7 @@ func TestRepresentativeApexPagesHaveSocialPreviews(t *testing.T) {
 	t.Parallel()
 
 	marketingInput := []byte(`<!doctype html><html><head>` +
-		`<meta name="description" content="A learning home that grows with you. Learnloom turns trusted sources into thoughtful daily Dossiers, published to your own personal subdomain.">` +
+		`<meta name="description" content="Stay current without rebuilding context. Give Learnloom a topic; it ranks useful sources, teaches the next concept, and revisits it before it fades.">` +
 		`<title>Learnloom · Knowledge Dossiers</title></head><body><div id="root"></div></body></html>`)
 	homepage := string(decorateMarketingIndex(
 		marketingInput,
@@ -171,10 +171,10 @@ func assertSocialPreviewMetadata(t *testing.T, document string) {
 		`property="og:image:type" content="image/png"`,
 		`property="og:image:width" content="1200"`,
 		`property="og:image:height" content="630"`,
-		`property="og:image:alt" content="Learnloom — trusted sources, woven into durable understanding."`,
+		`property="og:image:alt" content="Learnloom — give us a topic, and we’ll build the learning path."`,
 		`name="twitter:card" content="summary_large_image"`,
 		`name="twitter:image" content="https://learnloom.blog/social-preview.png"`,
-		`name="twitter:image:alt" content="Learnloom — trusted sources, woven into durable understanding."`,
+		`name="twitter:image:alt" content="Learnloom — give us a topic, and we’ll build the learning path."`,
 	} {
 		if !strings.Contains(document, expected) {
 			t.Fatalf("social preview metadata missing %q", expected)

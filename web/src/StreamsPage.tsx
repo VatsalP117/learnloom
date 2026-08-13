@@ -9,6 +9,7 @@ import {
 import { useMemo, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
 import { useWorkspace } from "./useWorkspace";
+import type { Newsletter } from "./types";
 
 export default function StreamsPage() {
   const workspace = useWorkspace();
@@ -98,11 +99,11 @@ export default function StreamsPage() {
               <dl>
                 <div>
                   <dt><Clock3 size={13} /> Next rhythm</dt>
-                  <dd>{newsletter.active ? `Daily at ${newsletter.scheduleTime}` : "Not scheduled"}</dd>
+                  <dd>{newsletter.active ? streamRhythmSummary(newsletter) : "Not scheduled"}</dd>
                 </div>
                 <div>
-                  <dt><BookOpen size={13} /> Learning history</dt>
-                  <dd>{newsletter.generatedCount} lessons</dd>
+                  <dt><BookOpen size={13} /> Capability path</dt>
+                  <dd>{streamCapabilitySummary(newsletter)}</dd>
                 </div>
               </dl>
             </a>
@@ -111,11 +112,31 @@ export default function StreamsPage() {
             <a className="stream-create-card" href="/newsletters/new">
               <Plus size={20} />
               <strong>Follow another question</strong>
-              <span>Build a new learning thread from sources you trust.</span>
+              <span>Give Learnloom a question and build a connected learning path.</span>
             </a>
           ) : null}
         </div>
       </section>
     </LearningShell>
   );
+}
+
+export function streamCapabilitySummary(newsletter: Newsletter) {
+  const capabilities = newsletter.capabilityCount ?? 0;
+  const recalled = newsletter.recalledCapabilityCount ?? 0;
+  if (recalled > 0) return `${recalled} recalled · ${capabilities} established`;
+  if (capabilities > 0) return `${capabilities} established · recall next`;
+  return "First milestone ahead";
+}
+
+export function streamRhythmSummary(newsletter: Newsletter) {
+  const time = newsletter.scheduleTime ?? "08:00";
+  if (newsletter.rhythmThrottledAt) return `Slowed to weekly · ${time}`;
+  const mode = newsletter.effectiveRhythmMode ?? newsletter.rhythmMode ?? "daily";
+  if (mode === "evidence_led") return `Evidence-led · ${time}`;
+  if (mode === "weekly_synthesis") return `Weekly synthesis · ${time}`;
+  if (mode === "selected_weekdays") {
+    return `${newsletter.selectedWeekdays?.length ?? 1} days/week · ${time}`;
+  }
+  return `Daily · ${time}`;
 }

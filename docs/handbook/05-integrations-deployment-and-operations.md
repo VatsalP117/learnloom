@@ -12,7 +12,7 @@
 | OpenAI-compatible model API | prompts include learner intent/history and source evidence; receives no Clerk secret | 10m; retry timeout/429/5xx twice with jitter; 4 concurrent | Largest variable cost/latency. Protocol is replaceable, prompt/model behavior is not portable without quality evaluation. |
 | Resend | verified primary email and full generated lesson | 30s; application retries known failures, never ambiguous outcomes; deterministic idempotency | Replaceable behind narrow `Mailer`; sender reputation/provider records need migration. |
 | SearXNG + Valkey | generated search queries/topic; candidates only | 8s; degraded discovery recorded; no direct model evidence | Self-host cost/ops replaces paid query fees. Can be disabled or adapter-replaced via ADR. |
-| Public source sites | URL, user agent; content is stored as snapshot and sent to model | DNS/connect/header/body/time bounds; conditional caching; source failures can degrade/fail Issue | Essential to grounded product; legal/robots/licensing implications are not encoded. |
+| Public source sites | URL, user agent; content is stored as snapshot and sent to model | DNS/connect/header/body/time bounds; conditional caching; source failures can degrade/fail Issue | Essential to grounded product. [ADR-0007](../adr/0007-public-source-retrieval-policy.md) allows public retrieval when `robots.txt` is absent, forbids access-control bypass, and does not treat retrieval as a republication license. |
 | Traefik/Dokploy/DNS/TLS | public host routing and certificates | outside app; wildcard routing required | Current deployment convenience, not application API. |
 
 Primary Go libraries: readability extracts article content; `x/net` supports
@@ -83,6 +83,19 @@ DNS provider, TLS resolver, resource limits, replicas, and monitoring backend
 are **unknown**.
 
 ## CI/CD analysis
+
+```mermaid
+flowchart LR
+  PR["PR / push to main"] --> CI["GitHub Actions — single Ubuntu job"]
+  CI --> NPM["npm ci → ESLint/TS/build → Vitest"]
+  CI --> GO["gofmt → vet → staticcheck → race tests + real Postgres"]
+  CI --> SEC["govulncheck → npm audit"]
+  CI --> IMG["production Docker build"]
+  PR -.->|"no deploy job — manual/external"| DK["Dokploy build trigger"]
+  DK --> MIG["migrate one-shot"]
+  MIG --> WEB["web container"]
+  MIG --> WRK["worker container"]
+```
 
 `.github/workflows/ci.yml` triggers on every PR and pushes to main. One Ubuntu
 job has read-only repository permission and a Postgres 17 service. It runs:
@@ -210,12 +223,19 @@ web processes to clear local artifact/workspace caches if needed.
 
 ### Data correction/support
 
-There is no admin tool or audit log. Begin read-only: identify Account by Clerk
-ID, then trace stream→Issue→attempt/stages→artifact key/checksum→delivery/
+There is no general-purpose admin UI. Begin read-only: identify Account by
+Clerk ID, then trace stream→Issue→attempt/stages→artifact key/checksum→delivery/
 progress. Preserve a ticket/request ID and take a backup before writes. Use a
 transaction with explicit owner predicates and a peer-reviewed SQL script.
 Never edit artifact bytes without a new generation ID/checksum and matching DB
-transition. No production correction command can be documented from evidence.
+transition.
+
+Public source/rightsholder complaints have one deliberately narrow operator
+command and [runbook](../public-source-rights-response.md). It can only place an
+exact published public Dossier on hold, requires a distinct active operator
+Account and repeated public ID, and writes the existing moderation audit trail.
+It cannot read private content, clear a hold, edit an artifact, or globally
+block future source retrieval.
 
 ## Incident playbooks
 
@@ -235,6 +255,13 @@ transition. No production correction command can be documented from evidence.
 | Email ambiguous | delivery status `unknown`, Resend provider/log ID/idempotency evidence | reconcile manually; do not automatically retry |
 
 ## Disaster recovery and scaling controls
+
+> [!WARNING] Operational reality
+> The repository defines **no** automatic failover, cross-region replication,
+> backups, resource limits, or autoscaling. The Postgres volume is a single
+> point of failure; R2 recovery policy is manual; monitoring/alerts are
+> aspirational. Record owner, RPO/RTO, and drill evidence before claiming
+> production readiness.
 
 The repository defines no automatic failover, cross-region replication,
 backups, resource limits or autoscaling. Postgres volume in Dokploy is a single

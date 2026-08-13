@@ -1,0 +1,25 @@
+{
+  "protocolVersion": "launch-icp-interviews-v1",
+  "frozenAt": null,
+  "interviews": [
+    {
+      "participantRef": "random-non-identifying-reference",
+      "interviewedAt": "2026-08-12T00:00:00Z",
+      "persona": "ai_engineer",
+      "roleFit": true,
+      "recentAttemptConfirmed": true,
+      "painFrequency": "weekly",
+      "economicConsequence": 2,
+      "workaroundMinutesWeek": 120,
+      "paysForWorkaround": false,
+      "workflowCode": "mixed",
+      "primaryPainCode": "context_rebuilding",
+      "desiredOutcomeCode": "make_decision",
+      "urgencyCode": "active_now",
+      "reachabilityCode": "professional_community",
+      "purchasingAuthority": "self_serve",
+      "designPartnerInterest": false,
+      "evidenceReference": "research/interview-reference"
+    }
+  ]
+}

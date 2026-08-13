@@ -94,6 +94,171 @@ func (s *Server) handleControl(
 		})
 		return
 	}
+	if request.URL.Path == "/api/me/public-analytics" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(response, http.MethodGet)
+			return
+		}
+		periodDays := 30
+		if raw := request.URL.Query().Get("days"); raw != "" {
+			value, err := strconv.Atoi(raw)
+			if err != nil || !validPublicAnalyticsPeriod(value) {
+				writeProblem(response, http.StatusBadRequest, "invalid_period", "The analytics period must be 7, 30, or 90 days.")
+				return
+			}
+			periodDays = value
+		}
+		analytics, err := s.store.GetPublicGrowthAnalytics(
+			request.Context(), current.Account.ID, periodDays, time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"analytics": analytics})
+		return
+	}
+	if request.URL.Path == "/api/me/billing" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(response, http.MethodGet)
+			return
+		}
+		entitlement, err := s.store.GetBillingEntitlement(
+			request.Context(), current.Account.ID, time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		if entitlement.PlanID == "free" {
+			paywallID := "paywall:" + current.Account.ID + ":" + entitlement.PeriodStart.UTC().Format("2006-01-02")
+			if err := s.store.RecordBillingLifecycleEvent(
+				request.Context(), current.Account.ID, "paywall_exposed", paywallID, time.Now().UTC(),
+			); err != nil {
+				s.internalError(response, request, err)
+				return
+			}
+		}
+		writeJSON(response, http.StatusOK, map[string]any{
+			"billing": entitlement, "commerceAvailable": s.paddleConfigured(),
+		})
+		return
+	}
+	if request.URL.Path == "/api/me/billing/checkout" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		if !s.paddleConfigured() {
+			writeProblem(response, http.StatusServiceUnavailable, "billing_unavailable", "Billing is not available yet.")
+			return
+		}
+		entitlement, err := s.store.GetBillingEntitlement(request.Context(), current.Account.ID, time.Now().UTC())
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		if entitlement.PlanID == "pro" && entitlement.SubscriptionStatus != "canceled" &&
+			entitlement.SubscriptionStatus != "refunded" {
+			writeProblem(response, http.StatusConflict, "billing_already_active", "Your Pro subscription is already active.")
+			return
+		}
+		now := time.Now().UTC()
+		pendingID, err := s.store.GetPendingBillingCheckout(request.Context(), current.Account.ID, now)
+		if err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		if pendingID != "" {
+			checkoutURL, err := s.paddleCheckoutURL(pendingID)
+			if err != nil {
+				s.internalError(response, request, err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]string{"url": checkoutURL})
+			return
+		}
+		transactionID, checkoutURL, err := s.createPaddleCheckout(request.Context(), current.Account.ID)
+		if err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		selectedID, err := s.store.RecordPendingBillingCheckout(
+			request.Context(), current.Account.ID, transactionID, now,
+		)
+		if err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		if selectedID != transactionID {
+			checkoutURL, err = s.paddleCheckoutURL(selectedID)
+			if err != nil {
+				s.internalError(response, request, err)
+				return
+			}
+			transactionID = selectedID
+		}
+		if err := s.store.RecordBillingLifecycleEvent(request.Context(), current.Account.ID,
+			"checkout_started", transactionID, now); err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, map[string]string{"url": checkoutURL})
+		return
+	}
+	if request.URL.Path == "/api/me/billing/portal" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		if !s.paddleConfigured() {
+			writeProblem(response, http.StatusServiceUnavailable, "billing_unavailable", "Billing is not available yet.")
+			return
+		}
+		customerID, err := s.store.GetBillingProviderCustomerID(request.Context(), current.Account.ID)
+		if errors.Is(err, store.ErrNotFound) {
+			writeProblem(response, http.StatusConflict, "billing_customer_missing", "Start a subscription before opening billing management.")
+			return
+		}
+		if err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		portalURL, err := s.createPaddlePortal(request.Context(), customerID)
+		if err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, map[string]string{"url": portalURL})
+		return
+	}
+	if request.URL.Path == "/api/me/billing/feedback" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		var body struct {
+			Context    string `json:"context"`
+			ReasonCode string `json:"reasonCode"`
+			Note       string `json:"note"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if err := s.store.RecordBillingFeedback(
+			request.Context(), current.Account.ID, body.Context,
+			body.ReasonCode, body.Note, time.Now().UTC(),
+		); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				writeProblem(response, http.StatusConflict, "billing_feedback_state_mismatch", "This feedback does not match the current plan state.")
+				return
+			}
+			writeStoreError(response, err)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if len(route) == 3 && route[0] == "api" && route[1] == "usernames" {
 		if request.Method != http.MethodGet {
 			methodNotAllowed(response, http.MethodGet)
@@ -180,12 +345,24 @@ func (s *Server) handleControl(
 		}
 		return
 	}
+	if request.URL.Path == "/api/onboarding/draft" {
+		s.onboardingDraft(response, request, current)
+		return
+	}
 	if request.URL.Path == "/api/sources/validate" {
 		if request.Method != http.MethodPost {
 			methodNotAllowed(response, http.MethodPost)
 			return
 		}
-		s.validateSources(response, request)
+		s.validateSources(response, request, current)
+		return
+	}
+	if request.URL.Path == "/api/source-portfolio/preview" {
+		if request.Method != http.MethodPost {
+			methodNotAllowed(response, http.MethodPost)
+			return
+		}
+		s.previewSourcePortfolio(response, request, current)
 		return
 	}
 	if request.URL.Path == "/api/workspace" {
@@ -250,6 +427,17 @@ func (s *Server) handleControl(
 	}
 	if len(route) >= 3 && route[0] == "api" && route[1] == "newsletters" {
 		newsletterID := route[2]
+		if len(route) == 6 && route[3] == "sources" {
+			s.sourceAction(
+				response,
+				request,
+				current,
+				newsletterID,
+				route[4],
+				route[5],
+			)
+			return
+		}
 		if len(route) == 3 {
 			switch request.Method {
 			case http.MethodGet:
@@ -301,6 +489,10 @@ func (s *Server) handleControl(
 			s.issueAction(response, request, current, route[2], route[3])
 			return
 		}
+		if len(route) == 5 && route[3] == "retrievals" {
+			s.lessonRetrieval(response, request, current, route[2], route[4])
+			return
+		}
 	}
 	if len(route) == 3 && route[0] == "api" && route[1] == "notes" {
 		if request.Method != http.MethodDelete {
@@ -332,6 +524,46 @@ func (s *Server) handleControl(
 		return
 	}
 	writeProblem(response, http.StatusNotFound, "not_found", "The requested route was not found.")
+}
+
+func (s *Server) lessonRetrieval(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+	issueID, promptKey string,
+) {
+	if request.Method != http.MethodPost && request.Method != http.MethodPut {
+		methodNotAllowed(response, http.MethodPost, http.MethodPut)
+		return
+	}
+	var body struct {
+		Response string `json:"response"`
+		Skipped  bool   `json:"skipped"`
+	}
+	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+		return
+	}
+	input := store.LessonRetrievalInput{
+		PromptKey: promptKey,
+		Response:  body.Response,
+		Skipped:   body.Skipped,
+	}
+	var result store.LessonRetrievalResponse
+	var err error
+	if request.Method == http.MethodPut {
+		result, err = s.store.SaveLessonRetrievalDraft(
+			request.Context(), current.Account.ID, issueID, input, time.Now().UTC(),
+		)
+	} else {
+		result, err = s.store.RevealLessonRetrieval(
+			request.Context(), current.Account.ID, issueID, input, time.Now().UTC(),
+		)
+	}
+	if err != nil {
+		writeStoreError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
 }
 
 func (s *Server) issueExport(
@@ -481,6 +713,7 @@ type sourceValidationResult struct {
 func (s *Server) validateSources(
 	response http.ResponseWriter,
 	request *http.Request,
+	current session,
 ) {
 	validator := s.sourceValidator()
 	if validator == nil {
@@ -496,21 +729,37 @@ func (s *Server) validateSources(
 		return
 	}
 	var body struct {
-		Sources []domain.SourceDefinition `json:"sources"`
+		Sources           []domain.SourceDefinition `json:"sources"`
+		OnboardingDraftID string                    `json:"onboardingDraftId"`
 	}
 	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 		return
 	}
-	if len(body.Sources) < 1 || len(body.Sources) > 6 {
+	if len(body.Sources) < 1 || len(body.Sources) > 12 {
 		writeProblem(
 			response,
 			http.StatusBadRequest,
 			"invalid_sources",
-			"Validate from one to six sources at a time.",
+			"Validate from one to twelve sources at a time.",
 		)
 		return
 	}
 	results := runSourceValidation(request.Context(), validator, body.Sources)
+	allReady := true
+	for _, result := range results {
+		if result.Status != "ready" {
+			allReady = false
+			break
+		}
+	}
+	if allReady && body.OnboardingDraftID != "" {
+		if err := s.store.RecordOnboardingPreviewReached(
+			request.Context(), current.Account.ID, body.OnboardingDraftID, time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+	}
 	writeJSON(response, http.StatusOK, map[string]any{"sources": results})
 }
 
@@ -620,18 +869,23 @@ func validWebVital(name string, value float64, rating, navigationType, page stri
 		len(page) <= 80
 }
 
+func validPublicAnalyticsPeriod(value int) bool {
+	return value == 7 || value == 30 || value == 90
+}
+
 func (s *Server) workspaceSnapshot(
 	response http.ResponseWriter,
 	request *http.Request,
 	current session,
 ) {
 	var (
-		records   []store.NewsletterRecord
-		issues    []domain.Issue
-		next      *store.WorkspaceIssueCursor
-		reviews   []store.WorkspaceReview
-		progress  []store.LessonProgress
-		retention store.RetentionState
+		records    []store.NewsletterRecord
+		issues     []domain.Issue
+		next       *store.WorkspaceIssueCursor
+		reviews    []store.WorkspaceReview
+		progress   []store.LessonProgress
+		retention  store.RetentionState
+		todayFocus store.TodayFocus
 	)
 	group, context := errgroup.WithContext(request.Context())
 	group.Go(func() error {
@@ -673,6 +927,13 @@ func (s *Server) workspaceSnapshot(
 		progress, err = s.store.ListRecentLessonProgress(context, current.Account.ID, 24)
 		return err
 	})
+	group.Go(func() error {
+		var err error
+		todayFocus, err = s.store.RefreshTodayFocus(
+			context, current.Account.ID, time.Now().UTC(),
+		)
+		return err
+	})
 	if err := group.Wait(); err != nil {
 		s.internalError(response, request, err)
 		return
@@ -696,6 +957,7 @@ func (s *Server) workspaceSnapshot(
 		"reviews":         reviews,
 		"lessonProgress":  progress,
 		"retention":       retention,
+		"todayFocus":      todayFocus,
 	}
 	writePrivateCacheableJSON(
 		response,
@@ -797,20 +1059,23 @@ func issuePayloads(issues []domain.Issue) []map[string]any {
 	items := make([]map[string]any, 0, len(issues))
 	for _, issue := range issues {
 		item := map[string]any{
-			"id":                 issue.ID,
-			"newsletterId":       issue.NewsletterID,
-			"trigger":            issue.Trigger,
-			"scheduledLocalDate": issue.ScheduledLocalDate,
-			"status":             issue.Status,
-			"title":              issue.Title,
-			"publicId":           issue.PublicID,
-			"publicSlug":         issue.PublicSlug,
-			"publicationState":   issue.PublicationState,
-			"createdAt":          issue.CreatedAt,
-			"startedAt":          issue.StartedAt,
-			"completedAt":        issue.CompletedAt,
+			"id":                     issue.ID,
+			"newsletterId":           issue.NewsletterID,
+			"trigger":                issue.Trigger,
+			"scheduledLocalDate":     issue.ScheduledLocalDate,
+			"status":                 issue.Status,
+			"title":                  issue.Title,
+			"publicId":               issue.PublicID,
+			"publicSlug":             issue.PublicSlug,
+			"publicationState":       issue.PublicationState,
+			"publicationUpdatedAt":   issue.PublicationUpdatedAt,
+			"firstPublishReviewedAt": issue.FirstPublishReviewedAt,
+			"publishedAt":            issue.PublishedAt,
+			"createdAt":              issue.CreatedAt,
+			"startedAt":              issue.StartedAt,
+			"completedAt":            issue.CompletedAt,
 		}
-		if issue.Status == domain.IssueFailed && issue.Error != "" {
+		if (issue.Status == domain.IssueFailed || issue.Status == domain.IssueDeferred) && issue.Error != "" {
 			item["error"] = issue.Error
 			item["failureCode"] = issue.FailureCode
 			item["failureCategory"] = issue.FailureCategory
@@ -844,6 +1109,9 @@ func sourceCatalogPayloads(items []domain.SourceCatalogItem) []map[string]any {
 			"state":            item.State,
 			"health":           item.Health,
 			"discoveryReason":  item.DiscoveryReason,
+			"role":             item.Role,
+			"rankingVersion":   item.RankingVersion,
+			"preference":       item.Preference,
 			"lastCheckedAt":    item.LastCheckedAt,
 			"lastSuccessfulAt": item.LastSuccessfulAt,
 		}
@@ -966,6 +1234,18 @@ func (s *Server) updateNewsletter(
 	if !ok {
 		return
 	}
+	if input.SourceReviewMode == "" {
+		currentRecord, err := s.store.GetNewsletter(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		input.SourceReviewMode = currentRecord.SourceReviewMode
+	}
 	record, err := s.store.UpdateNewsletter(
 		request.Context(),
 		current.Account.ID,
@@ -1008,11 +1288,17 @@ func (s *Server) newsletterDetail(
 		summary    domain.SourceSummary
 		catalog    []domain.SourceCatalogItem
 		curriculum store.CurriculumProjection
+		site       *domain.PersonalSite
 	)
 	group, context := errgroup.WithContext(request.Context())
 	group.Go(func() error {
 		var err error
 		record, err = s.store.GetNewsletter(context, current.Account.ID, newsletterID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		site, err = s.store.GetSite(context, current.Account.ID)
 		return err
 	})
 	group.Go(func() error {
@@ -1074,6 +1360,7 @@ func (s *Server) newsletterDetail(
 		"sourceSummary":    summary,
 		"sourceCatalog":    sourceCatalogPayloads(catalog),
 		"curriculum":       curriculum,
+		"site":             s.sitePayload(site),
 		"issues":           issuePayloads(issues),
 		"lessonProgress":   progress,
 		"newsletters":      sidebar,
@@ -1123,6 +1410,57 @@ func (s *Server) newsletterAction(
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]bool{"active": body.Active})
+	case "rhythm":
+		var body struct {
+			Mode                domain.RhythmMode `json:"mode"`
+			SelectedWeekdays    []int             `json:"selectedWeekdays"`
+			AutoThrottleEnabled *bool             `json:"autoThrottleEnabled"`
+			UnopenedLessonLimit int               `json:"unopenedLessonLimit"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		autoThrottle := true
+		if body.AutoThrottleEnabled != nil {
+			autoThrottle = *body.AutoThrottleEnabled
+		}
+		if body.UnopenedLessonLimit == 0 {
+			body.UnopenedLessonLimit = 3
+		}
+		record, err := s.store.SetNewsletterRhythm(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			store.RhythmInput{
+				Mode:                body.Mode,
+				SelectedWeekdays:    body.SelectedWeekdays,
+				AutoThrottleEnabled: autoThrottle,
+				UnopenedLessonLimit: body.UnopenedLessonLimit,
+			},
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{
+			"newsletter": newsletterPayload(record, current.Account.PrimaryEmail),
+		})
+	case "reset-backlog":
+		result, err := s.store.ResetNewsletterBacklog(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			time.Now().UTC(),
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{
+			"dismissedCount": result.DismissedCount,
+			"newsletter":     newsletterPayload(result.Newsletter, current.Account.PrimaryEmail),
+		})
 	case "delivery":
 		var body struct {
 			Enabled bool `json:"enabled"`
@@ -1178,8 +1516,157 @@ func (s *Server) newsletterAction(
 			return
 		}
 		writeJSON(response, http.StatusOK, body)
+	case "publication-default":
+		var body struct {
+			State             domain.PublicationState `json:"state"`
+			AudienceConfirmed bool                    `json:"audienceConfirmed"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if err := s.store.SetNewsletterPublicationDefault(
+			request.Context(), current.Account.ID, newsletterID,
+			body.State, body.AudienceConfirmed, time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, body)
+	case "bulk-publication":
+		var body struct {
+			IssueIDs          []string                `json:"issueIds"`
+			State             domain.PublicationState `json:"state"`
+			AudienceConfirmed bool                    `json:"audienceConfirmed"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		updated, err := s.store.BulkSetIssuePublication(
+			request.Context(), current.Account.ID, newsletterID, body.IssueIDs,
+			store.PublicationChange{
+				State: body.State, AudienceConfirmed: body.AudienceConfirmed,
+				Now: time.Now().UTC(),
+			},
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"updated": updated, "state": body.State})
+	case "source-mode":
+		var body struct {
+			Mode domain.SourceMode `json:"mode"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if err := s.store.SetNewsletterSourceMode(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			body.Mode,
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, body)
+	case "source-review-mode":
+		var body struct {
+			Mode domain.SourceReviewMode `json:"mode"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if body.Mode != domain.SourceReviewAuto && body.Mode != domain.SourceReviewBeforeLesson {
+			writeProblem(response, http.StatusBadRequest, "invalid_source_review_mode", "Source review mode must be auto or review.")
+			return
+		}
+		if err := s.store.SetNewsletterSourceReviewMode(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			body.Mode,
+			time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, body)
+	case "approve-source-portfolio":
+		if err := s.store.ApproveSourcePortfolio(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			time.Now().UTC(),
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]string{"status": "queued"})
+	case "preparation-wait-exited":
+		if err := s.store.RecordPreparationWaitExited(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			time.Now().UTC(),
+		); err != nil {
+			s.internalError(response, request, err)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]string{"status": "recorded"})
 	default:
 		writeProblem(response, http.StatusNotFound, "not_found", "The requested action was not found.")
+	}
+}
+
+func (s *Server) sourceAction(
+	response http.ResponseWriter,
+	request *http.Request,
+	current session,
+	newsletterID, sourceID, action string,
+) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(response, http.MethodPost)
+		return
+	}
+	switch action {
+	case "preference":
+		var body struct {
+			Preference domain.SourcePreference `json:"preference"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if err := s.store.SetSourcePreference(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			sourceID,
+			body.Preference,
+		); err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, body)
+	case "replace":
+		var body domain.SourceDefinition
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		replacementID, err := s.store.ReplaceProvidedSource(
+			request.Context(),
+			current.Account.ID,
+			newsletterID,
+			sourceID,
+			body,
+		)
+		if err != nil {
+			writeStoreError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]string{"sourceId": replacementID})
+	default:
+		writeProblem(response, http.StatusNotFound, "not_found", "The requested source action was not found.")
 	}
 }
 
@@ -1207,21 +1694,31 @@ func (s *Server) issueAction(
 		writeJSON(response, http.StatusAccepted, map[string]string{"status": "queued"})
 	case "publication":
 		var body struct {
-			State domain.PublicationState `json:"state"`
+			State             domain.PublicationState `json:"state"`
+			AudienceConfirmed bool                    `json:"audienceConfirmed"`
 		}
 		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 			return
 		}
-		if err := s.store.SetIssuePublication(
+		issue, err := s.store.SetIssuePublication(
 			request.Context(),
 			current.Account.ID,
 			issueID,
-			body.State,
-		); err != nil {
+			store.PublicationChange{
+				State: body.State, AudienceConfirmed: body.AudienceConfirmed,
+				Now: time.Now().UTC(),
+			},
+		)
+		if err != nil {
 			writeStoreError(response, err)
 			return
 		}
-		writeJSON(response, http.StatusOK, body)
+		writeJSON(response, http.StatusOK, map[string]any{
+			"publicationState":       issue.PublicationState,
+			"publicationUpdatedAt":   issue.PublicationUpdatedAt,
+			"firstPublishReviewedAt": issue.FirstPublishReviewedAt,
+			"publishedAt":            issue.PublishedAt,
+		})
 	case "retry-delivery":
 		if err := s.store.RetryDelivery(
 			request.Context(),
@@ -1251,18 +1748,6 @@ func (s *Server) issueAction(
 			current.Account.ID,
 			issueID,
 			store.ProductEventLessonOpened,
-			time.Now().UTC(),
-		); err != nil {
-			writeStoreError(response, err)
-			return
-		}
-		writeJSON(response, http.StatusAccepted, map[string]string{"status": "recorded"})
-	case "review-attempted":
-		if err := s.store.RecordOwnedLessonEvent(
-			request.Context(),
-			current.Account.ID,
-			issueID,
-			store.ProductEventReviewAttempted,
 			time.Now().UTC(),
 		); err != nil {
 			writeStoreError(response, err)
@@ -1394,7 +1879,33 @@ func (s *Server) issueDetail(
 		s.internalError(response, request, err)
 		return
 	}
-	etag := issueDetailETag(issue, feedback, notes)
+	progress, err := s.store.GetLessonProgress(
+		request.Context(), current.Account.ID, issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	retrievals, err := s.store.ListLessonRetrievalResponses(
+		request.Context(), current.Account.ID, issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	navigation, err := s.store.GetLessonNavigation(
+		request.Context(), current.Account.ID, issueID,
+	)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	site, err := s.store.GetSite(request.Context(), current.Account.ID)
+	if err != nil {
+		s.internalError(response, request, err)
+		return
+	}
+	etag := issueDetailETag(issue, feedback, notes, progress, retrievals, navigation)
 	if requestETagMatches(request, etag) {
 		response.Header().Set("Cache-Control", "private, max-age=300, stale-while-revalidate=3600")
 		response.Header().Set("ETag", etag)
@@ -1416,7 +1927,7 @@ func (s *Server) issueDetail(
 		s.internalError(response, request, err)
 		return
 	}
-	sources := make([]map[string]string, 0, len(artifactValue.Dossier.Sources))
+	sources := make([]map[string]any, 0, len(artifactValue.Dossier.Sources))
 	for _, source := range artifactValue.Dossier.Sources {
 		sourceURL := source.CanonicalURL
 		if sourceURL == "" {
@@ -1426,19 +1937,27 @@ func (s *Server) issueDetail(
 		if sourceID == "" {
 			sourceID = fmt.Sprintf("S%d", len(sources)+1)
 		}
-		sources = append(sources, map[string]string{
-			"id":   sourceID,
-			"name": source.Source,
-			"url":  sourceURL,
+		sources = append(sources, map[string]any{
+			"id":            sourceID,
+			"name":          source.Source,
+			"url":           sourceURL,
+			"summary":       source.Summary,
+			"author":        source.Author,
+			"publishedAt":   source.PublishedAt,
+			"contentSource": source.ContentSource,
 		})
 	}
 	payload := map[string]any{
-		"issue":      issue,
-		"newsletter": issue.Newsletter,
-		"dossier":    artifactValue.Dossier,
-		"sources":    sources,
-		"feedback":   feedback,
-		"notes":      notes,
+		"issue":          issue,
+		"newsletter":     issue.Newsletter,
+		"dossier":        artifactValue.Dossier,
+		"sources":        sources,
+		"feedback":       feedback,
+		"notes":          notes,
+		"lessonProgress": progress,
+		"retrievals":     retrievals,
+		"navigation":     navigation,
+		"site":           s.sitePayload(site),
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1459,6 +1978,9 @@ func issueDetailETag(
 	issue domain.Issue,
 	feedback *store.LessonFeedback,
 	notes []store.LessonNote,
+	progress *store.LessonProgress,
+	retrievals []store.LessonRetrievalResponse,
+	navigation store.LessonNavigation,
 ) string {
 	checksum := issue.ArtifactSHA256
 	if checksum == "" {
@@ -1472,6 +1994,24 @@ func issueDetailETag(
 	if len(notes) > 0 {
 		notesVersion = notes[0].UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
+	progressVersion := ""
+	if progress != nil {
+		progressVersion = progress.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	retrievalVersion := ""
+	if len(retrievals) > 0 {
+		retrievalVersion = retrievals[len(retrievals)-1].UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	navigationVersion := ""
+	if navigation.Previous != nil {
+		navigationVersion += navigation.Previous.IssueID
+	}
+	if navigation.Next != nil {
+		navigationVersion += "\x00" + navigation.Next.IssueID
+	}
+	if navigation.NextReviewAt != nil {
+		navigationVersion += "\x00" + navigation.NextReviewAt.UTC().Format(time.RFC3339Nano)
+	}
 	value := strings.Join([]string{
 		checksum,
 		string(issue.PublicationState),
@@ -1479,6 +2019,9 @@ func issueDetailETag(
 		issue.Newsletter.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		feedbackVersion,
 		notesVersion,
+		progressVersion,
+		retrievalVersion,
+		navigationVersion,
 	}, "\x00")
 	sum := sha256.Sum256([]byte(value))
 	return fmt.Sprintf(`"%x"`, sum)
@@ -1489,21 +2032,24 @@ func (s *Server) decodeNewsletterInput(
 	request *http.Request,
 ) (store.NewsletterInput, bool) {
 	var body struct {
-		Name                 string                    `json:"name"`
-		Topic                string                    `json:"topic"`
-		LearnerLevel         string                    `json:"learnerLevel"`
-		LearnerGoal          string                    `json:"learnerGoal"`
-		LessonMinutes        int                       `json:"lessonMinutes"`
-		SourceMode           string                    `json:"sourceMode"`
-		Sources              []domain.SourceDefinition `json:"sources"`
-		ScheduleTime         string                    `json:"scheduleTime"`
-		TimeZone             string                    `json:"timeZone"`
-		Active               *bool                     `json:"active"`
-		EmailEnabled         *bool                     `json:"emailEnabled"`
-		AIExplorationEnabled *bool                     `json:"aiExplorationEnabled"`
-		SiteVisible          *bool                     `json:"siteVisible"`
-		TemplateID           string                    `json:"templateId"`
-		TemplateVersion      int                       `json:"templateVersion"`
+		Name                    string                    `json:"name"`
+		Topic                   string                    `json:"topic"`
+		LearnerLevel            string                    `json:"learnerLevel"`
+		LearnerGoal             string                    `json:"learnerGoal"`
+		LessonMinutes           int                       `json:"lessonMinutes"`
+		SourceMode              string                    `json:"sourceMode"`
+		SourceReviewMode        domain.SourceReviewMode   `json:"sourceReviewMode"`
+		Sources                 []domain.SourceDefinition `json:"sources"`
+		ScheduleTime            string                    `json:"scheduleTime"`
+		TimeZone                string                    `json:"timeZone"`
+		Active                  *bool                     `json:"active"`
+		EmailEnabled            *bool                     `json:"emailEnabled"`
+		AIExplorationEnabled    *bool                     `json:"aiExplorationEnabled"`
+		SiteVisible             *bool                     `json:"siteVisible"`
+		TemplateID              string                    `json:"templateId"`
+		TemplateVersion         int                       `json:"templateVersion"`
+		OnboardingDraftID       string                    `json:"onboardingDraftId"`
+		OnboardingDraftRevision int64                     `json:"onboardingDraftRevision"`
 	}
 	if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 		return store.NewsletterInput{}, false
@@ -1528,13 +2074,16 @@ func (s *Server) decodeNewsletterInput(
 	return store.NewsletterInput{
 		Name: body.Name, Topic: body.Topic, LearnerLevel: body.LearnerLevel,
 		LearnerGoal: body.LearnerGoal, LessonMinutes: body.LessonMinutes,
-		SourceMode: domain.SourceMode(mode), Sources: body.Sources,
+		SourceMode: domain.SourceMode(mode), SourceReviewMode: body.SourceReviewMode,
+		Sources:      body.Sources,
 		ScheduleHour: hour, ScheduleMinute: minute,
 		TimeZone: body.TimeZone, Active: active, EmailEnabled: boolValue(body.EmailEnabled),
-		AIExplorationEnabled: boolValue(body.AIExplorationEnabled),
-		SiteVisible:          boolValue(body.SiteVisible),
-		TemplateID:           body.TemplateID,
-		TemplateVersion:      body.TemplateVersion,
+		AIExplorationEnabled:    boolValue(body.AIExplorationEnabled),
+		SiteVisible:             boolValue(body.SiteVisible),
+		TemplateID:              body.TemplateID,
+		TemplateVersion:         body.TemplateVersion,
+		OnboardingDraftID:       body.OnboardingDraftID,
+		OnboardingDraftRevision: body.OnboardingDraftRevision,
 	}, true
 }
 
@@ -1554,15 +2103,29 @@ func newsletterPayload(
 		"id": record.ID, "name": record.Name, "topic": record.Topic,
 		"learnerLevel": record.LearnerLevel, "learnerGoal": record.LearnerGoal,
 		"lessonMinutes": record.LessonMinutes, "sourceMode": record.SourceMode,
-		"sources":      record.Sources,
-		"scheduleTime": fmt.Sprintf("%02d:%02d", record.ScheduleHour, record.ScheduleMinute),
-		"timeZone":     record.TimeZone, "active": record.Active,
+		"sourceReviewMode":                   record.SourceReviewMode,
+		"sourceApprovedAt":                   record.SourceApprovedAt,
+		"sources":                            record.Sources,
+		"scheduleTime":                       fmt.Sprintf("%02d:%02d", record.ScheduleHour, record.ScheduleMinute),
+		"rhythmMode":                         record.RhythmMode,
+		"selectedWeekdays":                   record.SelectedWeekdays,
+		"effectiveRhythmMode":                record.EffectiveRhythmMode,
+		"autoThrottleEnabled":                record.AutoThrottleEnabled,
+		"unopenedLessonLimit":                record.UnopenedLessonLimit,
+		"rhythmReason":                       record.RhythmReason,
+		"rhythmThrottledAt":                  record.RhythmThrottledAt,
+		"lessonPublicationDefault":           record.LessonPublicationDefault,
+		"lessonPublicationDefaultReviewedAt": record.LessonPublicationDefaultReviewedAt,
+		"timeZone":                           record.TimeZone, "active": record.Active,
 		"nextRunAt": record.NextRunAt, "emailEnabled": record.EmailEnabled,
 		"emailRecipients":      recipients,
 		"aiExplorationEnabled": record.AIExplorationEnabled,
 		"publicSlug":           record.PublicSlug, "siteVisible": record.SiteVisible,
 		"issueCount": record.IssueCount, "generatedCount": record.GeneratedCount,
-		"sentCount": record.SentCount,
+		"sentCount":               record.SentCount,
+		"capabilityCount":         record.CapabilityCount,
+		"recalledCapabilityCount": record.RecalledCapabilityCount,
+		"currentGapCount":         record.CurrentGapCount,
 	}
 }
 

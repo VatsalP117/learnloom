@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -32,6 +33,8 @@ type Readiness interface {
 }
 
 type Config struct {
+	Environment              string
+	ReleaseVersion           string
 	RootDomain               string
 	ApexOrigin               string
 	AppOrigin                string
@@ -40,6 +43,12 @@ type Config struct {
 	ClerkJWTKey              string
 	ClerkWebhookSecret       string
 	ClerkFrontendOrigin      string
+	PaddleWebhookSecret      string
+	PaddleAPIKey             string
+	PaddleAPIBaseURL         string
+	PaddleProPriceID         string
+	PaidCommerceApproved     bool
+	PaddleHTTPClient         *http.Client
 	MaxRequestBodyBytes      int64
 	MaxNewsletters           int
 	DailyAccountLimit        int
@@ -54,13 +63,14 @@ type Config struct {
 }
 
 type Server struct {
-	cfg           Config
-	store         *store.Store
-	artifacts     *artifact.Store
-	logger        *slog.Logger
-	authenticated http.Handler
-	readiness     []Readiness
-	metrics       requestMetrics
+	cfg              Config
+	store            *store.Store
+	artifacts        *artifact.Store
+	logger           *slog.Logger
+	authenticated    http.Handler
+	readiness        []Readiness
+	metrics          requestMetrics
+	portfolioPlanner PortfolioPlanner
 }
 
 type requestMetrics struct {
@@ -198,6 +208,12 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	}
 	response.Header().Set("X-Request-ID", requestID)
 	response.Header().Set("X-Content-Type-Options", "nosniff")
+	if s.cfg.ReleaseVersion != "" && s.cfg.ReleaseVersion != "unknown" {
+		response.Header().Set("X-Learnloom-Release", s.cfg.ReleaseVersion)
+	}
+	if s.cfg.Environment == "production" {
+		response.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
 	response.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	response.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 	contextWithID := context.WithValue(request.Context(), requestIDKey{}, requestID)
@@ -367,6 +383,15 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 	case "/webhooks/clerk":
 		s.handleClerkWebhook(response, request)
 		return
+	case "/webhooks/paddle":
+		s.handlePaddleWebhook(response, request)
+		return
+	case "/public-follow/confirm":
+		s.handlePublicFollowLifecycle(response, request, true)
+		return
+	case "/public-follow/unsubscribe":
+		s.handlePublicFollowLifecycle(response, request, false)
+		return
 	}
 	if strings.HasPrefix(request.URL.Path, "/assets/") {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
@@ -406,6 +431,43 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 	writeProblem(response, http.StatusNotFound, "not_found", "Page not found.")
 }
 
+func (s *Server) handlePublicFollowLifecycle(
+	response http.ResponseWriter,
+	request *http.Request,
+	confirm bool,
+) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(response, http.MethodGet, http.MethodHead)
+		return
+	}
+	token := strings.TrimSpace(request.URL.Query().Get("token"))
+	var err error
+	title := "You have been unsubscribed."
+	description := "You will no longer receive new Dossiers from this path."
+	if confirm {
+		err = s.store.ConfirmPublicPathFollow(request.Context(), token, time.Now().UTC())
+		title = "This path is now in your inbox."
+		description = "You will receive an email when the next public Dossier is published."
+	} else {
+		err = s.store.UnsubscribePublicPathFollow(request.Context(), token, time.Now().UTC())
+	}
+	if err != nil {
+		writeProblem(response, http.StatusNotFound, "not_found", "This link is invalid or has expired.")
+		return
+	}
+	body := `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+		`<title>` + html.EscapeString(title) + ` · Learnloom</title><style>` + readingCSS + `</style></head><body>` +
+		`<main class="not-found"><div class="leaf-mark" aria-hidden="true"><i></i></div><p class="eyebrow">Learnloom</p>` +
+		`<h1>` + html.EscapeString(title) + `</h1><p>` + html.EscapeString(description) + `</p>` +
+		`<a class="button" href="` + html.EscapeString(s.cfg.ApexOrigin) + `">Explore Learnloom <span>↗</span></a></main></body></html>`
+	s.applyReadingHeaders(response, false)
+	response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	response.Header().Set("Cache-Control", "private, no-store")
+	if request.Method != http.MethodHead {
+		_, _ = response.Write([]byte(body))
+	}
+}
+
 func (s *Server) serveAppIndex(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	s.serveIndex(response, request)
@@ -428,6 +490,14 @@ func (s *Server) handleAuthenticated(
 		}
 		s.internalError(response, request, err)
 		return
+	}
+	if cookie, cookieErr := request.Cookie(publicReferralCookie); cookieErr == nil {
+		fingerprint := s.publicReferralFingerprint(strings.TrimSpace(cookie.Value))
+		if conversionErr := s.store.RecordPublicSignupConversion(
+			request.Context(), account.ID, fingerprint, time.Now().UTC(),
+		); conversionErr != nil {
+			s.logger.WarnContext(request.Context(), "record public signup attribution", "error", conversionErr)
+		}
 	}
 	request = request.WithContext(context.WithValue(
 		request.Context(),
@@ -597,6 +667,8 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 			"# TYPE learnloom_queue_oldest_delivery_seconds gauge\nlearnloom_queue_oldest_delivery_seconds %.3f\n"+
 			"# TYPE learnloom_queue_weekly_recaps gauge\nlearnloom_queue_weekly_recaps %d\n"+
 			"# TYPE learnloom_queue_account_deletions gauge\nlearnloom_queue_account_deletions %d\n"+
+			"# TYPE learnloom_artifact_cleanups_pending gauge\nlearnloom_artifact_cleanups_pending %d\n"+
+			"# TYPE learnloom_artifact_cleanup_oldest_seconds gauge\nlearnloom_artifact_cleanup_oldest_seconds %.3f\n"+
 			"# TYPE learnloom_database_connections gauge\n"+
 			"learnloom_database_connections{state=\"acquired\"} %d\n"+
 			"learnloom_database_connections{state=\"idle\"} %d\n"+
@@ -610,6 +682,8 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 		operations.OldestDeliveryAge.Seconds(),
 		operations.PendingWeeklyRecaps,
 		operations.PendingDeletions,
+		operations.PendingArtifactCleanups,
+		operations.OldestArtifactCleanupAge.Seconds(),
 		operations.DatabaseAcquired,
 		operations.DatabaseIdle,
 		operations.DatabaseTotal,
@@ -628,6 +702,7 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 			"# TYPE learnloom_model_issue_reservation_microusd gauge\nlearnloom_model_issue_reservation_microusd %d\n"+
 			"# TYPE learnloom_learning_actions gauge\n"+
 			"learnloom_learning_actions{action=\"generated\"} %d\n"+
+			"learnloom_learning_actions{action=\"deferred\"} %d\n"+
 			"learnloom_learning_actions{action=\"opened\"} %d\n"+
 			"learnloom_learning_actions{action=\"completed\"} %d\n"+
 			"learnloom_learning_actions{action=\"retained_learner\"} %d\n",
@@ -639,9 +714,30 @@ func (s *Server) handleMetrics(response http.ResponseWriter, request *http.Reque
 		s.cfg.DailyModelBudgetMicroUSD,
 		s.cfg.ModelReservationMicroUSD,
 		operations.LessonsGenerated,
+		operations.LessonsDeferred,
 		operations.LessonsOpened,
 		operations.LessonsCompleted,
 		operations.RetainedLearners,
+	)
+	_, _ = fmt.Fprintf(
+		response,
+		"# TYPE learnloom_accounts_with_consecutive_generation_failures gauge\n"+
+			"learnloom_accounts_with_consecutive_generation_failures %d\n",
+		operations.AccountsConsecutiveFailures,
+	)
+	_, _ = fmt.Fprintf(
+		response,
+		"# TYPE learnloom_billing_webhooks_pending gauge\nlearnloom_billing_webhooks_pending %d\n"+
+			"# TYPE learnloom_billing_webhook_oldest_seconds gauge\nlearnloom_billing_webhook_oldest_seconds %.3f\n"+
+			"# TYPE learnloom_billing_accounts gauge\n"+
+			"learnloom_billing_accounts{entitlement=\"grace\"} %d\n"+
+			"learnloom_billing_accounts{entitlement=\"generation_paused\"} %d\n"+
+			"# TYPE learnloom_billing_checkouts_pending gauge\nlearnloom_billing_checkouts_pending %d\n",
+		operations.PendingBillingWebhooks,
+		operations.OldestBillingWebhookAge.Seconds(),
+		operations.BillingAccountsInGrace,
+		operations.BillingAccountsPaused,
+		operations.PendingBillingCheckouts,
 	)
 	if err := s.metrics.durations.WritePrometheus(
 		response,

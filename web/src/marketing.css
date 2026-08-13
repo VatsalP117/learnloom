@@ -168,6 +168,87 @@
   box-shadow: 0 40px 100px rgba(18,42,26,.27), 0 0 0 8px rgba(255,255,255,.14);
   backdrop-filter: blur(18px);
 }
+
+.ll-loop-proof {
+  width: min(820px, 100%);
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+.ll-loop-proof article {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 17px;
+  border: 1px solid rgba(23, 33, 27, .1);
+  border-radius: 13px;
+  background: rgba(255, 255, 251, .72);
+  box-shadow: 0 10px 32px rgba(35, 64, 43, .045);
+}
+.ll-loop-proof article > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #eef6ec;
+  background: var(--ll-ink);
+  font-size: 9px;
+  font-weight: 800;
+}
+.ll-loop-proof article div { display: grid; gap: 3px; }
+.ll-loop-proof small { color: var(--ll-green); font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.ll-loop-proof strong { font-family: Georgia, "Times New Roman", serif; font-size: 19px; font-weight: 400; }
+.ll-loop-proof p { margin: 0; color: var(--ll-muted); font-size: 10px; }
+.ll-loop-proof .ll-button { justify-self: start; margin-top: 12px; }
+
+.ll-comparison-section,
+.ll-trust-section,
+.ll-pricing-section {
+  padding: 120px max(36px, calc((100vw - 1240px) / 2));
+}
+.ll-comparison-section { background: #eef2eb; }
+.ll-comparison-section .ll-section-intro { max-width: 760px; margin-bottom: 50px; }
+.ll-comparison-table { overflow: hidden; border: 1px solid rgba(23, 33, 27, .12); border-radius: 18px; background: rgba(255, 255, 251, .68); }
+.ll-comparison-table > div { display: grid; grid-template-columns: minmax(150px, .65fr) 1fr 1.35fr; gap: 24px; padding: 21px 24px; border-bottom: 1px solid rgba(23, 33, 27, .09); }
+.ll-comparison-table > div:last-child { border-bottom: 0; }
+.ll-comparison-table > div.emphasized { color: #eef6ec; background: var(--ll-ink); }
+.ll-comparison-table strong { font-size: 12px; }
+.ll-comparison-table span,
+.ll-comparison-table p { margin: 0; color: var(--ll-muted); font-size: 11px; line-height: 1.6; }
+.ll-comparison-table .emphasized span,
+.ll-comparison-table .emphasized p { color: #c4d0c6; }
+.ll-trust-section { display: grid; grid-template-columns: .75fr 1.25fr; gap: 80px; background: var(--ll-paper); }
+.ll-pricing-section { background: #eef2eb; }
+.ll-pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: 900px; margin: 42px auto 0; }
+.ll-pricing-grid article { padding: 32px; border: 1px solid rgba(23, 33, 27, .12); border-radius: 18px; background: rgba(255, 255, 251, .74); }
+.ll-pricing-grid article.featured { color: #eef6ec; background: var(--ll-ink); }
+.ll-pricing-grid article > p { margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.ll-pricing-grid h3 { display: inline; margin: 0; font-family: Georgia, serif; font-size: 52px; font-weight: 400; }
+.ll-pricing-grid article > span { margin-left: 8px; color: var(--ll-muted); font-size: 11px; }
+.ll-pricing-grid .featured > span { color: #b9c6bb; }
+.ll-pricing-grid ul { display: grid; gap: 12px; margin: 28px 0; padding: 0; list-style: none; }
+.ll-pricing-grid li { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.ll-pricing-grid .featured .ll-button { color: var(--ll-ink); background: #eef6ec; }
+.ll-pricing-note { max-width: 900px; margin: 18px auto 0; color: var(--ll-muted); font-size: 10px; line-height: 1.65; }
+.ll-trust-section h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(42px, 5vw, 68px); font-weight: 400; line-height: .98; letter-spacing: -.055em; }
+.ll-trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ll-trust-grid article { padding: 24px; border: 1px solid rgba(23, 33, 27, .1); border-radius: 15px; background: rgba(255, 255, 251, .72); }
+.ll-trust-grid strong { font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 400; }
+.ll-trust-grid p { color: var(--ll-muted); font-size: 11px; line-height: 1.7; }
+.ll-trust-grid a { display: inline-flex; align-items: center; gap: 6px; color: var(--ll-green); font-size: 10px; font-weight: 750; }
+
+@media (max-width: 860px) {
+  .ll-comparison-table > div { grid-template-columns: 1fr; gap: 6px; }
+  .ll-trust-section { grid-template-columns: 1fr; gap: 42px; }
+  .ll-pricing-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 580px) {
+  .ll-loop-proof article { grid-template-columns: 34px 1fr; padding: 13px; }
+  .ll-trust-grid { grid-template-columns: 1fr; }
+  .ll-comparison-section, .ll-trust-section, .ll-pricing-section { padding: 82px 22px; }
+}
 .ll-dashboard-top { height: 55px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid rgba(18,32,22,.08); background: rgba(255,255,255,.68); }
 .ll-mini-brand { font-size: 13px; letter-spacing: -.03em; }
 .ll-mini-brand .ll-brand-mark { width: 25px; height: 25px; border-radius: 7px; }
@@ -202,10 +283,8 @@
 .ll-mini-meta { display: grid; gap: 3px; margin-top: 16px; padding-top: 13px; border-top: 1px solid rgba(24,41,29,.07); }
 .ll-mini-meta span { color: #a5aba6; font-size: 6px; text-transform: uppercase; letter-spacing: .08em; }
 .ll-mini-meta strong { color: #5f6961; font-size: 7px; }
-.ll-mini-progress { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
-.ll-mini-progress > span { height: 3px; flex: 1; overflow: hidden; border-radius: 99px; background: #ecefea; }
-.ll-mini-progress i { display: block; height: 100%; background: #719272; }
-.ll-mini-progress strong { color: #668069; font-size: 7px; }
+.ll-mini-capability { display: flex; align-items: center; gap: 5px; margin-top: 11px; color: #668069; }
+.ll-mini-capability strong { font-size: 7px; }
 .ll-mini-dossier > a { display: flex; align-items: center; justify-content: center; margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(24,41,29,.07); color: #3b5e45; font-size: 7px; font-weight: 750; }
 
 .ll-subdomain-section, .ll-flow-section, .ll-dossier-section, .ll-email-section, .ll-quote-section, .ll-final-cta {
@@ -448,7 +527,7 @@
   .ll-mini-dossier:nth-child(3) { display: none; }
   .ll-mini-dossier p, .ll-mini-meta { display: none; }
   .ll-mini-dossier h4 { margin: 10px 0 0; font-size: 10px; }
-  .ll-mini-progress { margin-top: 10px; }
+  .ll-mini-capability { margin-top: 10px; }
   .ll-mini-dossier > a { margin-top: 10px; }
   .ll-subdomain-section, .ll-flow-section, .ll-dossier-section, .ll-email-section, .ll-quote-section, .ll-final-cta { padding-inline: 20px; }
   .ll-subdomain-section { min-height: auto; gap: 52px; padding-top: 120px; padding-bottom: 85px; }

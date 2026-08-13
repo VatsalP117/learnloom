@@ -33,7 +33,7 @@ func (g *Generator) runStage(
 	usage = completion.Usage
 	output := completion.Output
 	if strings.TrimSpace(output) == "" {
-		return "", fmt.Errorf("%s stage returned empty output", stage)
+		return "", stageExecutionFailure(stage, ErrEmptyOutput)
 	}
 	return strings.TrimSpace(output), nil
 }
@@ -82,7 +82,7 @@ func runStructured[T any](
 		}
 	}
 	return zero, failure.New(
-		"model_contract_unsatisfied",
+		failure.CodeModelContractUnsatisfied,
 		failure.CategoryContentQuality,
 		stage,
 		true,
@@ -102,14 +102,29 @@ func combineModelUsage(left, right ModelUsage) ModelUsage {
 
 func stageExecutionFailure(stage string, err error) error {
 	category := failure.CategoryProvider
-	code := "model_provider_failure"
+	code := failure.CodeModelProviderUnavailable
+	retryable := true
+	publicMessage := failure.PublicDelayed
+	var providerErr *modelProviderError
+	if errors.As(err, &providerErr) && !providerErr.retryable {
+		code = failure.CodeModelRequestRejected
+		retryable = false
+		publicMessage = failure.PublicInternal
+	}
 	if errors.Is(err, ErrOutputTruncated) {
 		category = failure.CategoryContentQuality
-		code = "model_output_truncated"
+		code = failure.CodeModelOutputTruncated
+		publicMessage = failure.PublicInternal
+	}
+	if errors.Is(err, ErrEmptyOutput) {
+		category = failure.CategoryContentQuality
+		code = failure.CodeModelOutputEmpty
+		publicMessage = failure.PublicInternal
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		category = failure.CategoryInfrastructure
-		code = "generation_interrupted"
+		code = failure.CodeGenerationInterrupted
+		publicMessage = failure.PublicDelayed
 	}
-	return failure.New(code, category, stage, true, failure.PublicInternal, err)
+	return failure.New(code, category, stage, retryable, publicMessage, err)
 }

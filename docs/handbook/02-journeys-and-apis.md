@@ -172,7 +172,7 @@ sequenceDiagram
   participant M as Model
   participant O as S3
   participant E as Resend
-  K->>P: recover expired claims; dispatch due streams
+  K->>P: recover expired claims + dispatch due streams
   K->>P: fair SKIP LOCKED claim + attempt row
   K->>P: load history
   K->>S: refresh catalog / discover candidates
@@ -269,6 +269,36 @@ than immediately hard-deleted.
 
 ## HTTP API catalogue
 
+```mermaid
+flowchart TB
+  subgraph Control["Control — /api/* (Clerk session required)"]
+    ME["GET /api/me · bootstrap"]
+    WS["GET /api/workspace · composite snapshot"]
+    LIB["GET /api/library · paginated search"]
+    NL["/api/newsletters… · CRUD, run, active, delivery"]
+    IS["/api/issues… · detail, retries, progress, complete"]
+    US["/api/usernames… / site claim · publishing"]
+    PERF["POST /api/performance/vitals"]
+  end
+  subgraph Public["Public GET/HEAD (no session)"]
+    APEX["apex /, /privacy, /terms, /examples, SEO"]
+    SITE["<username> /, /topics/{slug}, /d/{publicID}/{slug}"]
+    ROBOTS["/robots.txt · /sitemap.xml"]
+  end
+  subgraph Ops["Health & ops"]
+    H["/healthz · /readyz · /metrics"]
+  end
+  subgraph Hook["Webhook"]
+    CL["POST /webhooks/clerk · Svix-signed, idempotent"]
+  end
+```
+
+> [!IMPORTANT] Route security policy
+> Every `/api/*` and authenticated `/issues/*` route requires a valid Clerk
+> session. Every mutation additionally requires exact `Origin ==
+> LEARNLOOM_APP_ORIGIN`, a session-HMAC `X-CSRF-Token`, and `application/json`
+> with bounded, strictly-decoded bodies.
+
 All `/api/*` and authenticated `/issues/*` routes require a valid Clerk session.
 All mutations additionally require exact `Origin == LEARNLOOM_APP_ORIGIN`,
 session-HMAC `X-CSRF-Token`, and `application/json`. JSON bodies are bounded by
@@ -306,9 +336,13 @@ by `response.go → decodeJSON()`.
 Common error contract is RFC-7807-like JSON with `code` and safe `message`.
 Expected mappings include 400 validation, 401 auth, 403 ownership/account/CSRF,
 404 hidden resource, 409 conflict/state, 413 body, 415 media type, 429 durable
-rate limit, 500 internal, and 503 readiness. **Weak contract:** this catalogue
-is reconstructed; the project has no OpenAPI file or full route-level contract
-tests.
+rate limit, 500 internal, and 503 readiness.
+
+> [!WARNING] Weak contract
+> This catalogue is reconstructed — the project has no OpenAPI file and no full
+> route-level contract tests. Frontend `types.ts` uses loose `[key: string]:
+> any` shapes duplicated from Go payloads, so drift is silent until runtime.
+> Tracked as debt TD-006.
 
 Public GET/HEAD contracts are apex `/`, `/privacy`, `/terms`, `/examples`,
 SEO/authority paths catalogued in `seo.go`/`authority.go`, and Personal Site

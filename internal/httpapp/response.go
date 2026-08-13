@@ -115,6 +115,9 @@ var knownProblemCodes = map[string]bool{
 	"invalid_schedule":          true,
 	"invalid_webhook":           true,
 	"invalid_webhook_signature": true,
+	"entitlement_required":      true,
+	"invalid_period":            true,
+	"invalid_follow":            true,
 	"issue_not_generated":       true,
 	"method_not_allowed":        true,
 	"misdirected_request":       true,
@@ -164,6 +167,8 @@ func writeStoreError(response http.ResponseWriter, err error) {
 		writeProblem(response, http.StatusForbidden, "forbidden", "The request is not allowed.")
 	case errors.Is(err, store.ErrQuotaExceeded):
 		writeProblem(response, http.StatusTooManyRequests, "quota_exceeded", "The Account quota has been reached.")
+	case errors.Is(err, store.ErrEntitlementRequired):
+		writeProblem(response, http.StatusPaymentRequired, "entitlement_required", "Your generation allowance is unavailable. Your existing learning remains accessible.")
 	default:
 		writeProblem(response, http.StatusBadRequest, "invalid_request", err.Error())
 	}

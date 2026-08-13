@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { selectTodayFocus, selectTodayLessons } from "./TodayPage";
+import {
+  resolveTodaySelection,
+  selectTodayFocus,
+  selectTodayLessons,
+} from "./TodayPage";
 
 const stream = { id: "stream-1", active: true };
 
@@ -63,5 +67,48 @@ describe("Today lesson selection", () => {
     );
 
     expect(selected.focus).toBe("reentry");
+  });
+
+  it("uses the stored server selection and learner-facing reason", () => {
+    const lessons = [
+      { id: "newest", title: "Newest", status: "generated", newsletter: stream },
+      { id: "neglected", title: "Neglected", status: "generated", newsletter: stream },
+    ];
+    const selected = resolveTodaySelection(
+      {
+        kind: "lesson",
+        subjectId: "neglected",
+        reason: "This path has waited longer than your other active work.",
+        actionLabel: "Begin lesson",
+        actionUrl: "/issues/neglected",
+      },
+      lessons,
+      [],
+      () => ({ progress: 0, completed: false }),
+    );
+
+    expect(selected.primary?.id).toBe("neglected");
+    expect(selected.reason).toContain("waited longer");
+    expect(selected.actionUrl).toBe("/issues/neglected");
+  });
+
+  it("can hydrate a selected lesson outside the first workspace page", () => {
+    const selected = resolveTodaySelection(
+      {
+        kind: "lesson",
+        subjectId: "older-selected",
+        newsletterId: "stream-2",
+        title: "A neglected but worthwhile lesson",
+        newsletterName: "Systems",
+        lessonMinutes: 12,
+        reason: "Return to this path.",
+        actionLabel: "Begin lesson",
+        actionUrl: "/issues/older-selected",
+      },
+      [],
+    );
+
+    expect(selected.primary?.id).toBe("older-selected");
+    expect(selected.primary?.newsletter.name).toBe("Systems");
   });
 });

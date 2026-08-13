@@ -63,14 +63,18 @@ release.
 - [ ] Verify privacy changes are not served by any public cache past the
   documented purge window.
 - [ ] Run load and soak tests at the expected launch concurrency.
+  Use `docs/staging-load-soak-runbook.md`; record the forecast before the run,
+  retain the thresholded `cmd/load-verify` JSON report, and pair it with the
+  worker/provider/dashboard soak evidence. Repository unit tests do not close
+  this item.
 
 ## Automated sign-off
 
-- [ ] `npm ci && npm run check && npm test` passes.
-- [ ] `go test -race ./...` and `go vet ./...` pass.
-- [ ] The real Postgres lifecycle integration test passes.
-- [ ] The production container builds, runs as non-root, and passes an image
+- [x] `npm ci && npm run check && npm test` passes.
+- [x] `go test -race ./...` and `go vet ./...` pass.
+- [x] The real Postgres lifecycle integration test passes.
+- [x] The production container builds, runs as non-root, and passes an image
   vulnerability scan.
-- [ ] Dependency and secret scans pass.
+- [x] Dependency and secret scans pass.
 - [ ] A second person reviews security, privacy, and recovery evidence.
 - [ ] The release owner explicitly approves public signup.

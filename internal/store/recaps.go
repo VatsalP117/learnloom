@@ -25,6 +25,7 @@ type WeeklyRecapPayload struct {
 	WeekStart        string   `json:"weekStart"`
 	LessonsCompleted int      `json:"lessonsCompleted"`
 	Concepts         []string `json:"concepts"`
+	Capabilities     []string `json:"capabilities"`
 	Connection       string   `json:"connection"`
 	ReviewPrompt     string   `json:"reviewPrompt,omitempty"`
 	ActionLabel      string   `json:"actionLabel"`
@@ -242,7 +243,7 @@ func (s *Store) buildWeeklyRecap(
 		return WeeklyRecapPayload{}, false, nil
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT state.label
+		SELECT state.label, state.review_attempt_count, state.confidence_score
 		FROM learner_concept_state state
 		WHERE state.account_id = $1
 		  AND state.last_completed_at >= $2
@@ -255,11 +256,19 @@ func (s *Store) buildWeeklyRecap(
 	}
 	for rows.Next() {
 		var concept string
-		if err := rows.Scan(&concept); err != nil {
+		var reviewAttempts, confidence int
+		if err := rows.Scan(&concept, &reviewAttempts, &confidence); err != nil {
 			rows.Close()
 			return WeeklyRecapPayload{}, false, err
 		}
 		payload.Concepts = append(payload.Concepts, concept)
+		capability := "Can explain the core idea behind " + concept
+		if reviewAttempts > 0 && confidence >= 75 {
+			capability = "Can recall and explain " + concept
+		} else if reviewAttempts > 0 {
+			capability = "Can retrieve " + concept + " with some support"
+		}
+		payload.Capabilities = append(payload.Capabilities, capability)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -279,9 +288,19 @@ func (s *Store) buildWeeklyRecap(
 	`, accountID, periodStart, periodEnd).Scan(&historyRaw)
 	if err == nil {
 		var history domain.LearningHistoryEntry
-		if json.Unmarshal(historyRaw, &history) == nil &&
-			len(history.SuggestedNextConcepts) > 0 {
-			payload.Connection = history.SuggestedNextConcepts[0]
+		if json.Unmarshal(historyRaw, &history) == nil {
+			switch {
+			case len(payload.Concepts) >= 2:
+				payload.Connection = fmt.Sprintf(
+					"Connect %s with %s: where does one explain or constrain the other?",
+					payload.Concepts[0], payload.Concepts[1],
+				)
+			case len(payload.Concepts) == 1 && len(history.SuggestedNextConcepts) > 0:
+				payload.Connection = fmt.Sprintf(
+					"Connect %s with the next direction, %s.",
+					payload.Concepts[0], history.SuggestedNextConcepts[0],
+				)
+			}
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return WeeklyRecapPayload{}, false, err
@@ -321,6 +340,10 @@ func (s *Store) buildWeeklyRecap(
 		  AND newsletter.active
 		  AND issue.status = 'generated'
 		  AND progress.completed_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM lesson_backlog_dismissals dismissal
+			WHERE dismissal.account_id = $1 AND dismissal.issue_id = issue.id
+		  )
 		ORDER BY issue.created_at DESC
 		LIMIT 1
 	`, accountID).Scan(&issueID)
