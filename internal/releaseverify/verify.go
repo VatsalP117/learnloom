@@ -96,7 +96,7 @@ func Verify(ctx context.Context, cfg Config, client *http.Client) (Report, error
 		return Report{}, err
 	}
 	marketing := string(apexBody)
-	for _, marker := range []string{"Give us a topic.", "Build my learning path"} {
+	for _, marker := range []string{"Give us a topic.", "Build my learning home"} {
 		if !strings.Contains(marketing, marker) {
 			return Report{}, fmt.Errorf("apex marketing is missing current marker %q", marker)
 		}

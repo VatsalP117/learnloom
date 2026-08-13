@@ -396,8 +396,8 @@ func renderSEOHead(title, description, canonical, apexOrigin string) string {
 }
 
 func decorateMarketingIndex(body []byte, apexOrigin string) []byte {
-	const title = "Learnloom | Give us a topic. We’ll build the learning path."
-	const description = "Stay current without rebuilding context. Give Learnloom a topic; it ranks useful sources, teaches the next concept, and revisits it before it fades."
+	const title = "Learnloom | Give us a topic. We’ll build your learning home."
+	const description = "Give Learnloom a topic. It builds a learning path and gives every lesson a lasting home at your own Learnloom address."
 	canonical := strings.TrimRight(apexOrigin, "/") + "/"
 	document := string(body)
 	document = strings.Replace(

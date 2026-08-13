@@ -85,11 +85,11 @@ func TestMarketingIndexGetsCanonicalMetadata(t *testing.T) {
 	))
 
 	for _, expected := range []string{
-		`<title>Learnloom | Give us a topic. We’ll build the learning path.</title>`,
+		`<title>Learnloom | Give us a topic. We’ll build your learning home.</title>`,
 		`rel="canonical" href="https://learnloom.blog/"`,
 		`property="og:title"`,
 		`type="application/ld+json"`,
-		`Give us a topic. We’ll build the learning path.`,
+		`Give us a topic. We’ll build your learning home.`,
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("decorated index missing %q: %s", expected, output)
@@ -107,7 +107,7 @@ func TestMarketingHomepageUsesDedicatedFrontendDocument(t *testing.T) {
 	t.Parallel()
 	static := fstest.MapFS{
 		"index.html":     &fstest.MapFile{Data: []byte(`<!doctype html><title>Product app</title><div id="app-entry"></div>`)},
-		"marketing.html": &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Learnloom | Give us a topic. We’ll build the learning path.</title></head><body><div id="marketing-entry"></div></body></html>`)},
+		"marketing.html": &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Learnloom | Give us a topic. We’ll build your learning home.</title></head><body><div id="marketing-entry"></div></body></html>`)},
 	}
 	server := &Server{cfg: Config{
 		Static:     fs.FS(static),

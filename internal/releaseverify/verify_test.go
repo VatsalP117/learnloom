@@ -15,7 +15,7 @@ func TestVerifyAcceptsMatchingHealthyRelease(t *testing.T) {
 	t.Parallel()
 	apex := newReleaseServer(t, func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusOK)
-		_, _ = response.Write([]byte("<h1>Give us a topic.</h1><a>Build my learning path</a>"))
+		_, _ = response.Write([]byte("<h1>Give us a topic.</h1><a>Build my learning home</a>"))
 	})
 	app := newReleaseServer(t, func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -72,7 +72,7 @@ func TestVerifyRejectsWrongReleaseHeader(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		setReleaseHeaders(response, strings.Repeat("f", 40))
-		_, _ = response.Write([]byte("Give us a topic. Build my learning path"))
+		_, _ = response.Write([]byte("Give us a topic. Build my learning home"))
 	}))
 	t.Cleanup(server.Close)
 	_, err := Verify(context.Background(), Config{

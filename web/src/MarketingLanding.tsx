@@ -24,7 +24,7 @@ export default function MarketingLanding() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    document.title = "Learnloom | Give us a topic. We’ll build the learning path.";
+    document.title = "Learnloom | Give us a topic. We’ll build your learning home.";
   }, []);
 
   return (
@@ -63,20 +63,19 @@ export default function MarketingLanding() {
         <section className="ll-hero">
           <div className="ll-hero-scrim" />
           <div className="ll-hero-copy">
-            <p className="ll-kicker"><span /> For AI and software professionals in fast-moving fields</p>
+            <p className="ll-kicker"><span /> Your personal learning home on the web</p>
             <h1>
               Give us a topic.
               <br />
-              <em>We’ll build the learning path.</em>
+              <em>We’ll build your learning home.</em>
             </h1>
             <p className="ll-hero-description">
-              Stop rebuilding context from feeds, bookmarks, and one-off chats.
-              Learnloom finds and ranks useful sources, teaches the next concept,
-              and revisits it before it fades.
+              Learnloom finds useful sources, builds each lesson, and gives
+              everything you learn a lasting home at your own Learnloom address.
             </p>
             <div className="ll-hero-actions">
               <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
-                Build my learning path <ArrowRight size={17} />
+                Build my learning home <ArrowRight size={17} />
               </a>
               <a className="ll-text-link" href="/examples/ai-evaluation">
                 Read a complete Dossier <ChevronRight size={16} />
@@ -84,10 +83,10 @@ export default function MarketingLanding() {
             </div>
           </div>
 
-          <div className="ll-address-pill" aria-label="Complete product example available before signup">
+          <div className="ll-address-pill" aria-label="Example personal Learnloom home">
             <span className="ll-address-status"><BookOpen size={15} /></span>
-            <span>Complete lesson available before signup</span>
-            <span className="ll-live-dot"><i /> Real example</span>
+            <span><strong>{personalSiteHost("maya")}</strong> · your learning home</span>
+            <span className="ll-live-dot"><i /> Yours to build</span>
           </div>
 
           <LearningLoopPreview />
@@ -95,22 +94,15 @@ export default function MarketingLanding() {
 
         <section className="ll-subdomain-section" id="product">
           <div className="ll-section-intro">
-            <p className="ll-eyebrow">One topic becomes a maintained learning system</p>
-            <h2>See the whole loop,<br />not another AI answer.</h2>
+            <p className="ll-eyebrow">A home for everything you understand</p>
+            <h2>Your learning deserves<br />its own address.</h2>
             <p>
-              The path begins privately. You can inspect the provisional source
-              portfolio, learn through a short evidence-linked session, attempt
-              retrieval, and see why the next lesson changes.
+              Every path, lesson, source, and idea returns to one personal home.
+              Keep it private while you learn, then publish only what you choose
+              at an address like <strong>{personalSiteHost("maya")}</strong>.
             </p>
           </div>
-          <div className="ll-loop-proof" aria-label="Learnloom product sequence">
-            <ProofStep number="01" label="Topic" title="Calibrate an evaluator for AI research briefs" detail="Outcome: make defensible release decisions" />
-            <ProofStep number="02" label="Source portfolio" title="Official guidance, evaluation research, practitioner evidence" detail="Ranked by role, relevance, authority signals, and coverage" />
-            <ProofStep number="03" label="Learning session" title="Build a 12-case evaluator" detail="Mechanism, worked case, limitations, citations · about 12 min" />
-            <ProofStep number="04" label="Retrieval" title="Decide when disagreement requires human review" detail="Answer before reveal; rate your recall" />
-            <ProofStep number="05" label="Adaptation" title="Next: test order sensitivity and judge calibration" detail="Chosen from gaps, prior concepts, recall, and available time" />
-            <a className="ll-button ll-button-dark" href="/examples/ai-evaluation">Inspect the complete lesson <ArrowRight size={16} /></a>
-          </div>
+          <PersonalHomePreview />
         </section>
 
         <section className="ll-flow-section" id="how-it-works">
@@ -278,6 +270,34 @@ function BrandMark() {
   return <span className="ll-brand-mark"><Sparkles size={16} strokeWidth={2.2} /></span>;
 }
 
+function PersonalHomePreview() {
+  return (
+    <div className="ll-domain-demo" aria-label="Example personal learning home at maya.learnloom.blog">
+      <div className="ll-domain-window">
+        <div className="ll-browser-bar">
+          <span className="ll-browser-dots"><i /><i /><i /></span>
+          <div><span className="ll-browser-lock">●</span>{personalSiteHost("maya")}</div>
+          <span />
+        </div>
+        <div className="ll-public-site">
+          <div className="ll-public-nav"><span>Maya’s learning home</span><span>Built with Learnloom</span></div>
+          <div className="ll-public-hero">
+            <p>Following with intention</p>
+            <h3>Ideas worth understanding,<br />kept in one place.</h3>
+            <span>3 learning paths · 14 Dossiers</span>
+          </div>
+          <div className="ll-public-cards">
+            <article><span>AI evaluation</span><strong>Can you trust an AI research brief?</strong><small>5 sources · 10 min</small></article>
+            <article><span>Systems thinking</span><strong>Why feedback loops change outcomes</strong><small>4 sources · 8 min</small></article>
+            <article><span>Product craft</span><strong>Make better decisions with less noise</strong><small>6 sources · 12 min</small></article>
+          </div>
+        </div>
+      </div>
+      <p className="ll-domain-note"><Check size={14} /> Private by default. Publish a path only when you choose.</p>
+    </div>
+  );
+}
+
 function LearningLoopPreview() {
   return (
     <div className="ll-dashboard-shell" aria-label="Illustrated Learnloom learning loop walkthrough">
@@ -321,10 +341,6 @@ function MiniDossier({ icon, title, color, capability }) {
       <a>Open Dossier <ChevronRight size={12} /></a>
     </article>
   );
-}
-
-function ProofStep({ number, label, title, detail }) {
-  return <article><span>{number}</span><div><small>{label}</small><strong>{title}</strong><p>{detail}</p></div></article>;
 }
 
 function ComparisonRow({ tool, strength, tradeoff, emphasized = false }) {
