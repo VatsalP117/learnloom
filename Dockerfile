@@ -10,7 +10,7 @@ ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_LEARNLOOM_ROOT_DOMAIN=$VITE_LEARNLOOM_ROOT_DOMAIN
 RUN npm run build
 
-FROM golang:1.25.12-alpine AS service
+FROM golang:1.26.5-alpine AS service
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
