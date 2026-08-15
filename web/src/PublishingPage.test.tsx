@@ -54,3 +54,36 @@ describe("PublishingPage search discovery", () => {
     expect(markup).toContain("Eligible published pages may appear");
   });
 });
+
+describe("PublishingPage redesigned shell", () => {
+  it("opts into the redesigned dashboard shell and keeps the privacy ladder", () => {
+    const markup = renderPublishing({
+      username: "maya",
+      displayName: "Maya’s Learning Garden",
+      visibility: "private",
+      searchIndexing: false,
+    });
+
+    expect(markup).toContain('class="atelier-app atelier-today"');
+    expect(markup).toContain("publishing-page");
+    expect(markup).toContain("Public identity");
+    expect(markup).toContain("Visibility ladder");
+    expect(markup).toContain("Site private");
+    expect(markup).toContain("Search discovery");
+    expect(markup).toContain("Publish site");
+    expect(markup).toContain("Allow indexing");
+  });
+
+  it("keeps the claim flow and its validation for unclaimed sites", () => {
+    const markup = renderToStaticMarkup(
+      <PublishingPage site={null} onSiteUpdate={vi.fn()} />,
+    );
+
+    expect(markup).toContain("Claim your learning home");
+    expect(markup).toContain("site starts private");
+    expect(markup).toContain('minLength="3"');
+    expect(markup).toContain('maxLength="30"');
+    expect(markup).toContain('pattern="[a-zA-Z][a-zA-Z0-9-]{1,28}[a-zA-Z0-9]"');
+    expect(markup).toContain("Create private site");
+  });
+});

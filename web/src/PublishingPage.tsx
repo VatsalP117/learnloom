@@ -8,7 +8,7 @@ import {
   LockKeyhole,
   Save,
   Search,
-	TrendingUp,
+  TrendingUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import LearningShell, { AtelierError, AtelierLoading } from "./LearningShell";
@@ -17,8 +17,8 @@ import { personalSiteHost } from "./config";
 import { useWorkspace } from "./useWorkspace";
 import type {
   SiteMutationResponse,
-	PublicGrowthAnalytics,
-	PublicGrowthAnalyticsResponse,
+  PublicGrowthAnalytics,
+  PublicGrowthAnalyticsResponse,
   UsernameAvailabilityResponse,
 } from "./types";
 
@@ -31,31 +31,31 @@ export default function PublishingPage({ site, onSiteUpdate }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-	const [analytics, setAnalytics] = useState<PublicGrowthAnalytics | null>(null);
-	const [analyticsPeriod, setAnalyticsPeriod] = useState(30);
-	const [analyticsError, setAnalyticsError] = useState("");
+  const [analytics, setAnalytics] = useState<PublicGrowthAnalytics | null>(null);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState(30);
+  const [analyticsError, setAnalyticsError] = useState("");
 
   useEffect(() => {
     setDisplayName(site?.displayName ?? "");
     setDescription(site?.description ?? "");
   }, [site?.displayName, site?.description]);
 
-	useEffect(() => {
-		if (!site) return undefined;
-		const controller = new AbortController();
-		setAnalyticsError("");
-		apiJSON<PublicGrowthAnalyticsResponse>(
-			`/api/me/public-analytics?days=${analyticsPeriod}`,
-			{ signal: controller.signal },
-		)
-			.then((body) => setAnalytics(body.analytics))
-			.catch((requestError) => {
-				if (requestError.name !== "AbortError") {
-					setAnalyticsError("Public analytics are temporarily unavailable.");
-				}
-			});
-		return () => controller.abort();
-	}, [site, analyticsPeriod]);
+  useEffect(() => {
+    if (!site) return undefined;
+    const controller = new AbortController();
+    setAnalyticsError("");
+    apiJSON<PublicGrowthAnalyticsResponse>(
+      `/api/me/public-analytics?days=${analyticsPeriod}`,
+      { signal: controller.signal },
+    )
+      .then((body) => setAnalytics(body.analytics))
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") {
+          setAnalyticsError("Public analytics are temporarily unavailable.");
+        }
+      });
+    return () => controller.abort();
+  }, [site, analyticsPeriod]);
 
   useEffect(() => {
     if (site) return undefined;
@@ -69,7 +69,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
       apiJSON<UsernameAvailabilityResponse>(
         `/api/usernames/${encodeURIComponent(normalized)}`,
         {
-        signal: controller.signal,
+          signal: controller.signal,
         },
       )
         .then((body) => setAvailability(Boolean(body.available)))
@@ -165,8 +165,12 @@ export default function PublishingPage({ site, onSiteUpdate }) {
     }
   }
 
+  const eligibleStreamCount = workspace.newsletters.filter(
+    (item) => item.siteVisible,
+  ).length;
+
   return (
-    <LearningShell active="publishing">
+    <LearningShell active="publishing" redesigned>
       <section className="atelier-page publishing-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Share deliberately</p>
@@ -184,7 +188,7 @@ export default function PublishingPage({ site, onSiteUpdate }) {
         {error ? <AtelierError message={error} /> : null}
 
         {!site ? (
-          <section className="publishing-claim glass-panel">
+          <section className="publishing-claim">
             <div>
               <span className="atelier-icon"><Globe2 size={19} /></span>
               <p className="atelier-eyebrow">Claim your learning home</p>
@@ -232,144 +236,199 @@ export default function PublishingPage({ site, onSiteUpdate }) {
             </form>
           </section>
         ) : (
-          <div className="publishing-layout">
-            <form className="publishing-identity glass-panel" onSubmit={saveIdentity}>
-              <div>
-                <span className="atelier-icon"><Globe2 size={18} /></span>
-                <p className="atelier-eyebrow">Public identity</p>
-                <h2>{personalSiteHost(site.username)}</h2>
-              </div>
-              <label>
-                <span>Display name</span>
-                <input
-                  required
-                  maxLength={80}
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Bio or description</span>
-                <textarea
-                  maxLength={400}
-                  rows={6}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-                <small>{description.length}/400</small>
-              </label>
-              <button className="atelier-primary" type="submit" disabled={busy === "identity"}>
-                <Save size={14} />{busy === "identity" ? "Saving…" : "Save identity"}
-              </button>
-            </form>
+          <>
+            <div className="publishing-status" aria-label="Current publishing state">
+              <span className={site.visibility === "public" ? "is-live" : ""}>
+                {site.visibility === "public" ? <Eye size={13} /> : <EyeOff size={13} />}
+                {site.visibility === "public" ? "Site public" : "Site private"}
+              </span>
+              <span className={site.searchIndexing ? "is-live" : ""}>
+                <Search size={13} />
+                {site.searchIndexing ? "Search indexing on" : "Search indexing off"}
+              </span>
+              <span>
+                <LockKeyhole size={13} />
+                {workspace.loading
+                  ? "Checking streams…"
+                  : eligibleStreamCount === 0
+                    ? "No streams eligible"
+                    : `${eligibleStreamCount} stream${eligibleStreamCount === 1 ? "" : "s"} eligible`}
+              </span>
+            </div>
 
-            <div className="publishing-right">
-			  <article className="publishing-analytics glass-panel">
-				<div className="publishing-analytics-heading">
-				  <div><span className="atelier-icon"><TrendingUp size={17} /></span><div><p className="atelier-eyebrow">Public path analytics</p><h2>What sharing leads to.</h2></div></div>
-				  <select aria-label="Analytics period" value={analyticsPeriod} onChange={(event) => setAnalyticsPeriod(Number(event.target.value))}>
-					<option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option>
-				  </select>
-				</div>
-				{analyticsError ? <p role="alert">{analyticsError}</p> : analytics ? (
-				  <><div className="publishing-analytics-grid">
-					<div><strong>{analytics.views}</strong><span>Dossier views</span></div>
-					<div><strong>{analytics.uniqueViewers}</strong><span>Unique readers</span></div>
-					<div><strong>{analytics.shares}</strong><span>Share actions</span></div>
-					<div><strong>{analytics.follows}</strong><span>Confirmed follows</span></div>
-					<div><strong>{analytics.ctaClicks}</strong><span>Path starts</span></div>
-					<div><strong>{analytics.attributedSignups}</strong><span>Signups</span></div>
-					<div><strong>{analytics.attributedActivations}</strong><span>Activated learners</span></div>
-				  </div><small>Counts are privacy-safe aggregates. Repeat activity is deduplicated by Dossier, action, and day; visitor identities and raw IP addresses are never shown.</small></>
-				) : <AtelierLoading label="Loading public analytics…" />}
-			  </article>
-              <article className="site-preview glass-panel">
-                <div className="site-preview-heading">
-                  <div>
-                    <p className="atelier-eyebrow">Live preview</p>
-                    <strong>{personalSiteHost(site.username)}</strong>
+            <div className="publishing-layout">
+              <div className="publishing-main">
+                <form className="publishing-identity" onSubmit={saveIdentity}>
+                  <div className="publishing-card-heading">
+                    <span className="atelier-icon"><Globe2 size={18} /></span>
+                    <div>
+                      <p className="atelier-eyebrow">Public identity</p>
+                      <h2>{personalSiteHost(site.username)}</h2>
+                    </div>
                   </div>
-                  {site.visibility === "public" && site.url ? (
-                    <a href={site.url} target="_blank" rel="noreferrer">
-                      View site <ExternalLink size={13} />
-                    </a>
-                  ) : null}
-                </div>
-                <div className="site-preview-paper">
-                  <span>Personal learning archive</span>
-                  <h2>{displayName || site.displayName}</h2>
-                  <p>{description || "A durable home for connected learning."}</p>
+                  <label>
+                    <span>Display name</span>
+                    <input
+                      required
+                      maxLength={80}
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Bio or description</span>
+                    <textarea
+                      maxLength={400}
+                      rows={6}
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                    />
+                    <small>{description.length}/400</small>
+                  </label>
+                  <button className="atelier-primary" type="submit" disabled={busy === "identity"}>
+                    <Save size={14} />{busy === "identity" ? "Saving…" : "Save identity"}
+                  </button>
+                </form>
+
+                <article className="publishing-analytics">
+                  <div className="publishing-analytics-heading">
+                    <div>
+                      <span className="atelier-icon"><TrendingUp size={17} /></span>
+                      <div>
+                        <p className="atelier-eyebrow">Public path analytics</p>
+                        <h2>What sharing leads to.</h2>
+                      </div>
+                    </div>
+                    <select
+                      aria-label="Analytics period"
+                      value={analyticsPeriod}
+                      onChange={(event) => setAnalyticsPeriod(Number(event.target.value))}
+                    >
+                      <option value="7">7 days</option>
+                      <option value="30">30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                  </div>
+                  {analyticsError ? (
+                    <p role="alert">{analyticsError}</p>
+                  ) : analytics ? (
+                    <>
+                      <div className="publishing-analytics-grid">
+                        <div><strong>{analytics.views}</strong><span>Dossier views</span></div>
+                        <div><strong>{analytics.uniqueViewers}</strong><span>Unique readers</span></div>
+                        <div><strong>{analytics.shares}</strong><span>Share actions</span></div>
+                        <div><strong>{analytics.follows}</strong><span>Confirmed follows</span></div>
+                        <div><strong>{analytics.ctaClicks}</strong><span>Path starts</span></div>
+                        <div><strong>{analytics.attributedSignups}</strong><span>Signups</span></div>
+                        <div><strong>{analytics.attributedActivations}</strong><span>Activated learners</span></div>
+                      </div>
+                      <small>
+                        Counts are privacy-safe aggregates. Repeat activity is deduplicated by
+                        Dossier, action, and day; visitor identities and raw IP addresses are never
+                        shown.
+                      </small>
+                    </>
+                  ) : <AtelierLoading label="Loading public analytics…" />}
+                </article>
+              </div>
+
+              <div className="publishing-side">
+                <article className="site-preview">
+                  <div className="site-preview-heading">
+                    <div>
+                      <p className="atelier-eyebrow">Live preview</p>
+                      <strong>{personalSiteHost(site.username)}</strong>
+                    </div>
+                    {site.visibility === "public" && site.url ? (
+                      <a href={site.url} target="_blank" rel="noreferrer">
+                        View site <ExternalLink size={13} />
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="site-preview-paper">
+                    <div className="site-preview-paper-top">
+                      <span>Personal learning archive</span>
+                      <span className={`site-preview-state${site.visibility === "public" ? " is-live" : ""}`}>
+                        {site.visibility === "public" ? <Eye size={12} /> : <EyeOff size={12} />}
+                        {site.visibility === "public" ? "Public" : "Private"}
+                      </span>
+                    </div>
+                    <h2>{displayName || site.displayName}</h2>
+                    <p>{description || "A durable home for connected learning."}</p>
+                    <div className="site-preview-topics">
+                      {workspace.newsletters.filter((item) => item.siteVisible).slice(0, 2).map((item) => (
+                        <span key={item.id}>{item.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+
+                <article className="visibility-card">
                   <div>
-                    {workspace.newsletters.filter((item) => item.siteVisible).slice(0, 2).map((item) => (
-                      <span key={item.id}>{item.name}</span>
+                    <p className="atelier-eyebrow">Visibility ladder</p>
+                    <h2>Know what people can see.</h2>
+                  </div>
+                  <div className="visibility-level is-site">
+                    <span className="atelier-icon">
+                      {site.visibility === "public" ? <Eye size={17} /> : <EyeOff size={17} />}
+                    </span>
+                    <div>
+                      <strong>Site</strong>
+                      <p>
+                        {site.visibility === "public"
+                          ? "Public. Eligible published content can be viewed."
+                          : "Private. Nothing is publicly accessible."}
+                      </p>
+                    </div>
+                    <button type="button" onClick={toggleVisibility} disabled={busy === "visibility"}>
+                      {site.visibility === "public" ? "Make private" : "Publish site"}
+                    </button>
+                  </div>
+                  <div className="visibility-level">
+                    <span className="atelier-icon">
+                      <Search size={17} />
+                    </span>
+                    <div>
+                      <strong>Search discovery</strong>
+                      <p>
+                        {site.searchIndexing
+                          ? "Enabled. Eligible published pages may appear in search results."
+                          : "Off. Public links work, but pages request exclusion from search results."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleSearchIndexing}
+                      disabled={
+                        site.visibility !== "public" ||
+                        busy === "search-indexing"
+                      }
+                    >
+                      {site.searchIndexing ? "Disable indexing" : "Allow indexing"}
+                    </button>
+                  </div>
+                  <div className="visibility-streams">
+                    <span><LockKeyhole size={15} /> Streams</span>
+                    {workspace.loading ? <AtelierLoading label="Checking stream visibility…" /> : null}
+                    {workspace.newsletters.map((newsletter) => (
+                      <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`} key={newsletter.id}>
+                        <span>{newsletter.name}</span>
+                        <strong className={newsletter.siteVisible ? "is-eligible" : ""}>
+                          {newsletter.siteVisible ? "Eligible to publish" : "Private"}
+                        </strong>
+                        <ArrowRight size={14} />
+                      </a>
                     ))}
                   </div>
-                </div>
-              </article>
-
-              <article className="visibility-card glass-panel">
-                <div>
-                  <p className="atelier-eyebrow">Visibility ladder</p>
-                  <h2>Know what people can see.</h2>
-                </div>
-                <div className="visibility-level">
-                  <span className="atelier-icon">
-                    {site.visibility === "public" ? <Eye size={17} /> : <EyeOff size={17} />}
-                  </span>
-                  <div>
-                    <strong>Site</strong>
-                    <p>
-                      {site.visibility === "public"
-                        ? "Public. Eligible published content can be viewed."
-                        : "Private. Nothing is publicly accessible."}
-                    </p>
-                  </div>
-                  <button type="button" onClick={toggleVisibility} disabled={busy === "visibility"}>
-                    {site.visibility === "public" ? "Make private" : "Publish site"}
-                  </button>
-                </div>
-                <div className="visibility-level">
-                  <span className="atelier-icon">
-                    <Search size={17} />
-                  </span>
-                  <div>
-                    <strong>Search discovery</strong>
-                    <p>
-                      {site.searchIndexing
-                        ? "Enabled. Eligible published pages may appear in search results."
-                        : "Off. Public links work, but pages request exclusion from search results."}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={toggleSearchIndexing}
-                    disabled={
-                      site.visibility !== "public" ||
-                      busy === "search-indexing"
-                    }
-                  >
-                    {site.searchIndexing ? "Disable indexing" : "Allow indexing"}
-                  </button>
-                </div>
-                <div className="visibility-streams">
-                  <span><LockKeyhole size={15} /> Streams</span>
-                  {workspace.loading ? <AtelierLoading label="Checking stream visibility…" /> : null}
-                  {workspace.newsletters.map((newsletter) => (
-                    <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`} key={newsletter.id}>
-                      <span>{newsletter.name}</span>
-                      <strong>{newsletter.siteVisible ? "Eligible to publish" : "Private"}</strong>
-                      <ArrowRight size={14} />
-                    </a>
-                  ))}
-                </div>
-                <p className="visibility-help">
-                  A lesson appears publicly only when the site is public, its stream
-                  is visible, and that lesson is published. Search discovery is a
-                  separate opt-in for eligible public pages.
-                </p>
-              </article>
+                  <p className="visibility-help">
+                    A lesson appears publicly only when the site is public, its stream
+                    is visible, and that lesson is published. Search discovery is a
+                    separate opt-in for eligible public pages.
+                  </p>
+                </article>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </section>
     </LearningShell>
