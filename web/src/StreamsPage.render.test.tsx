@@ -211,9 +211,9 @@ describe("redesigned Streams page render", () => {
     expect(markup).toContain("Completed");
     expect(markup).toContain('href="/newsletters/paused"');
     expect(markup).toContain('href="/newsletters/done"');
-    // Shell favicon + hero artwork + the one active card artwork — the
-    // paused/completed rows carry no decorative images.
-    expect((markup.match(/<img/g) ?? []).length).toBe(3);
+    // Desktop and mobile shell marks + hero artwork + the one active card
+    // artwork — the paused/completed rows carry no decorative images.
+    expect((markup.match(/<img/g) ?? []).length).toBe(4);
   });
 
   it("falls back to a stable active stream when todayFocus is not active", () => {
