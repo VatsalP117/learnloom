@@ -8335,3 +8335,476 @@
   }
   .focus-reader .reader-adjacent a:hover { transform: none; }
 }
+
+/* ==========================================================================
+   Settings dashboard (redesigned, scoped under .atelier-today)
+   --------------------------------------------------------------------------
+   Two-area settings workspace: plan & usage, and notification rhythm.
+   Reuses the warm-neutral shell tokens (--td-*) and the Satoshi display
+   family, with restrained green/rust accents, thin borders, soft white
+   cards, and 12–18px radii. Every rule is scoped under
+   .atelier-today .settings-page so the legacy settings treatment remains
+   untouched for any non-redesigned route.
+   ========================================================================== */
+
+.atelier-today .settings-page {
+  /* Restrained accent tones local to the settings workspace. */
+  --settings-green: var(--td-success);
+  --settings-warn-fg: #7A5B1C;
+  --settings-warn-bg: #F8F2E2;
+  --settings-warn-line: rgba(122, 91, 28, 0.28);
+  --settings-rust-fg: #A33D30;
+  --settings-rust-bg: #F9EBE7;
+  --settings-rust-line: rgba(163, 61, 48, 0.28);
+
+  width: min(1120px, calc(100% - 96px));
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 46px 0 64px;
+}
+
+/* -- Heading ------------------------------------------------------------ */
+
+.atelier-today .settings-page .atelier-page-heading {
+  max-width: 720px;
+  margin: 0 0 34px;
+}
+
+.atelier-today .settings-page .atelier-page-heading h1 {
+  margin: 10px 0 0;
+  font-size: clamp(38px, 4vw, 50px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--td-fg);
+}
+
+.atelier-today .settings-page .atelier-page-heading > p:last-child {
+  margin-top: 14px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* -- Workspace: two intentional columns -------------------------------- */
+
+.atelier-today .settings-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* When billing never loads, the preferences panel spans the full width. */
+.atelier-today .settings-workspace > .settings-panel:only-child {
+  grid-column: 1 / -1;
+}
+
+/* -- Panels ------------------------------------------------------------- */
+
+.atelier-today .settings-page .settings-panel {
+  display: grid;
+  gap: 0;
+  padding: 0 26px 26px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+  transition: border-color 160ms ease;
+}
+
+.atelier-today .settings-page .settings-panel-intro {
+  margin: 0 -26px;
+  padding: 26px 26px 22px;
+  border-bottom: 1px solid var(--td-border-subtle);
+  border-radius: 18px 18px 0 0;
+  background: var(--td-subtle);
+}
+
+.atelier-today .settings-page .settings-panel-intro .atelier-eyebrow {
+  margin: 0 0 10px;
+}
+
+.atelier-today .settings-page .settings-panel-intro h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+}
+
+.atelier-today .settings-page .settings-panel-intro > p:last-child {
+  max-width: 46ch;
+  margin: 8px 0 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* -- Plan & usage ------------------------------------------------------- */
+
+.atelier-today .settings-page .billing-usage {
+  height: 8px;
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 999px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .settings-page .billing-usage > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--settings-green);
+}
+
+.atelier-today .settings-page .billing-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0 0;
+}
+
+.atelier-today .settings-page .billing-summary > span:first-child {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 12px;
+  color: var(--settings-green);
+  background: var(--td-subtle);
+}
+
+.atelier-today .settings-page .billing-summary strong {
+  display: block;
+  color: var(--td-fg);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.atelier-today .settings-page .billing-summary small {
+  display: block;
+  margin-top: 3px;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+}
+
+.atelier-today .settings-page .billing-notice {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--settings-warn-line);
+  border-radius: 12px;
+  color: var(--settings-warn-fg);
+  background: var(--settings-warn-bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .settings-page .billing-notice-error {
+  border-color: var(--settings-rust-line);
+  color: var(--settings-rust-fg);
+  background: var(--settings-rust-bg);
+}
+
+/* -- Notification rhythm ------------------------------------------------ */
+
+.atelier-today .settings-page .settings-panel > label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-border-subtle);
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.atelier-today .settings-page .settings-panel > label:hover {
+  background: var(--td-hover);
+}
+
+.atelier-today .settings-page .settings-panel > label.settings-toggle > span:first-child {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 12px;
+  color: var(--td-fg-secondary);
+  background: var(--td-subtle);
+}
+
+.atelier-today .settings-page .settings-toggle > span:nth-child(2) {
+  min-width: 0;
+}
+
+.atelier-today .settings-page .settings-toggle strong,
+.atelier-today .settings-page .settings-timezone strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--td-fg);
+}
+
+.atelier-today .settings-page .settings-toggle small,
+.atelier-today .settings-page .settings-timezone small {
+  display: block;
+  margin-top: 4px;
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.atelier-today .settings-page .settings-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--td-control);
+  cursor: pointer;
+}
+
+.atelier-today .settings-page .settings-timezone {
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 0.65fr);
+  gap: 18px;
+}
+
+.atelier-today .settings-page .settings-timezone > span {
+  min-width: 0;
+}
+
+.atelier-today .settings-page .settings-timezone input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 140ms ease;
+}
+
+.atelier-today .settings-page .settings-timezone input:hover {
+  border-color: var(--td-border-strong);
+}
+
+.atelier-today .settings-page .settings-timezone input:focus {
+  border-color: var(--td-border-strong);
+  box-shadow: none;
+}
+
+/* -- Actions & status --------------------------------------------------- */
+
+.atelier-today .settings-page .settings-panel > .settings-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 22px;
+}
+
+.atelier-today .settings-page .settings-actions small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.atelier-today .settings-page .settings-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--settings-green);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.atelier-today .settings-page .atelier-secondary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 18px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.atelier-today .settings-page .atelier-secondary:hover:not(:disabled) {
+  border-color: var(--td-border-strong);
+  background: var(--td-hover);
+}
+
+.atelier-today .settings-page .atelier-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* -- Feedback disclosure ------------------------------------------------ */
+
+.atelier-today .settings-page .billing-feedback {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .settings-page .billing-feedback[open] {
+  display: grid;
+  gap: 14px;
+}
+
+.atelier-today .settings-page .billing-feedback summary {
+  min-height: 44px;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.atelier-today .settings-page .billing-feedback summary:hover {
+  color: var(--td-fg);
+}
+
+.atelier-today .settings-page .billing-feedback label {
+  display: grid;
+  gap: 7px;
+  color: var(--td-fg);
+  font-size: 13px;
+}
+
+.atelier-today .settings-page .billing-feedback label > span {
+  font-weight: 500;
+}
+
+.atelier-today .settings-page .billing-feedback label small {
+  margin: 0;
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.atelier-today .settings-page .billing-feedback select,
+.atelier-today .settings-page .billing-feedback textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--td-border-default);
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 140ms ease;
+}
+
+.atelier-today .settings-page .billing-feedback select {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.atelier-today .settings-page .billing-feedback textarea {
+  min-height: 88px;
+  padding: 12px 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.atelier-today .settings-page .billing-feedback select:hover,
+.atelier-today .settings-page .billing-feedback textarea:hover {
+  border-color: var(--td-border-strong);
+}
+
+/* -- Loading & error states --------------------------------------------- */
+
+.atelier-today .settings-page .calm-loader-inline {
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+/* -- Focus -------------------------------------------------------------- */
+
+.atelier-today .settings-page :where(
+  .atelier-primary,
+  .atelier-secondary,
+  .billing-feedback summary,
+  .billing-feedback select,
+  .billing-feedback textarea,
+  .settings-timezone input,
+  .settings-toggle input
+):focus-visible {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+/* -- Responsive: tablet -------------------------------------------------- */
+
+@media (max-width: 1050px) {
+  .atelier-today .settings-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .atelier-today .settings-page {
+    width: min(100% - 34px, 680px);
+    padding-top: 40px;
+  }
+}
+
+/* -- Responsive: phones ---------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .atelier-today .settings-page {
+    padding-top: 34px;
+  }
+
+  .atelier-today .settings-page .atelier-page-heading h1 {
+    font-size: clamp(34px, 10vw, 42px);
+  }
+
+  .atelier-today .settings-page .settings-panel {
+    padding: 0 20px 22px;
+  }
+
+  .atelier-today .settings-page .settings-panel-intro {
+    margin: 0 -20px;
+    padding: 22px 20px 18px;
+  }
+
+  /* Single column: label above input, nothing collides at 390px. */
+  .atelier-today .settings-page .settings-panel > label.settings-timezone {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .atelier-today .settings-page .settings-panel > .settings-actions {
+    align-items: flex-start;
+  }
+}
+
+/* -- Motion preferences ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-today .settings-page *,
+  .atelier-today .settings-page *::before,
+  .atelier-today .settings-page *::after {
+    transition: none !important;
+  }
+}

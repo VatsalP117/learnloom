@@ -116,7 +116,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <LearningShell active="settings">
+    <LearningShell active="settings" redesigned>
       <section className="atelier-page settings-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Your learning rhythm</p>
@@ -128,7 +128,7 @@ export default function SettingsPage() {
         {error ? <AtelierError message={error} /> : null}
 
         {!loading ? (
-          <>
+          <div className="settings-workspace">
           {billing ? (
             <section className="settings-panel billing-panel glass-panel" aria-labelledby="billing-heading">
               <div className="settings-panel-intro">
@@ -260,7 +260,7 @@ export default function SettingsPage() {
               {saved ? <span className="settings-saved"><Check size={14} /> Saved</span> : null}
             </div>
           </section>
-          </>
+          </div>
         ) : null}
       </section>
     </LearningShell>
