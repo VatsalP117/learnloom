@@ -98,15 +98,15 @@ export default function FirstLessonWelcome({ newsletterId }) {
 
   if (!snapshot?.newsletter) {
     return (
-      <LearningShell active="today">
-        <section className="atelier-page"><AtelierError message={error || "This learning path is unavailable."} onRetry={load} /></section>
+      <LearningShell active="today" redesigned>
+        <section className="atelier-page first-welcome-page"><AtelierError message={error || "This learning path is unavailable."} onRetry={load} /></section>
       </LearningShell>
     );
   }
 
   const newsletter = snapshot.newsletter;
   return (
-    <LearningShell active="today">
+    <LearningShell active="today" redesigned>
       <section className="atelier-page first-welcome-page">
         {error ? <AtelierError message={error} onRetry={load} /> : null}
         <header className="first-welcome-hero">

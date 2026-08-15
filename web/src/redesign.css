@@ -8808,3 +8808,1818 @@
     transition: none !important;
   }
 }
+
+/* ==========================================================================
+   New-stream setup + first-lesson welcome (redesigned, scoped)
+   --------------------------------------------------------------------------
+   Guided editorial studio for /newsletters/new and the calm first-lesson
+   orientation on /welcome/:id. Reuses the warm-neutral shell tokens
+   (--td-*), the Satoshi display family, thin borders, soft white cards,
+   restrained green/rust accents, and 12–18px radii. Every rule is scoped
+   under .atelier-today .create-page and .atelier-today .first-welcome-page
+   so the legacy creation and welcome treatments stay untouched for any
+   non-redesigned route.
+   ========================================================================== */
+
+@keyframes atelierSoftPulse {
+  0%,
+  100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.atelier-today .create-page,
+.atelier-today .first-welcome-page {
+  /* Restrained green/rust/sand accent tones local to these flows. */
+  --create-green: var(--td-success);
+  --create-green-tint: rgba(38, 115, 77, 0.07);
+  --create-green-line: rgba(38, 115, 77, 0.26);
+  --create-rust-fg: #A33D30;
+  --create-rust-tint: rgba(163, 61, 48, 0.07);
+  --create-rust-line: rgba(163, 61, 48, 0.28);
+  --create-sand-fg: #7A5B1C;
+  --create-sand-tint: #F8F2E2;
+  --create-sand-line: rgba(122, 91, 28, 0.28);
+}
+
+/* -- Create page scaffolding -------------------------------------------- */
+
+.atelier-today .create-page {
+  width: min(1120px, calc(100% - 96px));
+  margin: 0 auto;
+  padding: 46px 0 64px;
+  color: var(--td-fg);
+}
+
+.atelier-today .create-page .create-inner { width: 100%; max-width: none; }
+
+/* Quiet back link with a full-height hit area. */
+.atelier-today .create-page .atelier-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0 0 22px -10px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: var(--td-fg-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .create-page .atelier-back:hover {
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .create-heading {
+  max-width: 760px;
+  margin: 0 0 30px;
+}
+
+.atelier-today .create-page .create-heading h1 {
+  margin: 10px 0 0;
+  font-size: clamp(38px, 4vw, 50px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .create-page .create-heading > p:last-child {
+  max-width: 640px;
+  margin: 14px 0 0;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* -- Segmented step progress --------------------------------------------- */
+
+.atelier-today .create-page .setup-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 5px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 14px;
+  list-style: none;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .create-page .setup-steps button {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--td-fg-tertiary);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .create-page .setup-steps button:hover:not(:disabled) {
+  color: var(--td-fg);
+  background: var(--td-hover);
+}
+
+.atelier-today .create-page .setup-steps button:disabled { cursor: default; }
+
+.atelier-today .create-page .setup-steps button > span {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--td-border-strong);
+  border-radius: 50%;
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.atelier-today .create-page .setup-steps strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atelier-today .create-page .setup-steps li.current button,
+.atelier-today .create-page .setup-steps li.current button:hover {
+  color: #FFFFFF;
+  background: var(--td-control);
+}
+
+.atelier-today .create-page .setup-steps li.current button > span {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #FFFFFF;
+  background: transparent;
+}
+
+.atelier-today .create-page .setup-steps li.complete button { color: var(--td-fg); }
+
+.atelier-today .create-page .setup-steps li.complete button > span {
+  border-color: var(--td-success);
+  color: #FFFFFF;
+  background: var(--td-success);
+}
+
+/* -- Draft status & error -------------------------------------------------- */
+
+.atelier-today .create-page .onboarding-draft-status {
+  width: max-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px auto;
+  padding: 7px 12px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 999px;
+  color: var(--td-success);
+  background: var(--create-green-tint);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.atelier-today .create-page .create-error {
+  margin: 0 0 16px;
+  padding: 13px 16px;
+  border: 1px solid var(--create-rust-line);
+  border-radius: 12px;
+  color: var(--create-rust-fg);
+  background: var(--create-rust-tint);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* -- Form panel & fields ---------------------------------------------------- */
+
+.atelier-today .create-page .newsletter-form { display: grid; gap: 0; }
+
+.atelier-today .create-page .newsletter-form .setup-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 22px;
+  margin: 0;
+  padding: 30px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .create-page .newsletter-form label:not(.switch-row) {
+  display: grid;
+  gap: 8px;
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.atelier-today .create-page .newsletter-form label em {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.atelier-today .create-page .newsletter-form input:not([type="checkbox"], [type="radio"]),
+.atelier-today .create-page .newsletter-form textarea,
+.atelier-today .create-page .newsletter-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 12px;
+  outline: 0;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .create-page .newsletter-form textarea {
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.atelier-today .create-page .newsletter-form select {
+  padding-right: 38px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666864' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+.atelier-today .create-page .newsletter-form input:hover:not(:disabled),
+.atelier-today .create-page .newsletter-form textarea:hover,
+.atelier-today .create-page .newsletter-form select:hover {
+  border-color: var(--td-border-strong);
+}
+
+.atelier-today .create-page .newsletter-form input:focus,
+.atelier-today .create-page .newsletter-form textarea:focus,
+.atelier-today .create-page .newsletter-form select:focus {
+  border-color: var(--td-border-strong);
+  outline: 0;
+  background: var(--td-surface);
+  box-shadow: 0 0 0 3px var(--td-focus);
+}
+
+/* -- Hero topic field ------------------------------------------------------ */
+
+.atelier-today .create-page .hero-field { position: relative; }
+
+.atelier-today .create-page .newsletter-form .hero-field textarea {
+  min-height: 132px;
+  padding: 16px 16px 30px;
+  border-radius: 14px;
+  font-family: var(--atelier-display);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .hero-field > small {
+  position: absolute;
+  right: 15px;
+  bottom: 11px;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* -- Topic examples -------------------------------------------------------- */
+
+.atelier-today .create-page .topic-ideas {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.atelier-today .create-page .topic-ideas > span {
+  margin-right: 4px;
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.atelier-today .create-page .topic-ideas button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 999px;
+  color: var(--td-fg-secondary);
+  background: var(--td-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .create-page .topic-ideas button:hover {
+  border-color: var(--td-border-strong);
+  color: var(--td-fg);
+  background: var(--td-hover);
+}
+
+/* -- Template picker --------------------------------------------------------- */
+
+.atelier-today .create-page .template-picker {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 4px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .template-picker > div:first-child p {
+  margin: 6px 0 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.atelier-today .create-page .template-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.atelier-today .create-page .template-grid button {
+  display: grid;
+  gap: 8px;
+  min-height: 148px;
+  padding: 18px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 14px;
+  color: var(--td-fg);
+  text-align: left;
+  background: var(--td-surface);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .create-page .template-grid button:hover {
+  border-color: var(--td-border-strong);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .template-grid strong {
+  font-family: var(--atelier-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .template-grid span {
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .create-page .template-grid small {
+  align-self: end;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.atelier-today .create-page .template-sample {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 14px;
+  background: var(--create-green-tint);
+}
+
+.atelier-today .create-page .template-sample > strong {
+  font-family: var(--atelier-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .template-sample > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.atelier-today .create-page .template-sample > div span {
+  padding: 5px 10px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 999px;
+  color: var(--td-fg-secondary);
+  background: var(--td-surface);
+  font-size: 12px;
+}
+
+.atelier-today .create-page .template-sample p,
+.atelier-today .create-page .template-sample small {
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.atelier-today .create-page .template-sample small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+}
+
+/* -- Source mode cards -------------------------------------------------------- */
+
+.atelier-today .create-page .mode-options-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.atelier-today .create-page .mode-options-grid:has(.mode-card:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.atelier-today .create-page .mode-options-grid:has(.mode-card:only-child) .mode-card {
+  min-height: 0;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.atelier-today .create-page .mode-options-grid:has(.mode-card:only-child) .mode-body { grid-column: 2; }
+
+.atelier-today .create-page .mode-card {
+  position: relative;
+  min-height: 148px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 16px;
+  background: var(--td-surface);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .create-page .mode-card:hover {
+  border-color: var(--td-border-strong);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .mode-card.selected {
+  border-color: var(--td-control);
+  background: var(--td-surface);
+}
+
+.atelier-today .create-page .mode-card input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.atelier-today .create-page .mode-card .mode-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .mode-card.selected .mode-icon {
+  color: #FFFFFF;
+  background: var(--td-control);
+}
+
+.atelier-today .create-page .mode-options-grid .mode-body {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.atelier-today .create-page .mode-body strong {
+  font-family: var(--atelier-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .mode-body small {
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.atelier-today .create-page .mode-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 22px;
+  height: 22px;
+  display: none;
+  place-items: center;
+  border-radius: 50%;
+  color: #FFFFFF;
+  background: var(--td-success);
+}
+
+.atelier-today .create-page .mode-card.selected .mode-check { display: grid; }
+
+/* -- Quiet toggles & guidance ------------------------------------------------- */
+
+.atelier-today .create-page .specific-sources-toggle,
+.atelier-today .create-page .more-options-toggle {
+  width: max-content;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--td-border-default);
+  color: var(--td-fg-secondary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.atelier-today .create-page .specific-sources-toggle:hover,
+.atelier-today .create-page .more-options-toggle:hover {
+  border-color: var(--td-border-strong);
+  color: var(--td-fg);
+}
+
+.atelier-today .create-page .source-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 12px;
+  color: var(--td-fg-secondary);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .source-guidance > svg {
+  margin-top: 2px;
+  flex: 0 0 auto;
+  color: var(--td-fg-tertiary);
+}
+
+.atelier-today .create-page .source-guidance p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.atelier-today .create-page .source-guidance strong {
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.atelier-today .create-page .source-guidance span {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* -- Source editor ------------------------------------------------------------ */
+
+.atelier-today .create-page .source-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 22px;
+  border-top: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .source-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.atelier-today .create-page .source-section-heading > div { display: grid; gap: 4px; }
+
+.atelier-today .create-page .source-section-heading strong {
+  font-family: var(--atelier-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .source-section-heading span {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+}
+
+.atelier-today .create-page .add-source {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .create-page .add-source:hover:not(:disabled) {
+  border-color: var(--td-border-strong);
+  background: var(--td-hover);
+}
+
+.atelier-today .create-page .add-source:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.atelier-today .create-page .source-editor { display: grid; gap: 10px; }
+
+.atelier-today .create-page .guided-source-row {
+  display: grid;
+  grid-template-columns: 28px minmax(200px, 1.5fr) minmax(140px, 0.7fr) 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 14px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .guided-source-row label {
+  min-width: 0;
+  gap: 5px;
+}
+
+.atelier-today .create-page .guided-source-row label > span {
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.atelier-today .create-page .source-number {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #FFFFFF;
+  background: var(--td-control);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.atelier-today .create-page .remove-source {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--td-fg-tertiary);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.atelier-today .create-page .remove-source:hover:not(:disabled) {
+  border-color: var(--create-rust-line);
+  color: var(--create-rust-fg);
+  background: var(--create-rust-tint);
+}
+
+.atelier-today .create-page .remove-source:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.atelier-today .create-page .source-validation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0 40px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.atelier-today .create-page .source-validation.ready { color: var(--td-success); }
+
+.atelier-today .create-page .source-validation.unavailable { color: var(--create-rust-fg); }
+
+.atelier-today .create-page .source-validation-note {
+  margin: 4px 0 0;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* -- Review layout ------------------------------------------------------------ */
+
+.atelier-today .create-page .review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.7fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.atelier-today .create-page .portfolio-preview {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .research-plan-preview {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 20px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--create-green-tint), rgba(38, 115, 77, 0.03));
+}
+
+.atelier-today .create-page .research-plan-preview h2 {
+  margin: 0;
+  font-family: var(--atelier-display);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.atelier-today .create-page .research-plan-preview > p {
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.atelier-today .create-page .research-plan-preview ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atelier-today .create-page .research-plan-preview li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 10px;
+  background: var(--td-surface);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.atelier-today .create-page .research-plan-preview li span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #FFFFFF;
+  background: var(--td-success);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.atelier-today .create-page .research-plan-preview > small {
+  color: var(--td-success);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.atelier-today .create-page .portfolio-preview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.atelier-today .create-page .portfolio-preview-heading > div { min-width: 0; }
+
+.atelier-today .create-page .portfolio-preview-heading h2 {
+  margin: 6px 0 0;
+  font-family: var(--atelier-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.atelier-today .create-page .portfolio-preview-heading > span {
+  padding: 5px 11px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 999px;
+  color: var(--td-fg-secondary);
+  background: var(--td-surface);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.atelier-today .create-page .portfolio-preview-list,
+.atelier-today .create-page .provided-preview-list { display: grid; gap: 8px; }
+
+.atelier-today .create-page .portfolio-preview-list article,
+.atelier-today .create-page .provided-preview-list article {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.3fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 12px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .portfolio-preview-list article > span {
+  color: var(--td-success);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.atelier-today .create-page .portfolio-preview-list article div,
+.atelier-today .create-page .provided-preview-list article div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.atelier-today .create-page .portfolio-preview-list strong,
+.atelier-today .create-page .provided-preview-list strong {
+  overflow: hidden;
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atelier-today .create-page .portfolio-preview-list small,
+.atelier-today .create-page .provided-preview-list small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.atelier-today .create-page .portfolio-preview-list a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 140ms ease;
+}
+
+.atelier-today .create-page .portfolio-preview-list a:hover { background: var(--td-hover); }
+
+.atelier-today .create-page .provided-preview-list article { grid-template-columns: auto minmax(0, 1fr); }
+
+.atelier-today .create-page .provided-preview-list svg { color: var(--td-fg-tertiary); }
+
+.atelier-today .create-page .portfolio-gap-note,
+.atelier-today .create-page .portfolio-preview-unavailable {
+  margin: 0;
+  padding: 13px 15px;
+  border: 1px solid var(--create-sand-line);
+  border-radius: 12px;
+  color: var(--create-sand-fg);
+  background: var(--create-sand-tint);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.atelier-today .create-page .portfolio-preview-unavailable strong { display: block; font-weight: 600; }
+
+.atelier-today .create-page .portfolio-preview-unavailable p { margin: 5px 0 10px; }
+
+.atelier-today .create-page .portfolio-preview-unavailable button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--create-sand-line);
+  border-radius: 10px;
+  color: var(--create-sand-fg);
+  background: var(--td-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.atelier-today .create-page .portfolio-preview-unavailable button:hover { background: var(--td-hover); }
+
+.atelier-today .create-page .portfolio-preview > small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* -- Approval, rhythm, delivery, advanced ------------------------------------- */
+
+.atelier-today .create-page .approval-choice {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px !important;
+  padding: 16px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 14px;
+  background: var(--create-green-tint);
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+
+.atelier-today .create-page .approval-choice:hover { border-color: var(--create-green); }
+
+.atelier-today .create-page .approval-choice input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--td-success);
+  cursor: pointer;
+}
+
+.atelier-today .create-page .approval-choice span { display: grid; gap: 4px; }
+
+.atelier-today .create-page .approval-choice strong {
+  font-family: var(--atelier-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .approval-choice small {
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .create-page .rhythm-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.atelier-today .create-page .rhythm-intro > span {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .rhythm-intro strong {
+  font-family: var(--atelier-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .rhythm-intro p {
+  margin: 5px 0 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.atelier-today .create-page .intent-grid,
+.atelier-today .create-page .form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+}
+
+.atelier-today .create-page .delivery-choice {
+  min-height: 66px;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px !important;
+  padding: 13px 16px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 14px;
+  background: var(--td-surface);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .create-page .delivery-choice:hover {
+  border-color: var(--td-border-strong);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .delivery-choice:has(input:checked) {
+  border-color: var(--create-green-line);
+  background: var(--create-green-tint);
+}
+
+.atelier-today .create-page .delivery-choice-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .delivery-choice > span:nth-child(2) { display: grid; gap: 3px; }
+
+.atelier-today .create-page .delivery-choice strong {
+  font-family: var(--atelier-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .delivery-choice small {
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.45;
+}
+
+.atelier-today .create-page .delivery-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--td-success);
+  cursor: pointer;
+}
+
+.atelier-today .create-page .optional-settings {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  color: var(--td-fg);
+}
+
+.atelier-today .create-page .switch-row > span { display: grid; gap: 4px; }
+
+.atelier-today .create-page .switch-row strong {
+  font-family: var(--atelier-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .create-page .switch-row small {
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.atelier-today .create-page .switch-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--td-control);
+  cursor: pointer;
+}
+
+/* -- Summary aside ------------------------------------------------------------ */
+
+.atelier-today .create-page .setup-review {
+  position: sticky;
+  top: 24px;
+  min-width: 0;
+  padding: 26px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .create-page .review-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  margin: 20px 0 16px;
+  border-radius: 12px;
+  color: #FFFFFF;
+  background: var(--td-control);
+}
+
+.atelier-today .create-page .setup-review h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--atelier-display);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+}
+
+.atelier-today .create-page .setup-review > p:not(.atelier-eyebrow) {
+  margin: 8px 0 20px;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.atelier-today .create-page .setup-review dl {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .setup-review dl div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .create-page .setup-review dt {
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.atelier-today .create-page .setup-review dd {
+  margin: 0;
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.atelier-today .create-page .setup-review > small {
+  display: block;
+  margin-top: 16px;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* -- Bottom actions bar --------------------------------------------------------- */
+
+.atelier-today .create-page .setup-actions {
+  position: sticky;
+  z-index: 10;
+  bottom: 0;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 4px;
+  border-top: 1px solid var(--td-border-subtle);
+  background: rgba(251, 251, 250, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.atelier-today .create-page .setup-actions > span {
+  margin: 0 auto;
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.atelier-today .create-page .create-secondary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--td-fg-secondary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .create-page .create-secondary:hover {
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .create-page .setup-actions .atelier-primary:disabled {
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   First-lesson welcome (redesigned, scoped under .atelier-today .first-welcome-page)
+   ========================================================================== */
+
+.atelier-today .first-welcome-page {
+  width: min(1120px, calc(100% - 96px));
+  margin: 0 auto;
+  padding: 46px 0 64px;
+  color: var(--td-fg);
+}
+
+.atelier-today .first-welcome-page > .atelier-state-card {
+  margin: 0 0 24px;
+}
+
+.atelier-today .first-welcome-hero {
+  max-width: 820px;
+  padding: 4px 0 30px;
+}
+
+.atelier-today .first-welcome-hero .atelier-icon { margin-bottom: 18px; }
+
+.atelier-today .first-welcome-hero h1 {
+  max-width: 760px;
+  margin: 12px 0 14px;
+  font-family: var(--atelier-display);
+  font-size: clamp(38px, 4.6vw, 54px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .first-welcome-hero > p:last-of-type {
+  max-width: 680px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.atelier-today .first-welcome-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.atelier-today .first-welcome-actions a,
+.atelier-today .first-welcome-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.atelier-today .first-welcome-actions a:not(.atelier-primary) {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  color: var(--td-fg-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.atelier-today .first-welcome-actions a:not(.atelier-primary):hover {
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .first-welcome-page .atelier-notice {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 12px;
+  color: var(--td-success);
+  background: var(--create-green-tint);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* -- Likely lesson plan & mental preflight -------------------------------------- */
+
+.atelier-today .first-welcome-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.atelier-today .welcome-plan-card,
+.atelier-today .welcome-preflight {
+  padding: 28px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .welcome-plan-card h2,
+.atelier-today .welcome-preflight h2 {
+  margin: 8px 0 10px;
+  font-family: var(--atelier-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+}
+
+.atelier-today .welcome-plan-card > p,
+.atelier-today .welcome-preflight > p {
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.atelier-today .welcome-plan-card ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atelier-today .welcome-plan-card li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 12px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .welcome-plan-card li span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #FFFFFF;
+  background: var(--td-success);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.atelier-today .welcome-plan-card li strong {
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.atelier-today .welcome-plan-card > small,
+.atelier-today .welcome-preflight > small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.atelier-today .welcome-preflight ul {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding-left: 20px;
+}
+
+.atelier-today .welcome-preflight li {
+  padding-left: 4px;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* -- Preparation status strip ----------------------------------------------------- */
+
+.atelier-today .welcome-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .welcome-status > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 4px 20px;
+  border-right: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .welcome-status > div:last-child { border-right: 0; }
+
+.atelier-today .welcome-status span {
+  grid-row: 1 / 3;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--td-fg-tertiary);
+  background: var(--td-subtle);
+}
+
+.atelier-today .welcome-status span.active {
+  color: #FFFFFF;
+  background: var(--td-control);
+  animation: atelierSoftPulse 1.8s ease-in-out infinite;
+}
+
+.atelier-today .welcome-status span.complete {
+  color: #FFFFFF;
+  background: var(--td-success);
+}
+
+.atelier-today .welcome-status strong {
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.atelier-today .welcome-status small {
+  color: var(--td-fg-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* -- Optional email notification ---------------------------------------------------- */
+
+.atelier-today .welcome-notification {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+.atelier-today .welcome-notification > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--td-fg);
+  background: var(--td-subtle);
+}
+
+.atelier-today .welcome-notification > div { display: grid; gap: 4px; }
+
+.atelier-today .welcome-notification strong {
+  font-family: var(--atelier-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.atelier-today .welcome-notification small {
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.atelier-today .welcome-notification button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  color: #FFFFFF;
+  background: var(--td-control);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.atelier-today .welcome-notification button:hover:not(:disabled) {
+  background: var(--td-control-hover);
+}
+
+.atelier-today .welcome-notification button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* -- Focus --------------------------------------------------------------- */
+
+.atelier-today .create-page :where(
+  .atelier-back,
+  .setup-steps button,
+  .topic-ideas button,
+  .template-grid button,
+  .add-source,
+  .remove-source,
+  .specific-sources-toggle,
+  .more-options-toggle,
+  .create-secondary,
+  .portfolio-preview-unavailable button,
+  .portfolio-preview-list a,
+  .setup-actions .atelier-primary
+):focus-visible {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+.atelier-today .create-page .mode-card:has(input:focus-visible),
+.atelier-today .create-page .delivery-choice:has(input:focus-visible),
+.atelier-today .create-page .approval-choice:has(input:focus-visible),
+.atelier-today .create-page .switch-row:has(input:focus-visible) {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+.atelier-today .first-welcome-page :where(
+  .first-welcome-actions a,
+  .first-welcome-actions button,
+  .welcome-notification button
+):focus-visible {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+/* -- Responsive: tablet --------------------------------------------------- */
+
+@media (max-width: 1050px) {
+  .atelier-today .create-page .review-layout { grid-template-columns: minmax(0, 1fr); }
+  .atelier-today .create-page .setup-review { position: static; }
+  .atelier-today .create-page .template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .atelier-today .first-welcome-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* -- Responsive: mobile drawer ------------------------------------------- */
+
+@media (max-width: 820px) {
+  .atelier-today .create-page,
+  .atelier-today .first-welcome-page {
+    width: min(100% - 34px, 680px);
+    padding-top: 40px;
+  }
+
+  .atelier-today .create-page .template-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* -- Responsive: phones --------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .atelier-today .create-page,
+  .atelier-today .first-welcome-page {
+    padding-top: 34px;
+  }
+
+  .atelier-today .create-page .create-heading h1,
+  .atelier-today .first-welcome-hero h1 {
+    font-size: clamp(34px, 10vw, 42px);
+  }
+
+  .atelier-today .create-page .newsletter-form .setup-panel {
+    padding: 22px 20px;
+  }
+
+  .atelier-today .create-page .setup-steps button {
+    gap: 6px;
+  }
+
+  .atelier-today .create-page .setup-steps button > span {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+
+  .atelier-today .create-page .setup-steps strong {
+    font-size: 11px;
+  }
+
+  .atelier-today .create-page .intent-grid,
+  .atelier-today .create-page .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .atelier-today .create-page .mode-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .atelier-today .create-page .mode-card {
+    min-height: 0;
+  }
+
+  .atelier-today .create-page .topic-ideas button {
+    min-height: 44px;
+  }
+
+  /* Source rows collapse to a stacked form: number, URL, name, remove. */
+  .atelier-today .create-page .guided-source-row {
+    grid-template-columns: 28px minmax(0, 1fr) 44px;
+    align-items: start;
+  }
+
+  .atelier-today .create-page .guided-source-row > .source-number {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .atelier-today .create-page .guided-source-row > label:first-of-type {
+    grid-column: 2 / 3;
+    grid-row: 1;
+  }
+
+  .atelier-today .create-page .guided-source-row > label:last-of-type {
+    grid-column: 2 / 3;
+    grid-row: 2;
+  }
+
+  .atelier-today .create-page .guided-source-row > .remove-source {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  .atelier-today .create-page .source-validation {
+    margin-left: 40px;
+  }
+
+  .atelier-today .create-page .research-plan-preview ol,
+  .atelier-today .welcome-plan-card ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .atelier-today .create-page .portfolio-preview-list article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .atelier-today .create-page .portfolio-preview-list article > span {
+    grid-column: 1 / -1;
+  }
+
+  .atelier-today .create-page .portfolio-preview-list a {
+    min-height: 44px;
+  }
+
+  .atelier-today .create-page .setup-actions {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .atelier-today .create-page .setup-actions .atelier-primary {
+    margin-left: 0;
+  }
+
+  .atelier-today .first-welcome-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .atelier-today .first-welcome-actions .atelier-primary,
+  .atelier-today .first-welcome-actions a:not(.atelier-primary) {
+    justify-content: center;
+  }
+
+  .atelier-today .welcome-status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .atelier-today .welcome-status > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--td-border-subtle);
+    padding: 12px 4px;
+  }
+
+  .atelier-today .welcome-status > div:last-child { border-bottom: 0; }
+
+  .atelier-today .welcome-notification {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .atelier-today .welcome-notification button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+/* -- Motion preferences ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-today .first-welcome-page .welcome-status span.active {
+    animation: none;
+  }
+
+  .atelier-today .create-page *,
+  .atelier-today .create-page *::before,
+  .atelier-today .create-page *::after,
+  .atelier-today .first-welcome-page *,
+  .atelier-today .first-welcome-page *::before,
+  .atelier-today .first-welcome-page *::after {
+    transition: none !important;
+  }
+}

@@ -414,7 +414,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   }
 
   return (
-    <LearningShell active="streams">
+    <LearningShell active="streams" redesigned>
       <section className="atelier-page create-page">
         <div className="create-inner">
           <a className="atelier-back" href="/streams"><ArrowLeft size={14} /> Back to your streams</a>
