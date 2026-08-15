@@ -7,14 +7,23 @@
     "render": "remotion render src/index.jsx LearnloomLaunch ../output/learnloom-launch-remotion.mp4",
     "render:v1.1": "remotion render src/index.jsx LearnloomLaunchV11 ../output/learnloom-launch-remotion-v1.1.mp4",
     "render:v2": "remotion render src/index.jsx LearnloomLaunchV2 ../output/learnloom-launch-v2.mp4",
+    "render:v3": "remotion render src/index.jsx LearnloomLaunchV3 ../output/learnloom-launch-v3.mp4",
     "music:v1.1": "node scripts/generate-launch-music-v1-1.mjs && ffmpeg -y -hide_banner -loglevel error -i public/launch-music-v1-1.wav -c:a aac -b:a 192k public/launch-music-v1-1.m4a && node -e \"require('node:fs').unlinkSync('public/launch-music-v1-1.wav')\"",
     "sfx": "node scripts/generate-launch-sfx.mjs && ffmpeg -y -hide_banner -loglevel error -i public/launch-sfx-v1.wav -c:a aac -b:a 192k public/launch-sfx-v1.m4a && node -e \"require('node:fs').unlinkSync('public/launch-sfx-v1.wav')\"",
-    "still": "remotion still src/index.jsx LearnloomLaunch ../output/remotion-preview.png"
+    "still": "remotion still src/index.jsx LearnloomLaunch ../output/remotion-preview.png",
+    "still:v3": "remotion still src/index.jsx LearnloomLaunchV3 ../output/learnloom-launch-v3-preview.png --frame=120",
+    "capture": "node scripts/capture-product.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.496",
-    "remotion": "4.0.496",
+    "@remotion/google-fonts": "4.0.496",
+    "@remotion/media": "4.0.496",
+    "@remotion/transitions": "4.0.496",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "remotion": "4.0.496"
+  },
+  "devDependencies": {
+    "playwright-core": "1.62.1"
   }
 }

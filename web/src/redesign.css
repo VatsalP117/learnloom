@@ -3388,6 +3388,23 @@
   pointer-events: none;
 }
 
+.atelier-today .today-thread-card.is-clear {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.atelier-today .today-thread-card.is-clear::after {
+  display: none;
+}
+
+.atelier-today .today-thread-card.is-clear > .atelier-eyebrow {
+  margin-top: 18px;
+}
+
+.atelier-today .today-thread-card.is-clear .today-thread-topic {
+  max-width: 30ch;
+}
+
 .atelier-today .today-card-link {
   display: inline-flex;
   align-items: center;

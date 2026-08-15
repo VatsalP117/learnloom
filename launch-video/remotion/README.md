@@ -1,14 +1,13 @@
 # Learnloom launch film — Remotion
 
-> **Legacy composition — do not publish.** The current composition and captures
-> contain pre-wedge personas, examples, UI, and publication behavior. Rendering
-> successfully proves only that the media project builds; it does not prove the
-> product or marketing is current.
+> **V1/V2 are legacy compositions.** They contain older UI and publication
+> behavior. `LearnloomLaunchV3` is the current footage-led cut; review its final
+> claims and pacing before publishing.
 
-The current launch film is a 45-second Remotion composition built around the
-July 2026 Learnloom UI. It uses one consistent white/warm-paper visual system,
-black editorial typography, restrained forest accents, and the product's calm
-landscape artwork.
+The legacy 45-second composition is built around the July 2026 Learnloom UI.
+The current V3 cut uses the refined August product, a white/warm-paper visual
+system, black editorial typography, sharp lime accents, and fresh product
+recordings.
 
 The main demo is a continuous animated Learnloom workspace rather than a
 sequence of screenshot slides. The learning intent persists while trusted
@@ -39,8 +38,16 @@ npm run render
 npm run music:v1.1
 npm run render:v1.1
 npm run render:v2
+npm run capture
+npm run render:v3
 ```
 
 The 45-second composition is `LearnloomLaunch` and renders to
 `../output/learnloom-launch-remotion.mp4`. The separate 27-second fast cut is
 `LearnloomLaunchV2` and renders to `../output/learnloom-launch-v2.mp4`.
+
+`LearnloomLaunchV3` is a 26.8-second current-product cut. Its six scenes live in
+`src/v3/`, and its demo-only product recordings live in
+`public/product-clips/`. Start the Vite demo at `http://127.0.0.1:4173`, run
+`npm run capture`, then render with `npm run render:v3`. The output is
+`../output/learnloom-launch-v3.mp4`.
