@@ -14,7 +14,12 @@ import LearningShell, {
 } from "./LearningShell";
 import { lessonState } from "./learningState";
 import { apiJSON } from "./api";
+import { artworkForStream } from "./todayArtwork";
 import { useWorkspace } from "./useWorkspace";
+import type { Issue, Newsletter } from "./types";
+
+const cardSizes = "(min-width: 1100px) 23vw, 45vw";
+const heroSizes = "(min-width: 1100px) 40vw, 100vw";
 
 export default function TodayPage() {
   const workspace = useWorkspace();
@@ -56,6 +61,42 @@ export default function TodayPage() {
     workspace.snapshot?.retention?.reentryNewsletterId;
   const reentryNewsletter = workspace.newsletters.find(({ id }) => id === reentryNewsletterId);
 
+  const heroStreamId = !specialFocus
+    ? primary?.newsletter?.id
+    : reviewFirst
+      ? sideLesson?.newsletter?.id
+      : reentryNewsletter?.id;
+  const heroArt = artworkForStream(
+    !specialFocus
+      ? heroStreamId
+      : reviewFirst
+        ? workspace.lessons.find((lesson) => lesson.id === workspace.reviews[0]?.issueId)
+            ?.newsletterId ?? heroStreamId
+        : heroStreamId,
+  );
+  const anotherThread = useMemo(
+    () => selectAnotherThread(workspace.newsletters, workspace.lessons, heroStreamId, lessonState),
+    [workspace.newsletters, workspace.lessons, heroStreamId],
+  );
+  const anotherThreadArt = artworkForStream(anotherThread?.id);
+  const streamEntries = useMemo(
+    () => {
+      const candidates = rankTodayStreams(
+        workspace.newsletters,
+        workspace.lessons,
+        heroStreamId,
+        lessonState,
+        4,
+      );
+      const withoutSideCard = candidates.filter(
+        (entry) => entry.newsletter.id !== anotherThread?.id,
+      );
+      return (withoutSideCard.length ? withoutSideCard : candidates).slice(0, 3);
+    },
+    [workspace.newsletters, workspace.lessons, heroStreamId, anotherThread?.id],
+  );
+  const activeStreamCount = workspace.newsletters.filter((item) => item.active).length;
+
   async function handleReentryControl(action: "reduce" | "pause" | "reset") {
     if (!reentryNewsletterId || !reentryNewsletter) return;
     setReentryBusy(action);
@@ -96,7 +137,7 @@ export default function TodayPage() {
   }
 
   return (
-    <LearningShell active="today">
+    <LearningShell active="today" variant="today">
       <section className="today-page">
         <header className="atelier-page-heading today-heading">
           <p className="atelier-eyebrow">Your learning practice</p>
@@ -110,8 +151,8 @@ export default function TodayPage() {
         ) : null}
 
         {!workspace.loading && !workspace.error && !workspace.newsletters.length ? (
-          <section className="today-empty glass-panel">
-            <span><Sparkles size={24} /></span>
+          <section className="today-empty">
+            <span className="atelier-icon"><Sparkles size={24} /></span>
             <p className="atelier-eyebrow">Your first thread</p>
             <h2>Turn a question into a learning practice.</h2>
             <p>
@@ -127,129 +168,179 @@ export default function TodayPage() {
         {primary || specialFocus ? (
           <div className="today-grid">
             {reentryFirst ? (
-              <article className="today-feature today-feature-reentry glass-panel">
-                <div className="today-feature-top">
-                  <span className="atelier-chip"><Sparkles size={13} /> A gentle return</span>
-                  <span>No backlog to clear</span>
-                </div>
-                <div className="today-feature-copy">
+              <article className="today-hero today-hero-reentry">
+                <div className="today-hero-copy">
+                  <div className="today-hero-meta">
+                    <span className="atelier-chip"><Sparkles size={13} /> A gentle return</span>
+                    <span className="today-hero-time">No backlog to clear</span>
+                  </div>
                   <p className="atelier-eyebrow">Welcome back</p>
                   <h2>Begin with one useful step.</h2>
-                  <p>
+                  <p className="today-hero-deck">
                     {reason || "Your learning history is still here. Choose one action now; the rest can wait."}
                   </p>
-                </div>
-                <a
-                  className="atelier-primary"
-                  href={actionUrl ?? workspace.snapshot?.retention?.actionUrl ?? "/streams"}
-                >
-                  {actionLabel ?? workspace.snapshot?.retention?.actionLabel ?? "Choose your next step"}
-                  <ArrowRight size={16} />
-                </a>
-                {reentryNewsletter ? (
-                  <div className="reentry-controls" aria-label={`Re-entry controls for ${reentryNewsletter.name}`}>
-                    <p>Or make the return gentler for <strong>{reentryNewsletter.name}</strong>:</p>
-                    <div>
-                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reduce")}>Slow to weekly</button>
-                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("pause")}>Pause stream</button>
-                      <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reset")}>Clear older backlog</button>
+                  <a
+                    className="atelier-primary"
+                    href={actionUrl || workspace.snapshot?.retention?.actionUrl || "/streams"}
+                  >
+                    {actionLabel || workspace.snapshot?.retention?.actionLabel || "Choose your next step"}
+                    <ArrowRight size={16} />
+                  </a>
+                  {reentryNewsletter ? (
+                    <div className="reentry-controls" aria-label={`Re-entry controls for ${reentryNewsletter.name}`}>
+                      <p>Or make the return gentler for <strong>{reentryNewsletter.name}</strong>:</p>
+                      <div>
+                        <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reduce")}>Slow to weekly</button>
+                        <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("pause")}>Pause stream</button>
+                        <button type="button" disabled={Boolean(reentryBusy)} onClick={() => handleReentryControl("reset")}>Clear older backlog</button>
+                      </div>
+                      {reentryNotice ? <small className="reentry-notice">{reentryNotice}</small> : null}
+                      {reentryError ? <small className="reentry-error">{reentryError}</small> : null}
                     </div>
-                    {reentryNotice ? <small className="reentry-notice">{reentryNotice}</small> : null}
-                    {reentryError ? <small className="reentry-error">{reentryError}</small> : null}
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
+                <div className="today-hero-art">
+                  <img
+                    src={heroArt.hero}
+                    srcSet={heroArt.heroSrcSet}
+                    sizes={heroSizes}
+                    alt=""
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                  />
+                </div>
               </article>
             ) : reviewFirst ? (
-              <article className="today-feature today-feature-review glass-panel">
-                <div className="today-feature-top">
-                  <span className="atelier-chip"><BrainCircuit size={13} /> Review due</span>
-                  <span>{dueCount || workspace.reviews.length} prompt{(dueCount || workspace.reviews.length) === 1 ? "" : "s"}</span>
-                </div>
-                <div className="today-feature-copy">
+              <article className="today-hero today-hero-review">
+                <div className="today-hero-copy">
+                  <div className="today-hero-meta">
+                    <span className="atelier-chip"><BrainCircuit size={13} /> Review due</span>
+                    <span className="today-hero-time">{dueCount || workspace.reviews.length} prompt{(dueCount || workspace.reviews.length) === 1 ? "" : "s"}</span>
+                  </div>
                   <p className="atelier-eyebrow">Best next step</p>
                   <h2>Strengthen what is ready to be recalled.</h2>
-                  <p>
+                  <p className="today-hero-deck">
                     {reason || "A short retrieval pass now will make recent ideas easier to use later."}
                   </p>
+                  <a className="atelier-primary" href={actionUrl || "/review"}>
+                    {actionLabel || "Start review"} <ArrowRight size={16} />
+                  </a>
                 </div>
-                <a className="atelier-primary" href={actionUrl ?? "/review"}>
-                  {actionLabel ?? "Start review"} <ArrowRight size={16} />
-                </a>
+                <div className="today-hero-art">
+                  <img
+                    src={heroArt.hero}
+                    srcSet={heroArt.heroSrcSet}
+                    sizes={heroSizes}
+                    alt=""
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                  />
+                </div>
               </article>
             ) : (
-              <article className="today-feature glass-panel">
-                <div className="today-feature-top">
-                  <span className="atelier-chip">
-                    {primaryState?.progress > 0 ? "Continue learning" : "Ready for you"}
-                  </span>
-                  <span><Clock3 size={14} />{primary.newsletter.lessonMinutes} min</span>
-                </div>
-                <div className="today-feature-copy">
+              <article className="today-hero">
+                <div className="today-hero-copy">
+                  <div className="today-hero-meta">
+                    <span className="atelier-chip">
+                      {primaryState?.progress > 0 ? "Continue learning" : "Ready for you"}
+                    </span>
+                    {primary.newsletter.lessonMinutes ? (
+                      <span className="today-hero-time"><Clock3 size={14} />{primary.newsletter.lessonMinutes} min</span>
+                    ) : null}
+                  </div>
                   <p className="atelier-eyebrow">{primary.newsletter.name}</p>
                   <h2>{primary.title}</h2>
-                  <p>
+                  <p className="today-hero-deck">
                     {reason || (primaryState?.progress > 0
                       ? "Pick up where you left off. Your place has been saved."
-                      : `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`)}
+                      : primary.newsletter.learnerLevel
+                        ? `A source-grounded lesson designed for ${primary.newsletter.learnerLevel}-level learning.`
+                        : "A source-grounded lesson prepared for your learning path.")}
                   </p>
-                </div>
-                <div className="today-progress">
-                  <div>
-                    <span>Reading progress</span>
-                    <strong>{Math.round(primaryState?.progress ?? 0)}%</strong>
+                  <div className="today-hero-progress">
+                    <div>
+                      <span>Reading progress</span>
+                      <strong>{Math.round(primaryState?.progress ?? 0)}%</strong>
+                    </div>
+                    <span className="today-hero-track"><i style={{ width: `${primaryState?.progress ?? 0}%` }} /></span>
                   </div>
-                  <span><i style={{ width: `${primaryState?.progress ?? 0}%` }} /></span>
+                  <a className="atelier-primary" href={actionUrl || `/issues/${encodeURIComponent(primary.id)}`}>
+                    {actionLabel || (primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson")}
+                    <ArrowRight size={16} />
+                  </a>
                 </div>
-                <a className="atelier-primary" href={actionUrl ?? `/issues/${encodeURIComponent(primary.id)}`}>
-                  {actionLabel ?? (primaryState?.progress > 0 ? "Resume lesson" : "Begin lesson")}
-                  <ArrowRight size={16} />
-                </a>
+                <div className="today-hero-art">
+                  <img
+                    src={heroArt.hero}
+                    srcSet={heroArt.heroSrcSet}
+                    sizes={heroSizes}
+                    alt=""
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                  />
+                </div>
               </article>
             )}
 
-            <aside className="today-side">
-              {sideLesson ? (
-                <article className="today-synthesis glass-panel">
-                  <span className="atelier-icon"><BookOpen size={17} /></span>
-                  <p className="atelier-eyebrow">
-                    {reentryFirst ? "Ready when you are" : reviewFirst ? "After review" : "Another thread"}
-                  </p>
-                  <h3>{sideLesson.newsletter.name}</h3>
-                  <p>{sideLesson.title}</p>
-                  <a href={`/issues/${encodeURIComponent(sideLesson.id)}`}>
-                    Open lesson <ArrowRight size={14} />
-                  </a>
+            <aside className="today-side" aria-label="Today's secondary actions">
+              {anotherThread ? (
+                <article className="today-thread-card">
+                  <div className="today-thread-copy">
+                    <span className="atelier-icon"><BookOpen size={17} /></span>
+                    <p className="atelier-eyebrow">Another thread</p>
+                    <h3>{anotherThread.name}</h3>
+                    <p className="today-thread-topic">{anotherThread.topic}</p>
+                    <a className="today-card-link" href={`/newsletters/${encodeURIComponent(anotherThread.id)}`}>
+                      Open stream <ArrowRight size={14} />
+                    </a>
+                  </div>
+                  <img
+                    className="today-thread-art"
+                    src={anotherThreadArt.card}
+                    srcSet={anotherThreadArt.cardSrcSet}
+                    sizes="(min-width: 1100px) 16vw, 40vw"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </article>
               ) : (
-                <article className="today-synthesis glass-panel">
+                <article className="today-thread-card is-clear">
                   <span className="atelier-icon"><CheckCircle2 size={17} /></span>
                   <p className="atelier-eyebrow">A clear queue</p>
                   <h3>You are caught up.</h3>
-                  <p>Your next lesson will appear here when it is ready.</p>
+                  <p className="today-thread-topic">No other active streams need attention right now.</p>
                 </article>
               )}
-              <article className={`today-review glass-panel${workspace.reviews.length ? " is-due" : ""}`}>
-                <BrainCircuit size={18} />
-                <div>
+              <article className={`today-recall-card${workspace.reviews.length ? " is-due" : ""}`}>
+                <span className="atelier-icon"><BrainCircuit size={18} /></span>
+                <div className="today-recall-copy">
                   <p className="atelier-eyebrow">Recall</p>
                   <strong>
                     {workspace.reviews.length
                       ? `${workspace.reviews.length} prompt${workspace.reviews.length === 1 ? "" : "s"} due`
-                      : "Strengthen what you learned"}
+                      : "Nothing due right now"}
                   </strong>
                   <span>
                     {workspace.reviews.length
                       ? "A short retrieval pass is ready."
-                      : "Review questions from recent lessons."}
+                      : "Review questions from recent lessons will appear here."}
                   </span>
+                </div>
+                <div className="today-recall-count" aria-label={`${workspace.reviews.length} review prompts due`}>
+                  <strong>{workspace.reviews.length}</strong>
+                  <span>Due</span>
                 </div>
                 <a href="/review" aria-label="Open review"><ArrowRight size={16} /></a>
               </article>
             </aside>
           </div>
         ) : !workspace.loading && !workspace.error && workspace.newsletters.length ? (
-          <section className="today-empty glass-panel">
-            <span><CheckCircle2 size={24} /></span>
+          <section className="today-empty">
+            <span className="atelier-icon"><CheckCircle2 size={24} /></span>
             <p className="atelier-eyebrow">A clear queue</p>
             <h2>You are caught up.</h2>
             <p>Your completed lesson is in the library. The next one will appear here when it is ready.</p>
@@ -260,13 +351,46 @@ export default function TodayPage() {
         ) : null}
 
         {!workspace.loading && workspace.newsletters.length ? (
-          <section className="today-footer-row">
-            <div>
-              <p className="atelier-eyebrow">Your rhythm</p>
-              <strong>{workspace.newsletters.filter((item) => item.active).length} active learning streams</strong>
-              <span>Latest archive update {formatShortDate(workspace.lessons[0]?.createdAt)}</span>
+          <section className="today-streams" aria-labelledby="today-streams-heading">
+            <div className="today-streams-head">
+              <div>
+                <p className="atelier-eyebrow" id="today-streams-heading">Your rhythm</p>
+                <h2>Active learning streams</h2>
+                <p>{activeStreamCount} active · Latest update {formatShortDate(workspace.lessons[0]?.createdAt)}</p>
+              </div>
+              <a className="today-view-all" href="/streams">
+                View all streams <ArrowRight size={15} />
+              </a>
             </div>
-            <a href="/streams">Tune your streams <ArrowRight size={15} /></a>
+            {streamEntries.length ? (
+              <div className="today-streams-row">
+                {streamEntries.map((entry) => {
+                  const art = artworkForStream(entry.newsletter.id);
+                  const href = `/issues/${encodeURIComponent(entry.lesson.id)}`;
+                  return (
+                    <a className="today-stream-card" href={href} key={entry.newsletter.id}>
+                      <img
+                        src={art.card}
+                        srcSet={art.cardSrcSet}
+                        sizes={cardSizes}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <h3>{entry.newsletter.name}</h3>
+                      <p className="today-stream-lesson">{entry.lesson.title}</p>
+                      <div className="today-stream-meta">
+                        <span>{entry.progress > 0 ? `${Math.round(entry.progress)}% complete` : "Not started"}</span>
+                        {entry.remainingMinutes ? <span>{entry.remainingMinutes} min left</span> : null}
+                      </div>
+                      <span className="today-stream-track" aria-hidden="true">
+                        <i style={{ width: `${entry.progress}%` }} />
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         ) : null}
       </section>
@@ -352,6 +476,87 @@ export function resolveTodaySelection(
     actionUrl: authoritative.actionUrl,
     dueCount: authoritative.dueCount ?? 0,
   };
+}
+
+export interface TodayStreamEntry {
+  newsletter: Newsletter;
+  /** Most recent generated lesson that is still unfinished. */
+  lesson: Issue;
+  progress: number;
+  remainingMinutes?: number;
+}
+
+/**
+ * Ranks the other active streams for the bottom strip: streams with an
+ * unfinished generated lesson first, ordered by how recent that lesson is,
+ * then in-progress lessons, then name for determinism. Streams without any
+ * unfinished generated lesson are excluded — their progress is not shown
+ * because there is nothing real to measure.
+ */
+export function rankTodayStreams(
+  newsletters: Newsletter[],
+  lessons: Issue[],
+  excludeNewsletterId?: string | null,
+  stateFor: (issueId: string) => { progress: number; completed: boolean } = lessonState,
+  limit = 3,
+): TodayStreamEntry[] {
+  const entries = newsletters
+    .filter((newsletter) => newsletter.active && newsletter.id !== excludeNewsletterId)
+    .map((newsletter): TodayStreamEntry | null => {
+      const streamLessons = lessons
+        .filter(
+          (lesson) =>
+            lesson.newsletterId === newsletter.id &&
+            lesson.status === "generated" &&
+            !stateFor(lesson.id).completed,
+        )
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime(),
+        );
+      const lesson = streamLessons[0];
+      if (!lesson) return null;
+      const progress = stateFor(lesson.id).progress;
+      return {
+        newsletter,
+        lesson,
+        progress,
+        remainingMinutes:
+          newsletter.lessonMinutes && progress < 100
+            ? Math.max(1, Math.round(newsletter.lessonMinutes * (1 - progress / 100)))
+            : undefined,
+      };
+    })
+    .filter((entry): entry is TodayStreamEntry => entry !== null)
+    .sort((left, right) => {
+      const leftTime = new Date(left.lesson.createdAt ?? 0).getTime();
+      const rightTime = new Date(right.lesson.createdAt ?? 0).getTime();
+      if (leftTime !== rightTime) return rightTime - leftTime;
+      if ((left.progress > 0 ? 1 : 0) !== (right.progress > 0 ? 1 : 0)) {
+        return right.progress > 0 ? 1 : -1;
+      }
+      return left.newsletter.name.localeCompare(right.newsletter.name);
+    });
+  return entries.slice(0, limit);
+}
+
+/**
+ * Highest-priority active stream other than the hero stream for the
+ * "Another thread" card. Prefers the top of the strip ranking; falls back
+ * to any remaining active stream by name so a brand-new thread is still
+ * reachable.
+ */
+export function selectAnotherThread(
+  newsletters: Newsletter[],
+  lessons: Issue[],
+  heroNewsletterId?: string | null,
+  stateFor: (issueId: string) => { progress: number; completed: boolean } = lessonState,
+): Newsletter | undefined {
+  const ranked = rankTodayStreams(newsletters, lessons, heroNewsletterId, stateFor, 1);
+  if (ranked[0]) return ranked[0].newsletter;
+  return newsletters
+    .filter((newsletter) => newsletter.active && newsletter.id !== heroNewsletterId)
+    .sort((left, right) => left.name.localeCompare(right.name))[0];
 }
 
 function greeting() {

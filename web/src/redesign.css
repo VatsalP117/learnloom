@@ -2966,3 +2966,1328 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Redesigned dashboard shell (opt-in, scoped under .atelier-today)
+   --------------------------------------------------------------------------
+   Shared by the redesigned Today and Streams routes. Everything here remains
+   opt-in so Library, Review, Publishing, Settings, the lesson reader, and
+   creation flows keep their existing shell and visual treatment.
+   ========================================================================== */
+
+.atelier-today {
+  /* Warm-neutral product shell tokens (new-dashboard-ideas/design.md). */
+  --td-canvas: #FBFBFA;
+  --td-surface: #FFFFFF;
+  --td-subtle: #F7F7F5;
+  --td-hover: #F3F3F0;
+  --td-active: #F1F1EE;
+  --td-fg: #111210;
+  --td-fg-secondary: #666864;
+  --td-fg-tertiary: #8B8D88;
+  --td-border-subtle: #E8E8E4;
+  --td-border-default: #DEDFDA;
+  --td-border-strong: #CECFCA;
+  --td-control: #111210;
+  --td-control-hover: #232421;
+  --td-success: #26734D;
+  --td-danger: #C84A3D;
+  --td-focus: rgba(17, 18, 16, 0.16);
+  --td-shadow-card:
+    0 1px 2px rgba(17, 18, 16, 0.02),
+    0 8px 24px rgba(17, 18, 16, 0.025);
+  --td-shadow-overlay: 0 12px 40px rgba(17, 18, 16, 0.12);
+  /* Satoshi (Fontshare) for the Today variant; local fonts as fallbacks. */
+  --atelier-display: "Satoshi", "Bricolage Grotesque", sans-serif;
+  --atelier-body: "Satoshi", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* -- Shell: quiet warm-white canvas ------------------------------------ */
+
+.atelier-today.atelier-app {
+  background-color: var(--td-canvas);
+  background-image: none;
+}
+
+.atelier-today .atelier-sidebar {
+  width: 280px;
+  padding: 28px 18px 20px;
+  border-right: 1px solid var(--td-border-subtle);
+  background: var(--td-canvas);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.atelier-today .atelier-brand > span {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 10px;
+  background: var(--td-surface);
+  box-shadow: none;
+}
+
+.atelier-today .atelier-brand > span img {
+  width: 25px;
+  height: 25px;
+  filter: grayscale(1) contrast(1.45);
+}
+
+.atelier-today .atelier-brand strong {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.atelier-today .atelier-brand small {
+  color: var(--td-fg-tertiary);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.atelier-today .atelier-new-entry {
+  min-height: 44px;
+  margin-top: 26px;
+  border: 0;
+  border-radius: 12px;
+  color: #FFFFFF;
+  background: var(--td-control);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+
+.atelier-today .atelier-new-entry:hover {
+  background: var(--td-control-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+.atelier-today .atelier-nav {
+  gap: 4px;
+  margin-top: 30px;
+}
+
+.atelier-today .atelier-nav a,
+.atelier-today .atelier-sidebar-bottom a,
+.atelier-today .atelier-sidebar-bottom button {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: var(--td-fg-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .atelier-nav a:hover,
+.atelier-today .atelier-sidebar-bottom a:hover,
+.atelier-today .atelier-sidebar-bottom button:hover {
+  color: var(--td-fg);
+  background: var(--td-hover);
+  transform: none;
+}
+
+/* Neutral soft-gray active state — no brand color. */
+.atelier-today .atelier-nav a.current {
+  color: var(--td-fg);
+  background: var(--td-active);
+  box-shadow: none;
+}
+
+.atelier-today .atelier-sidebar-bottom a,
+.atelier-today .atelier-sidebar-bottom button {
+  min-height: 40px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.atelier-today .atelier-stage {
+  margin-left: 280px;
+}
+
+/* -- Page scaffolding --------------------------------------------------- */
+
+.atelier-today .today-page {
+  width: min(1360px, calc(100% - 96px));
+  padding: 46px 0 64px;
+}
+
+.atelier-today .today-heading {
+  margin-bottom: 34px;
+}
+
+.atelier-today .today-heading h1 {
+  margin: 10px 0 0;
+  font-size: clamp(42px, 4.6vw, 56px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--td-fg);
+}
+
+.atelier-today .today-heading > p:last-child {
+  margin-top: 14px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+}
+
+.atelier-today .atelier-eyebrow {
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+}
+
+.atelier-today .atelier-chip {
+  border: 1px solid var(--td-border-default);
+  border-radius: 999px;
+  background: var(--td-surface);
+  color: var(--td-fg-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.atelier-today .atelier-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 10px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .atelier-primary {
+  min-height: 44px;
+  padding-inline: 20px;
+  border: 0;
+  border-radius: 12px;
+  color: #FFFFFF;
+  background: var(--td-control) !important;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  box-shadow: none;
+}
+
+.atelier-today .atelier-primary:hover:not(:disabled) {
+  background: var(--td-control-hover) !important;
+  box-shadow: none;
+  transform: none;
+}
+
+.atelier-today .atelier-state-card {
+  max-width: 640px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  backdrop-filter: none;
+}
+
+/* -- Hero grid ---------------------------------------------------------- */
+
+.atelier-today .today-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.atelier-today .today-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  overflow: hidden;
+  min-height: 404px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .today-hero-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 36px 30px 34px 38px;
+}
+
+.atelier-today .today-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.atelier-today .today-hero-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.atelier-today .today-hero h2 {
+  max-width: 560px;
+  margin: 12px 0 14px;
+  font-size: clamp(30px, 2.6vw, 38px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .today-hero-deck {
+  max-width: 500px;
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.atelier-today .today-hero-progress {
+  width: 100%;
+  max-width: 420px;
+  margin: 24px 0 22px;
+}
+
+.atelier-today .today-hero-progress > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.atelier-today .today-hero-progress > div strong {
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.atelier-today .today-hero-track,
+.atelier-today .today-stream-track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .today-hero-track i,
+.atelier-today .today-stream-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--td-fg);
+}
+
+/* Integrated artwork: large, right-aligned, fading quietly into the text. */
+.atelier-today .today-hero-art {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--td-subtle);
+}
+
+.atelier-today .today-hero-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.atelier-today .today-hero-art::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, var(--td-surface) 0%, rgba(255, 255, 255, 0) 46%);
+  pointer-events: none;
+}
+
+/* -- Side column -------------------------------------------------------- */
+
+.atelier-today .today-side {
+  display: grid;
+  gap: 20px;
+}
+
+.atelier-today .today-thread-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 38%);
+  min-height: 234px;
+  overflow: hidden;
+  padding: 26px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .today-thread-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.atelier-today .today-thread-copy > .atelier-icon + .atelier-eyebrow {
+  margin-top: 18px;
+}
+
+.atelier-today .today-thread-card h3 {
+  margin: 10px 0 8px;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .today-thread-topic {
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.atelier-today .today-thread-art {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 45%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.atelier-today .today-thread-card::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 0 42%;
+  content: "";
+  background: linear-gradient(90deg, var(--td-surface), rgba(255, 255, 255, 0.18));
+  pointer-events: none;
+}
+
+.atelier-today .today-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 20px;
+  color: var(--td-fg);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.atelier-today .today-card-link svg {
+  transition: transform 160ms ease;
+}
+
+.atelier-today .today-card-link:hover svg {
+  transform: translateX(2px);
+}
+
+.atelier-today .today-recall-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 68px 44px;
+  align-items: center;
+  gap: 16px;
+  min-height: 150px;
+  padding: 24px 26px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .today-recall-copy {
+  min-width: 0;
+}
+
+.atelier-today .today-recall-card strong {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--td-fg);
+}
+
+.atelier-today .today-recall-copy > span {
+  display: block;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .today-recall-count {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  place-content: center;
+  border: 5px solid var(--td-subtle);
+  border-top-color: var(--td-fg-secondary);
+  border-radius: 50%;
+  text-align: center;
+}
+
+.atelier-today .today-recall-count strong {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.atelier-today .today-recall-count span {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.atelier-today .today-recall-card > a {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--td-subtle);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .today-recall-card.is-due > a {
+  color: #FFFFFF;
+  background: var(--td-control);
+}
+
+/* -- Re-entry controls -------------------------------------------------- */
+
+.atelier-today .reentry-controls {
+  width: 100%;
+  max-width: 460px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--td-border-subtle);
+}
+
+.atelier-today .reentry-controls > p {
+  margin: 0 0 12px;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .reentry-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.atelier-today .reentry-controls button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--td-border-default);
+  border-radius: 10px;
+  color: var(--td-fg);
+  background: var(--td-surface);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .reentry-controls button:hover:not(:disabled) {
+  border-color: var(--td-border-strong);
+  background: var(--td-subtle);
+}
+
+.atelier-today .reentry-controls button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.atelier-today .reentry-notice,
+.atelier-today .reentry-error {
+  display: block;
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.atelier-today .reentry-notice {
+  color: var(--td-success);
+}
+
+.atelier-today .reentry-error {
+  color: var(--td-danger);
+}
+
+/* -- Bottom strip: other active streams -------------------------------- */
+
+.atelier-today .today-streams {
+  margin-top: 20px;
+  padding: 18px 22px 20px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .today-streams-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+.atelier-today .today-streams-head h2 {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+}
+
+.atelier-today .today-streams-head > div > p:last-child {
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 13px;
+}
+
+.atelier-today .today-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 6px;
+  color: var(--td-fg);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.atelier-today .today-view-all svg {
+  transition: transform 160ms ease;
+}
+
+.atelier-today .today-view-all:hover svg {
+  transform: translateX(2px);
+}
+
+.atelier-today .today-streams-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.atelier-today .today-stream-card {
+  display: grid;
+  grid-template-columns: minmax(112px, 42%) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 118px;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.atelier-today .today-stream-card:hover {
+  border-color: var(--td-border-strong);
+  box-shadow: var(--td-shadow-card);
+  transform: translateY(-1px);
+}
+
+.atelier-today .today-stream-card > img {
+  grid-row: 1 / 5;
+  width: 100%;
+  height: 100%;
+  min-height: 118px;
+  object-fit: cover;
+  border-radius: 10px 0 0 10px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .today-stream-card h3 {
+  margin: 14px 14px 2px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--td-fg);
+}
+
+.atelier-today .today-stream-lesson {
+  margin: 0 14px;
+  overflow: hidden;
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.atelier-today .today-stream-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 14px 0;
+  color: var(--td-fg-tertiary);
+  font-size: 10px;
+}
+
+.atelier-today .today-stream-track {
+  height: 3px;
+  margin: 8px 14px 14px;
+}
+
+/* -- Empty states ------------------------------------------------------- */
+
+.atelier-today .today-empty {
+  max-width: 640px;
+  padding: 48px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .today-empty h2 {
+  margin: 16px 0 12px;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .today-empty > p:not(.atelier-eyebrow) {
+  max-width: 520px;
+  margin-bottom: 26px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* -- Focus visibility and motion --------------------------------------- */
+
+.atelier-today :is(
+  .today-stream-card,
+  .today-card-link,
+  .today-view-all,
+  .today-recall-card > a,
+  .today-hero .atelier-primary,
+  .today-empty .atelier-primary,
+  .reentry-controls button
+):focus-visible {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-today *,
+  .atelier-today *::before,
+  .atelier-today *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -- Responsive: tablet ------------------------------------------------ */
+
+@media (max-width: 1050px) {
+  .atelier-today .today-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atelier-today .today-side {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .atelier-today .today-streams-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* -- Responsive: mobile drawer ----------------------------------------- */
+
+@media (max-width: 820px) {
+  .atelier-today .atelier-sidebar {
+    width: min(290px, 86vw);
+    background: var(--td-canvas);
+    box-shadow: 24px 0 60px rgba(17, 18, 16, 0.14);
+  }
+
+  .atelier-today .atelier-stage {
+    margin-left: 0;
+  }
+
+  .atelier-today .atelier-topbar {
+    border-bottom-color: var(--td-border-subtle);
+    background: rgba(251, 251, 250, 0.86);
+    backdrop-filter: blur(14px);
+  }
+
+  .atelier-today .atelier-menu {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--td-subtle);
+  }
+
+  .atelier-today .today-page {
+    width: min(100% - 34px, 680px);
+    padding-top: 40px;
+  }
+
+  .atelier-today .today-hero {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .atelier-today .today-hero-copy {
+    padding: 32px 28px 30px;
+  }
+
+  .atelier-today .today-hero-art {
+    min-height: 240px;
+    grid-row: 2;
+  }
+
+  .atelier-today .today-hero-art::before {
+    background: linear-gradient(180deg, var(--td-surface) 0%, rgba(255, 255, 255, 0) 46%);
+  }
+}
+
+/* -- Responsive: phones -------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .atelier-today .today-page {
+    padding-top: 34px;
+  }
+
+  .atelier-today .today-heading h1 {
+    font-size: clamp(38px, 11vw, 46px);
+  }
+
+  .atelier-today .today-heading > p:last-child {
+    font-size: 13px;
+  }
+
+  /* Mobile sequence: hero/focus, review, another thread, streams. */
+  .atelier-today .today-side {
+    grid-template-columns: 1fr;
+  }
+
+  .atelier-today .today-recall-card {
+    order: -1;
+    grid-template-columns: 38px minmax(0, 1fr) 44px;
+  }
+
+  .atelier-today .today-recall-count {
+    display: none;
+  }
+
+  .atelier-today .today-hero-art {
+    min-height: 200px;
+  }
+
+  .atelier-today .today-streams-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .atelier-today .today-streams-row {
+    grid-template-columns: 1fr;
+  }
+
+  .atelier-today .today-stream-card > img {
+    min-height: 138px;
+  }
+
+  .atelier-today .today-empty {
+    padding: 34px 28px;
+  }
+}
+
+/* ==========================================================================
+   Streams dashboard variant (scoped under the shared redesigned shell)
+   --------------------------------------------------------------------------
+   The redesigned Streams route only, matching the Today visual language:
+   warm-white surfaces, near-black typography, thin borders, artwork owned
+   by the streams. Everything here is scoped under .atelier-today so the
+   remaining routes keep their existing shell and visual treatment.
+   ========================================================================== */
+
+.atelier-today .streams-page {
+  width: min(1360px, calc(100% - 96px));
+  padding: 46px 0 64px;
+}
+
+/* -- Page heading -------------------------------------------------------- */
+
+.atelier-today .streams-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 34px;
+}
+
+.atelier-today .streams-heading h1 {
+  margin: 10px 0 0;
+  font-size: clamp(42px, 4.6vw, 56px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: var(--td-fg);
+}
+
+.atelier-today .streams-heading p:last-child {
+  margin-top: 14px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* -- Featured current-stream hero ---------------------------------------- */
+
+.atelier-today .streams-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  overflow: hidden;
+  min-height: 404px;
+  margin-bottom: 20px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .streams-hero-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 36px 30px 34px 38px;
+}
+
+.atelier-today .streams-hero h2 {
+  max-width: 560px;
+  margin: 12px 0 14px;
+  font-size: clamp(30px, 2.6vw, 38px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .streams-hero-deck {
+  max-width: 500px;
+  margin: 0;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.atelier-today .streams-hero-progress {
+  width: 100%;
+  max-width: 420px;
+  margin: 24px 0 22px;
+}
+
+.atelier-today .streams-hero-progress > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.atelier-today .streams-hero-progress > div strong {
+  color: var(--td-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.atelier-today .streams-hero-track,
+.atelier-today .streams-card-track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .streams-hero-track i,
+.atelier-today .streams-card-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--td-fg);
+}
+
+/* Integrated artwork: large, right-aligned, fading quietly into the text. */
+.atelier-today .streams-hero-art {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--td-subtle);
+}
+
+.atelier-today .streams-hero-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.atelier-today .streams-hero-art::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, var(--td-surface) 0%, rgba(255, 255, 255, 0) 46%);
+  pointer-events: none;
+}
+
+/* -- Sections ------------------------------------------------------------ */
+
+.atelier-today .streams-section + .streams-section {
+  margin-top: 20px;
+}
+
+.atelier-today .streams-section-head {
+  margin-bottom: 14px;
+}
+
+.atelier-today .streams-section-head h2 {
+  margin: 0;
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+/* -- Active stream cards: horizontal, text-first, ~1/3 artwork ----------- */
+
+.atelier-today .streams-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+
+.atelier-today .streams-card {
+  display: grid;
+  grid-template-columns: minmax(96px, 33%) minmax(0, 1fr);
+  width: 100%;
+  max-width: 520px;
+  min-height: 172px;
+  overflow: hidden;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 16px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.atelier-today .streams-card:hover {
+  border-color: var(--td-border-strong);
+  box-shadow: var(--td-shadow-card);
+  transform: translateY(-1px);
+}
+
+.atelier-today .streams-card > img {
+  width: 100%;
+  height: 100%;
+  min-height: 172px;
+  object-fit: cover;
+  border-radius: 10px 0 0 10px;
+  background: var(--td-subtle);
+}
+
+.atelier-today .streams-card-copy {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  padding: 16px 16px 15px;
+}
+
+.atelier-today .streams-card-copy h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--td-fg);
+}
+
+.atelier-today .streams-card-topic {
+  margin: 0;
+  overflow: hidden;
+  color: var(--td-fg-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.atelier-today .streams-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--td-fg-tertiary);
+  font-size: 11px;
+}
+
+.atelier-today .streams-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.atelier-today .streams-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--td-fg-secondary);
+  font-size: 11px;
+}
+
+.atelier-today .streams-card-progress > span:first-child {
+  min-width: 34px;
+  color: var(--td-fg);
+  font-weight: 600;
+}
+
+.atelier-today .streams-card-track {
+  flex: 1;
+  height: 3px;
+}
+
+/* -- Paused & completed: neutral compact rows without artwork ------------ */
+
+.atelier-today .streams-row-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.atelier-today .streams-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto 20px;
+  align-items: center;
+  gap: 16px;
+  min-height: 72px;
+  padding: 14px 18px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 14px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.atelier-today .streams-row:hover {
+  border-color: var(--td-border-strong);
+  background: var(--td-subtle);
+}
+
+.atelier-today .streams-row-copy {
+  min-width: 0;
+}
+
+.atelier-today .streams-row-copy h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--td-fg);
+}
+
+.atelier-today .streams-row-status {
+  color: var(--td-fg-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.atelier-today .streams-row-arrow {
+  color: var(--td-fg);
+  transition: transform 160ms ease;
+}
+
+.atelier-today .streams-row:hover .streams-row-arrow {
+  transform: translateX(2px);
+}
+
+/* -- Empty state --------------------------------------------------------- */
+
+.atelier-today .streams-empty {
+  max-width: 640px;
+  padding: 48px;
+  border: 1px solid var(--td-border-subtle);
+  border-radius: 18px;
+  background: var(--td-surface);
+  box-shadow: var(--td-shadow-card);
+}
+
+.atelier-today .streams-empty h2 {
+  margin: 16px 0 12px;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--td-fg);
+  text-wrap: balance;
+}
+
+.atelier-today .streams-empty > p:not(.atelier-eyebrow) {
+  max-width: 520px;
+  margin-bottom: 26px;
+  color: var(--td-fg-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* -- Focus visibility ---------------------------------------------------- */
+
+.atelier-today :is(
+  .streams-card,
+  .streams-row,
+  .streams-hero .atelier-primary,
+  .streams-empty .atelier-primary,
+  .streams-heading .atelier-primary
+):focus-visible {
+  outline: 3px solid var(--td-focus);
+  outline-offset: 3px;
+}
+
+/* -- Responsive: tablet -------------------------------------------------- */
+
+@media (max-width: 1050px) {
+  .atelier-today .streams-row-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -- Responsive: mobile drawer ------------------------------------------- */
+
+@media (max-width: 820px) {
+  .atelier-today .streams-page {
+    width: min(100% - 34px, 680px);
+    padding-top: 40px;
+  }
+
+  .atelier-today .streams-hero {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .atelier-today .streams-hero-copy {
+    padding: 32px 28px 30px;
+  }
+
+  .atelier-today .streams-hero-art {
+    min-height: 240px;
+    grid-row: 2;
+  }
+
+  .atelier-today .streams-hero-art::before {
+    background: linear-gradient(180deg, var(--td-surface) 0%, rgba(255, 255, 255, 0) 46%);
+  }
+}
+
+/* -- Responsive: phones --------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .atelier-today .streams-page {
+    padding-top: 34px;
+  }
+
+  .atelier-today .streams-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .atelier-today .streams-heading h1 {
+    font-size: clamp(38px, 11vw, 46px);
+  }
+
+  .atelier-today .streams-heading p:last-child {
+    font-size: 13px;
+  }
+
+  .atelier-today .streams-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atelier-today .streams-hero-art {
+    min-height: 200px;
+  }
+
+  .atelier-today .streams-row {
+    grid-template-columns: 38px minmax(0, 1fr) 20px;
+  }
+
+  .atelier-today .streams-row-status {
+    display: none;
+  }
+
+  .atelier-today .streams-empty {
+    padding: 34px 28px;
+  }
+}

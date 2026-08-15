@@ -618,8 +618,8 @@ func (s *Server) applyAppCSP(response http.ResponseWriter) {
 		"Content-Security-Policy",
 		"default-src 'self'; script-src "+sources+
 			" https://challenges.cloudflare.com; connect-src "+sources+
-			"; img-src 'self' data: https://img.clerk.com; style-src 'self' 'unsafe-inline'; "+
-			"font-src 'self'; worker-src 'self' blob:; "+
+			"; img-src 'self' data: https://img.clerk.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; "+
+			"font-src 'self' https://cdn.fontshare.com; worker-src 'self' blob:; "+
 			"frame-src https://challenges.cloudflare.com; "+
 			"base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
 	)

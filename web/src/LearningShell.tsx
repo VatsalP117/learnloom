@@ -36,11 +36,15 @@ export default function LearningShell({
   active,
   children,
   immersive = false,
+  variant,
 }: {
   active: string;
   children: ReactNode;
   immersive?: boolean;
+  /** Opt-in visual variant for redesigned dashboard routes. */
+  variant?: "today" | "streams";
 }) {
+  const redesigned = variant === "today" || variant === "streams";
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const signOut = useContext(SessionActionsContext);
@@ -62,7 +66,7 @@ export default function LearningShell({
   if (immersive) return children;
 
   return (
-    <div className="atelier-app">
+    <div className={redesigned ? "atelier-app atelier-today" : "atelier-app"}>
       <button
         className={`atelier-scrim ${menuOpen ? "visible" : ""}`}
         type="button"

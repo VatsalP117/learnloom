@@ -297,6 +297,24 @@ export function demoResponse(path: string, options: APIRequestOptions = {}) {
       issues,
       nextIssueCursor: "",
       reviews,
+      lessonProgress: [
+        {
+          issueId: "ai-evaluation-issue-1",
+          progress: 42,
+          updatedAt: createdAt(0),
+        },
+        {
+          issueId: "ai-evaluation-issue-2",
+          progress: 100,
+          completedAt: createdAt(1),
+          updatedAt: createdAt(1),
+        },
+        {
+          issueId: "intelligence-issue-1",
+          progress: 18,
+          updatedAt: createdAt(0),
+        },
+      ],
     };
   }
 

@@ -24,4 +24,26 @@ describe("LearningShell session controls", () => {
 
     expect(markup).not.toContain("Log out");
   });
+
+  it("opt-in today variant scopes the redesigned shell", () => {
+    const markup = renderToStaticMarkup(
+      <LearningShell active="today" variant="today">
+        <p>Today</p>
+      </LearningShell>,
+    );
+
+    expect(markup).toContain('class="atelier-app atelier-today"');
+    expect(markup).toContain("New learning stream");
+    expect(markup).toContain("Today");
+  });
+
+  it("default shell stays untouched by the today variant", () => {
+    const markup = renderToStaticMarkup(
+      <LearningShell active="today">
+        <p>Today</p>
+      </LearningShell>,
+    );
+
+    expect(markup).not.toContain("atelier-today");
+  });
 });

@@ -24,6 +24,22 @@ func TestAppCSPAllowsClerkRuntimeWorkers(t *testing.T) {
 	}
 }
 
+func TestAppCSPAllowsFontshareSatoshiAssets(t *testing.T) {
+	t.Parallel()
+	server := &Server{}
+	response := httptest.NewRecorder()
+
+	server.applyAppCSP(response)
+
+	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "style-src 'self' 'unsafe-inline' https://api.fontshare.com") {
+		t.Fatalf("CSP does not allow Fontshare stylesheets: %q", policy)
+	}
+	if !strings.Contains(policy, "font-src 'self' https://cdn.fontshare.com") {
+		t.Fatalf("CSP does not allow Fontshare fonts: %q", policy)
+	}
+}
+
 func TestPrivateCacheableJSONSupportsConditionalRequests(t *testing.T) {
 	t.Parallel()
 	firstRequest := httptest.NewRequest(http.MethodGet, "/api/workspace", nil)
