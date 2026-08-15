@@ -36,15 +36,14 @@ export default function LearningShell({
   active,
   children,
   immersive = false,
-  variant,
+  redesigned = false,
 }: {
   active: string;
   children: ReactNode;
   immersive?: boolean;
-  /** Opt-in visual variant for redesigned dashboard routes. */
-  variant?: "today" | "streams";
+  /** Opt-in warm-neutral dashboard shell shared by redesigned routes. */
+  redesigned?: boolean;
 }) {
-  const redesigned = variant === "today" || variant === "streams";
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const signOut = useContext(SessionActionsContext);

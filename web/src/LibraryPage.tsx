@@ -17,7 +17,7 @@ export default function LibraryPage() {
   const library = useLibrary(query, filter);
 
   return (
-    <LearningShell active="library">
+    <LearningShell active="library" redesigned>
       <section className="atelier-page library-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Your lasting archive</p>

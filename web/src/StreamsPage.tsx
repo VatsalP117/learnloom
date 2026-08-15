@@ -245,7 +245,7 @@ export default function StreamsPage() {
   const completed = classified.completed;
 
   return (
-    <LearningShell active="streams" variant="streams">
+    <LearningShell active="streams" redesigned>
       <section className="streams-page">
         <header className="streams-heading">
           <div>

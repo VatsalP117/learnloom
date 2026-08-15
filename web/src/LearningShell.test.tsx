@@ -25,19 +25,19 @@ describe("LearningShell session controls", () => {
     expect(markup).not.toContain("Log out");
   });
 
-  it("opt-in today variant scopes the redesigned shell", () => {
+  it("opting into the redesigned shell scopes the warm-neutral dashboard", () => {
     const markup = renderToStaticMarkup(
-      <LearningShell active="today" variant="today">
-        <p>Today</p>
+      <LearningShell active="library" redesigned>
+        <p>Library</p>
       </LearningShell>,
     );
 
     expect(markup).toContain('class="atelier-app atelier-today"');
     expect(markup).toContain("New learning stream");
-    expect(markup).toContain("Today");
+    expect(markup).toContain("Library");
   });
 
-  it("default shell stays untouched by the today variant", () => {
+  it("default shell stays untouched unless redesigned is opted in", () => {
     const markup = renderToStaticMarkup(
       <LearningShell active="today">
         <p>Today</p>

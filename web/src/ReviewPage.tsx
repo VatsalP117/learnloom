@@ -62,7 +62,7 @@ export default function ReviewPage() {
   }
 
   return (
-    <LearningShell active="review">
+    <LearningShell active="review" redesigned>
       <section className="atelier-page review-page">
         <header className="atelier-page-heading">
           <p className="atelier-eyebrow">Strengthen the thread</p>

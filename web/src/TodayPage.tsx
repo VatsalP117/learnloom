@@ -137,7 +137,7 @@ export default function TodayPage() {
   }
 
   return (
-    <LearningShell active="today" variant="today">
+    <LearningShell active="today" redesigned>
       <section className="today-page">
         <header className="atelier-page-heading today-heading">
           <p className="atelier-eyebrow">Your learning practice</p>
