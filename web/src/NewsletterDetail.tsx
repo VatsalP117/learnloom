@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import CalmLoader from "./CalmLoader";
 import LearningShell, { AtelierError, formatShortDate } from "./LearningShell";
 import { apiJSON, demoMode } from "./api";
+import { artworkForStream } from "./todayArtwork";
 import { lessonState, syncLessonProgress } from "./learningState";
 import { invalidateWorkspaceCache } from "./useWorkspace";
 import { firstLessonPreparation } from "./preparation";
@@ -241,19 +242,19 @@ export default function NewsletterDetail({ newsletterId }) {
   const emptyPresentation = streamEmptyPresentation(latest);
 
   return (
-    <LearningShell active="streams">
+    <LearningShell active="streams" redesigned>
       <section className="atelier-page stream-overview-page">
         {error ? <AtelierError message={error} onRetry={load} /> : null}
         {newsletter ? (
           <>
             <a className="atelier-back" href="/streams"><ArrowLeft size={14} /> All streams</a>
-            <header className="stream-overview-header">
+            <header className="stream-overview-header atelier-page-heading with-actions">
               <div>
                 <div className="stream-status-row">
                   <span className={`atelier-status ${newsletter.active ? "active" : ""}`}>
                     {newsletter.active ? "Active" : "Paused"}
                   </span>
-                  <span>{newsletterPathSummary(newsletter)}</span>
+                  <span className="stream-path-summary">{newsletterPathSummary(newsletter)}</span>
                 </div>
                 <h1>{newsletter.name}</h1>
                 <p>{newsletter.topic}</p>
@@ -338,24 +339,36 @@ export default function NewsletterDetail({ newsletterId }) {
               <div className="stream-overview-main">
                 {latestGenerated ? (
                   <article className="latest-lesson-card glass-panel">
-                    <div className="latest-lesson-heading">
-                      <span className="atelier-chip"><BookOpen size={13} /> Latest lesson</span>
-                      <span><Clock3 size={13} />{newsletter.lessonMinutes} min</span>
+                    <div className="latest-lesson-copy">
+                      <div className="latest-lesson-heading">
+                        <span className="atelier-chip"><BookOpen size={13} /> Latest lesson</span>
+                        <span><Clock3 size={13} />{newsletter.lessonMinutes} min</span>
+                      </div>
+                      <h2>{latestGenerated.title}</h2>
+                      <p>{latestPresentation?.description}</p>
+                      <div className="latest-lesson-footer">
+                        <span>
+                          {formatShortDate(latestGenerated.createdAt)} · {latestPresentation?.status}
+                        </span>
+                        <a className="atelier-primary" href={lessonHref(latestGenerated.id)}>
+                          {latestPresentation?.cta}
+                          <ArrowRight size={15} />
+                        </a>
+                      </div>
                     </div>
-                    <h2>{latestGenerated.title}</h2>
-                    <p>{latestPresentation?.description}</p>
-                    <div className="latest-lesson-footer">
-                      <span>
-                        {formatShortDate(latestGenerated.createdAt)} · {latestPresentation?.status}
-                      </span>
-                      <a className="atelier-primary" href={lessonHref(latestGenerated.id)}>
-                        {latestPresentation?.cta}
-                        <ArrowRight size={15} />
-                      </a>
+                    <div className="latest-lesson-art" aria-hidden="true">
+                      <img
+                        src={artworkForStream(newsletter.id).hero}
+                        srcSet={artworkForStream(newsletter.id).heroSrcSet}
+                        sizes="(min-width: 1100px) 38vw, 100vw"
+                        alt=""
+                        loading="eager"
+                        decoding="async"
+                      />
                     </div>
                   </article>
                 ) : (
-                  <article className="latest-lesson-card glass-panel">
+                  <article className="latest-lesson-card latest-lesson-card-empty glass-panel">
                     <span className="atelier-icon"><Sparkles size={18} /></span>
                     <h2>{emptyPresentation.title}</h2>
                     <p>{emptyPresentation.description}</p>
