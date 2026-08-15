@@ -241,3 +241,98 @@ func TestPersonalRobotsAdvertisesSitemapOnlyAfterIndexingOptIn(t *testing.T) {
 		t.Fatalf("enabled robots omitted the sitemap: %s", enabled.Body.String())
 	}
 }
+
+func TestRenderHomeHeroShowsEscapedIdentityAndPublicCounts(t *testing.T) {
+	t.Parallel()
+
+	output := renderHomeHero(domain.PersonalSite{
+		DisplayName: "Maya & Co",
+		Description: "Cities, <systems>, and evidence.",
+	}, 3, 12)
+
+	for _, expected := range []string{
+		`class="reading-hero home-hero"`,
+		`<h1>Maya &amp; Co</h1>`,
+		`Cities, &lt;systems&gt;, and evidence.`,
+		`A public learning archive`,
+		`<dt>Streams</dt><dd>3</dd>`,
+		`<dt>Dossiers</dt><dd>12</dd>`,
+		`href="/#topics"`,
+		`aria-hidden="true"`,
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("renderHomeHero() missing %q in %s", expected, output)
+		}
+	}
+	if strings.Contains(output, "Maya & Co") || strings.Contains(output, "<systems>") {
+		t.Fatal("renderHomeHero() rendered unescaped site fields")
+	}
+}
+
+func TestRenderHomeHeroFallsBackToDescriptionWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	output := renderHomeHero(domain.PersonalSite{DisplayName: "Maya"}, 0, 0)
+	if !strings.Contains(output, "A durable personal learning archive.") {
+		t.Fatalf("renderHomeHero() description fallback missing: %s", output)
+	}
+}
+
+func TestRenderReadingHeaderAndFooterEscapeSiteFields(t *testing.T) {
+	t.Parallel()
+
+	header := renderReadingHeader(domain.PersonalSite{DisplayName: `Ada <Lovelace> & Co`}, "home")
+	for _, expected := range []string{
+		`class="skip-link" href="#main-content"`,
+		`aria-label="Ada &lt;Lovelace&gt; &amp; Co home"`,
+		`<strong>Ada &lt;Lovelace&gt; &amp; Co</strong>`,
+		`href="/#topics"`,
+		`href="/#latest"`,
+		`href="/#about"`,
+		`aria-label="Personal site navigation"`,
+	} {
+		if !strings.Contains(header, expected) {
+			t.Fatalf("renderReadingHeader() missing %q in %s", expected, header)
+		}
+	}
+
+	footer := renderReadingFooter(domain.PersonalSite{
+		DisplayName: `Ada <Lovelace>`,
+		Description: `Notes & <observations> from the field.`,
+	})
+	for _, expected := range []string{
+		`<footer class="site-footer" id="about">`,
+		`Ada &lt;Lovelace&gt;`,
+		`Notes &amp; &lt;observations&gt; from the field.`,
+		`Grown with`,
+	} {
+		if !strings.Contains(footer, expected) {
+			t.Fatalf("renderReadingFooter() missing %q in %s", expected, footer)
+		}
+	}
+	if strings.Contains(footer, "<observations>") {
+		t.Fatal("renderReadingFooter() rendered unescaped description")
+	}
+}
+
+func TestReadingSheetsRemainImageLightAndAssetFree(t *testing.T) {
+	t.Parallel()
+
+	for name, sheet := range map[string]string{
+		"readingCSS":        readingCSS,
+		"readingArticleCSS": readingArticleCSS,
+	} {
+		for _, forbidden := range []string{
+			"backdrop-filter",
+			"url(",
+			"data:image",
+			"@import",
+			"@font-face",
+			"javascript:",
+		} {
+			if strings.Contains(sheet, forbidden) {
+				t.Fatalf("%s reintroduced %q", name, forbidden)
+			}
+		}
+	}
+}
