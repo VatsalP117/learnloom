@@ -161,13 +161,18 @@ export interface PublicGrowthAnalyticsResponse {
 }
 
 export interface BillingEntitlement {
-  planId: "free" | "pro";
+  planId: "none" | "essential" | "pro";
   planName: string;
   subscriptionStatus: "free" | "trialing" | "active" | "past_due" | "paused" | "canceled" | "refunded";
   entitlementStatus: "active" | "grace" | "generation_paused";
-  generationAllowance: number;
+  generationAllowance?: number;
+  generationUnlimited: boolean;
   generationUsed: number;
-  generationRemaining: number;
+  generationRemaining?: number;
+  streamAllowance?: number;
+  streamUnlimited: boolean;
+  streamUsed: number;
+  streamRemaining?: number;
   periodStart: string;
   periodEnd: string;
   trialEndsAt?: string;

@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [feedbackReason, setFeedbackReason] = useState("");
   const [feedbackNote, setFeedbackNote] = useState("");
   const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const [checkoutStatus, setCheckoutStatus] = useState<"" | "activating" | "active">("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,11 +48,22 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    apiJSON<BillingEntitlementResponse>("/api/me/billing", { signal: controller.signal })
-      .then(setBilling)
-      .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
-      });
+    const checkoutComplete = new URLSearchParams(window.location.search).get("checkout") === "complete";
+    if (checkoutComplete) setCheckoutStatus("activating");
+    async function refreshBilling() {
+      for (let attempt = 0; attempt < (checkoutComplete ? 6 : 1); attempt += 1) {
+        const next = await apiJSON<BillingEntitlementResponse>("/api/me/billing", { signal: controller.signal });
+        setBilling(next);
+        if (["essential", "pro"].includes(next.billing.planId)) {
+          if (checkoutComplete) setCheckoutStatus("active");
+          return;
+        }
+        if (checkoutComplete) await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      }
+    }
+    void refreshBilling().catch((requestError) => {
+      if (requestError.name !== "AbortError") setError(requestError.message);
+    });
     return () => controller.abort();
   }, []);
 
@@ -75,12 +87,13 @@ export default function SettingsPage() {
     }
   }
 
-  async function openBilling(action: "checkout" | "portal") {
+  async function openBilling(action: "checkout" | "portal", planId?: "essential" | "pro") {
     setBillingBusy(true);
     setError("");
     try {
       const response = await apiJSON<{ url: string }>(`/api/me/billing/${action}`, {
         method: "POST",
+        body: action === "checkout" ? { planId } : undefined,
       });
       const destination = new URL(response.url);
       if (destination.protocol !== "https:") throw new Error("Billing returned an unsafe link.");
@@ -102,7 +115,7 @@ export default function SettingsPage() {
       await apiJSON("/api/me/billing/feedback", {
         method: "POST",
         body: {
-          context: billing.billing.planId === "free" ? "non_conversion" : "cancellation",
+          context: billing.billing.planId === "none" ? "non_conversion" : "cancellation",
           reasonCode: feedbackReason,
           note: feedbackNote,
         },
@@ -135,19 +148,21 @@ export default function SettingsPage() {
                 <p className="atelier-eyebrow">Plan & usage</p>
                 <h2 id="billing-heading">{billing.billing.planName}</h2>
                 <p>
-                  {billing.billing.generationRemaining} of {billing.billing.generationAllowance} lesson generations remain in this period.
+                  {billing.billing.generationUnlimited
+                    ? "Unlimited lesson generations, with fair-use safeguards."
+                    : "Generation is available after you choose a paid plan."}
                 </p>
-              </div>
-              <div className="billing-usage" aria-label={`${billing.billing.generationUsed} generations used`}>
-                <span style={{ width: `${Math.min(100, (billing.billing.generationUsed / Math.max(1, billing.billing.generationAllowance)) * 100)}%` }} />
               </div>
               <div className="billing-summary">
                 <span><Sparkles size={16} /></span>
                 <span>
-                  <strong>{billing.billing.generationUsed} used</strong>
-                  <small>Resets {new Date(billing.billing.periodEnd).toLocaleDateString()}</small>
+                  <strong>{billing.billing.streamUnlimited ? "Unlimited learning streams" : `${billing.billing.streamUsed} of ${billing.billing.streamAllowance ?? 0} streams used`}</strong>
+                  <small>{billing.billing.generationUsed} lessons generated this period</small>
                 </span>
               </div>
+              {checkoutStatus === "activating" ? <p className="billing-notice" role="status">Payment completed. Paddle is activating your plan; this usually takes a few seconds.</p> : null}
+              {checkoutStatus === "active" ? <p className="billing-notice" role="status">Your paid plan is active.</p> : null}
+              {billing.billing.cancelAtPeriodEnd ? <p className="billing-notice" role="status">Your subscription is scheduled to end after the current billing period. Existing lessons will remain readable.</p> : null}
               {billing.billing.entitlementStatus === "grace" ? (
                 <p className="billing-notice" role="status">Payment needs attention. Generation remains available temporarily during the grace period.</p>
               ) : null}
@@ -155,15 +170,15 @@ export default function SettingsPage() {
                 <p className="billing-notice billing-notice-error" role="status">New lesson generation is paused. Your existing lessons remain available.</p>
               ) : null}
               <div className="settings-actions">
-                {billing.billing.planId === "free" ? (
-                  <button
-                    className="atelier-primary"
-                    type="button"
-                    disabled={billingBusy || !billing.commerceAvailable}
-                    onClick={() => openBilling("checkout")}
-                  >
-                    <CreditCard size={15} /> {billingBusy ? "Opening…" : "Start Pro"}
-                  </button>
+                {billing.billing.planId === "none" ? (
+                  <>
+                    <button className="atelier-secondary" type="button" disabled={billingBusy || !billing.commerceAvailable} onClick={() => openBilling("checkout", "essential")}>
+                      <CreditCard size={15} /> {billingBusy ? "Opening…" : "Start Essential · $9/mo"}
+                    </button>
+                    <button className="atelier-primary" type="button" disabled={billingBusy || !billing.commerceAvailable} onClick={() => openBilling("checkout", "pro")}>
+                      <CreditCard size={15} /> {billingBusy ? "Opening…" : "Start Pro · $19/mo"}
+                    </button>
+                  </>
                 ) : (
                   <button
                     className="atelier-secondary"
@@ -176,9 +191,9 @@ export default function SettingsPage() {
                 )}
                 {!billing.commerceAvailable ? <small>Paid plans are not available in this environment.</small> : null}
               </div>
-              {(billing.billing.planId === "free" || ["canceled", "refunded"].includes(billing.billing.subscriptionStatus)) ? (
+              {(billing.billing.planId === "none" || ["canceled", "refunded"].includes(billing.billing.subscriptionStatus)) ? (
                 <details className="billing-feedback">
-                  <summary>{billing.billing.planId === "free" ? "Tell us why Pro is not right yet" : "Tell us why you left"}</summary>
+                  <summary>{billing.billing.planId === "none" ? "Tell us why a paid plan is not right yet" : "Tell us why you left"}</summary>
                   <label>
                     <span>Primary reason</span>
                     <select value={feedbackReason} onChange={(event) => setFeedbackReason(event.target.value)}>

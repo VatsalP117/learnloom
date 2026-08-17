@@ -9,9 +9,16 @@ customer email addresses, or payment details into repository evidence.
 - Dedicated staging hostname, database, object store, Clerk instance, and
   Paddle sandbox account.
 - `PADDLE_API_BASE_URL=https://sandbox-api.paddle.com`.
-- Sandbox-only API key, webhook secret, and recurring Pro price.
+- Sandbox-only API key, client token, webhook secret, and separate recurring
+  Essential ($9/month) and Pro ($19/month) prices.
+- Paddle default payment link set to `https://app.learnloom.blog/checkout` for
+  live and to the equivalent dedicated hostname for staging. The page must be
+  approved by Paddle and must load Paddle.js.
+- Webhook destination set to `https://app.learnloom.blog/webhooks/paddle` (or
+  the staging equivalent) with subscription, transaction, and adjustment
+  lifecycle events enabled.
 - Immutable `LEARNLOOM_RELEASE_VERSION` visible in the response header.
-- Schema version 36 and clean health/readiness.
+- Schema version 41 and clean health/readiness.
 - Test account whose account ID is attached by the server-created checkout;
   never hand-edit `custom_data` to manufacture success evidence.
 
@@ -23,20 +30,23 @@ and whether existing lessons remain accessible.
 
 | Scenario | Required result |
 | --- | --- |
-| Free account | 3/30-day allowance; fourth creation rejected before work exists |
+| No active plan | Stream creation and lesson generation are blocked; existing lessons remain readable |
+| Essential purchase | Plan becomes Essential; up to 3 total learning streams and unlimited lesson generation |
+| Essential stream boundary | Fourth stream is rejected atomically; generating more lessons in an existing stream remains available |
+| Pro purchase | Plan becomes Pro; learning streams and lesson generation are unlimited |
 | Checkout open/retry | one pending checkout reused for 30 minutes; no second surfaced payment link |
-| Trial starts | Pro/trialing/active; 30 allowance; one trial event |
-| Transaction completes | Pro/active; pre-tax revenue and Paddle fee recorded once |
+| Trial starts, if configured in Paddle | Selected plan/trialing/active; unlimited generation; one trial event |
+| Transaction completes | Selected plan/active; pre-tax revenue and Paddle fee recorded once |
 | Duplicate webhook | 204; no duplicate lifecycle, revenue, or usage row |
 | Same event ID, changed body | rejected; original receipt preserved |
 | Older webhook after newer state | audited but cannot roll state backward |
 | Payment failure | past_due/grace; generation available only until grace expiry |
 | Paused | generation_paused; existing lessons and review remain readable |
-| Resumed | active; reactivation event; allowance restored for current period |
-| Cancellation | generation_paused/Free policy; content remains readable |
+| Resumed | active; reactivation event; selected stream entitlement restored |
+| Cancellation | Paid entitlement ends according to Paddle state; new streams and generation stop, while content remains readable |
 | Partial approved refund | refund ledger entry; subscription state unchanged |
 | Full refund plus cancel | refund and cancellation recorded separately; generation paused |
-| Unrelated Paddle price | event audited/ignored; no Pro entitlement |
+| Unrelated Paddle price | event audited/ignored; no paid entitlement |
 | Unknown Learnloom account | non-2xx/retryable processing failure; no processed receipt |
 | Provider API outage | checkout/portal returns safe service error; no entitlement granted |
 | Webhook delivery outage | Paddle retries; later delivery applies exactly once |

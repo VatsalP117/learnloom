@@ -183,15 +183,15 @@ export default function MarketingLanding() {
 
         <section className="ll-pricing-section" id="pricing" aria-labelledby="pricing-heading">
           <div className="ll-section-intro">
-            <p className="ll-eyebrow">Design-partner pricing</p>
-            <h2 id="pricing-heading">Experience the loop free.<br />Pay when it becomes a habit.</h2>
-            <p>This is our launch hypothesis, not an “unlimited AI” promise. We will keep the allowance visible and revise it only from measured cost and learning outcomes.</p>
+            <p className="ll-eyebrow">Paid beta pricing</p>
+            <h2 id="pricing-heading">Choose how many subjects<br />you want to keep moving.</h2>
+            <p>Both plans include unlimited lesson generation subject to fair-use and service-safety safeguards. The plan boundary is the number of learning streams, not an artificial monthly lesson quota.</p>
           </div>
           <div className="ll-pricing-grid">
-            <article><p>Free</p><h3>$0</h3><span>per month</span><ul><li><Check size={15} /> One starter learning path</li><li><Check size={15} /> 3 lesson generations per 30 days</li><li><Check size={15} /> Private archive and review</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Start free <ArrowRight size={15} /></a></article>
-            <article className="featured"><p>Pro design partner</p><h3>$15</h3><span>per month · price hypothesis</span><ul><li><Check size={15} /> 30 lesson generations per 30 days</li><li><Check size={15} /> Full learning and publishing loop</li><li><Check size={15} /> Cancel in the hosted billing portal</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Join the design-partner beta <ArrowRight size={15} /></a></article>
+            <article><p>Essential</p><h3>$9</h3><span>per month</span><ul><li><Check size={15} /> Up to 3 learning streams</li><li><Check size={15} /> Unlimited generated lessons</li><li><Check size={15} /> Private archive, review, and publishing</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Choose Essential <ArrowRight size={15} /></a></article>
+            <article className="featured"><p>Pro</p><h3>$19</h3><span>per month</span><ul><li><Check size={15} /> Unlimited learning streams</li><li><Check size={15} /> Unlimited generated lessons</li><li><Check size={15} /> Full learning and publishing loop</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Choose Pro <ArrowRight size={15} /></a></article>
           </div>
-          <p className="ll-pricing-note">Taxes may be added or included based on your location and will be shown before payment. Paddle acts as merchant of record and provides invoices. Existing lessons remain readable after cancellation; new generation returns to the Free allowance.</p>
+          <p className="ll-pricing-note">No permanent free plan. Taxes may be added or included based on location and are shown before payment. Paddle acts as merchant of record and provides invoices. Cancel in the hosted portal; existing lessons remain readable, while new generation stops when paid access ends.</p>
         </section>
 
         <section className="ll-email-section">

@@ -21,6 +21,7 @@ type paddleCheckoutRequest struct {
 		Quantity int    `json:"quantity"`
 	} `json:"items"`
 	CollectionMode string         `json:"collection_mode"`
+	CustomerID     string         `json:"customer_id,omitempty"`
 	CustomData     map[string]any `json:"custom_data"`
 	Checkout       struct {
 		URL string `json:"url"`
@@ -46,18 +47,29 @@ type paddlePortalResponse struct {
 	} `json:"data"`
 }
 
-func (s *Server) createPaddleCheckout(ctx context.Context, accountID string) (string, string, error) {
+func (s *Server) createPaddleCheckout(
+	ctx context.Context,
+	accountID, planID, customerID string,
+) (string, string, error) {
 	if !s.paddleConfigured() {
 		return "", "", errors.New("billing provider is unavailable")
+	}
+	priceID, ok := s.paddlePriceForPlan(planID)
+	if !ok {
+		return "", "", errors.New("billing plan is invalid")
+	}
+	if customerID != "" && !strings.HasPrefix(customerID, "ctm_") {
+		customerID = ""
 	}
 	var payload paddleCheckoutRequest
 	payload.Items = append(payload.Items, struct {
 		PriceID  string `json:"price_id"`
 		Quantity int    `json:"quantity"`
-	}{PriceID: s.cfg.PaddleProPriceID, Quantity: 1})
+	}{PriceID: priceID, Quantity: 1})
 	payload.CollectionMode = "automatic"
-	payload.CustomData = map[string]any{"account_id": accountID}
-	payload.Checkout.URL = strings.TrimRight(s.cfg.AppOrigin, "/") + "/settings?checkout=complete"
+	payload.CustomerID = customerID
+	payload.CustomData = map[string]any{"account_id": accountID, "plan_id": planID}
+	payload.Checkout.URL = strings.TrimRight(s.cfg.AppOrigin, "/") + "/checkout"
 	var response paddleCheckoutResponse
 	if err := s.callPaddle(ctx, http.MethodPost, "/transactions", payload, &response); err != nil {
 		return "", "", err
@@ -76,12 +88,11 @@ func (s *Server) paddleCheckoutURL(transactionID string) (string, error) {
 	if !strings.HasPrefix(transactionID, "txn_") {
 		return "", errors.New("billing transaction reference is invalid")
 	}
-	checkoutURL, err := url.Parse(strings.TrimRight(s.cfg.AppOrigin, "/") + "/settings")
+	checkoutURL, err := url.Parse(strings.TrimRight(s.cfg.AppOrigin, "/") + "/checkout")
 	if err != nil || !safeHTTPSURL(checkoutURL) {
 		return "", errors.New("billing return origin is invalid")
 	}
 	query := checkoutURL.Query()
-	query.Set("checkout", "complete")
 	query.Set("_ptxn", transactionID)
 	checkoutURL.RawQuery = query.Encode()
 	return checkoutURL.String(), nil
@@ -107,7 +118,58 @@ func (s *Server) createPaddlePortal(ctx context.Context, customerID string) (str
 func (s *Server) paddleConfigured() bool {
 	approved := s.cfg.Environment != "production" || s.cfg.PaidCommerceApproved
 	return approved && s.cfg.PaddleAPIKey != "" && s.cfg.PaddleAPIBaseURL != "" &&
+		s.cfg.PaddleClientToken != "" && s.cfg.PaddleEssentialPriceID != "" &&
 		s.cfg.PaddleProPriceID != "" && s.cfg.PaddleWebhookSecret != ""
+}
+
+func (s *Server) paddlePriceForPlan(planID string) (string, bool) {
+	switch planID {
+	case "essential":
+		return s.cfg.PaddleEssentialPriceID, s.cfg.PaddleEssentialPriceID != ""
+	case "pro":
+		return s.cfg.PaddleProPriceID, s.cfg.PaddleProPriceID != ""
+	default:
+		return "", false
+	}
+}
+
+func (s *Server) paddlePlanForPrice(priceID string) (string, bool) {
+	if priceID != "" && priceID == s.cfg.PaddleEssentialPriceID {
+		return "essential", true
+	}
+	if priceID != "" && priceID == s.cfg.PaddleProPriceID {
+		return "pro", true
+	}
+	return "", false
+}
+
+// handleBillingConfig serves the public, unauthenticated commerce
+// configuration needed by the client-side checkout page. It exposes only
+// whether checkout is available, the Paddle environment, and the public
+// client-side token. Secret fields (API key, webhook secret, price IDs) are
+// never included. Responses are no-store so downstream caches cannot pin an
+// old token or stale availability.
+func (s *Server) handleBillingConfig(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		methodNotAllowed(response, http.MethodGet)
+		return
+	}
+	payload := map[string]any{
+		"commerceAvailable": false,
+		"environment":       s.paddleEnvironment(),
+	}
+	if s.paddleConfigured() {
+		payload["commerceAvailable"] = true
+		payload["clientToken"] = s.cfg.PaddleClientToken
+	}
+	writeJSON(response, http.StatusOK, payload)
+}
+
+func (s *Server) paddleEnvironment() string {
+	if s.cfg.Environment == "production" {
+		return "production"
+	}
+	return "sandbox"
 }
 
 func (s *Server) callPaddle(

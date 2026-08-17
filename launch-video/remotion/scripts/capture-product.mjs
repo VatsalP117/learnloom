@@ -3,7 +3,7 @@
  * capture-product.mjs — records short product clips of the running Learnloom demo.
  *
  * Launches Google Chrome headlessly via playwright-core, visits direct demo routes
- * (in-memory fixtures only), performs gentle scroll/click interactions, and records
+ * (in-memory fixtures only), performs concise product actions, and records
  * one WebM per clip into public/product-clips/.
  *
  * Requirements:
@@ -94,12 +94,15 @@ const CLIPS = [
       await page
         .getByRole("heading", { name: "Active learning streams" })
         .waitFor({ state: "visible" });
-      // Gentle scroll down the Today page to reveal the day's streams.
-      for (const delta of [420, 420, 420]) {
-        await page.mouse.wheel(0, delta);
-        await sleep(1_100);
-      }
-      await sleep(1_400);
+      // Show a real decision: focus the recommended lesson, then continue into it.
+      const resume = page.getByRole("link", { name: "Resume lesson" });
+      await resume.hover();
+      await sleep(850);
+      await resume.click();
+      await page.locator("article.reader-paper").waitFor({ state: "visible" });
+      await sleep(1_100);
+      await page.getByRole("link", { name: /A demo proves possibility/ }).click();
+      await sleep(1_300);
     },
   },
   {
@@ -130,12 +133,15 @@ const CLIPS = [
         .locator("section.reader-section h2")
         .first()
         .waitFor({ state: "visible" });
-      // Reading rhythm: scroll through the lesson paper section by section.
-      for (const delta of [480, 560, 640, 680, 680]) {
-        await page.mouse.wheel(0, delta);
-        await sleep(900);
-      }
-      await sleep(1_300);
+      // Demonstrate understanding: jump to retrieval and formulate a concise answer.
+      await page.getByRole("link", { name: /Pause and retrieve/ }).click();
+      const answer = page.locator('textarea[placeholder^="A few words are enough"]:visible').first();
+      await answer.waitFor({ state: "visible" });
+      await sleep(700);
+      await answer.fill(
+        "Test representative failures against explicit criteria and a release decision.",
+      );
+      await sleep(1_900);
     },
   },
   {
@@ -162,13 +168,14 @@ const CLIPS = [
       await page
         .getByRole("button", { name: "Reveal lesson context" })
         .waitFor({ state: "visible" });
-      await sleep(1_400);
-      // Reveal the lesson context and the recall rating controls.
+      await sleep(900);
+      // Reveal context, then commit the recall rating so the card visibly resolves.
       await page.getByRole("button", { name: "Reveal lesson context" }).click();
       await page.getByRole("button", { name: "Recalled solidly" }).waitFor({ state: "visible" });
-      await sleep(1_800);
-      await page.mouse.wheel(0, 260);
-      await sleep(1_300);
+      await sleep(1_050);
+      await page.getByRole("button", { name: "Recalled solidly" }).click();
+      await page.getByRole("button", { name: "Reveal lesson context" }).waitFor({ state: "visible" });
+      await sleep(1_250);
     },
   },
   {

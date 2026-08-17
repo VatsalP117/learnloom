@@ -130,7 +130,7 @@ func (s *Server) handleControl(
 			writeStoreError(response, err)
 			return
 		}
-		if entitlement.PlanID == "free" {
+		if entitlement.PlanID == "none" {
 			paywallID := "paywall:" + current.Account.ID + ":" + entitlement.PeriodStart.UTC().Format("2006-01-02")
 			if err := s.store.RecordBillingLifecycleEvent(
 				request.Context(), current.Account.ID, "paywall_exposed", paywallID, time.Now().UTC(),
@@ -153,18 +153,28 @@ func (s *Server) handleControl(
 			writeProblem(response, http.StatusServiceUnavailable, "billing_unavailable", "Billing is not available yet.")
 			return
 		}
+		var body struct {
+			PlanID string `json:"planId"`
+		}
+		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
+			return
+		}
+		if _, ok := s.paddlePriceForPlan(body.PlanID); !ok {
+			writeProblem(response, http.StatusBadRequest, "invalid_request", "Choose Essential or Pro.")
+			return
+		}
 		entitlement, err := s.store.GetBillingEntitlement(request.Context(), current.Account.ID, time.Now().UTC())
 		if err != nil {
 			writeStoreError(response, err)
 			return
 		}
-		if entitlement.PlanID == "pro" && entitlement.SubscriptionStatus != "canceled" &&
-			entitlement.SubscriptionStatus != "refunded" {
-			writeProblem(response, http.StatusConflict, "billing_already_active", "Your Pro subscription is already active.")
+		if (entitlement.PlanID == "essential" || entitlement.PlanID == "pro") &&
+			entitlement.SubscriptionStatus != "canceled" && entitlement.SubscriptionStatus != "refunded" {
+			writeProblem(response, http.StatusConflict, "billing_already_active", "Manage your active subscription in the billing portal.")
 			return
 		}
 		now := time.Now().UTC()
-		pendingID, err := s.store.GetPendingBillingCheckout(request.Context(), current.Account.ID, now)
+		pendingID, err := s.store.GetPendingBillingCheckout(request.Context(), current.Account.ID, body.PlanID, now)
 		if err != nil {
 			s.internalError(response, request, err)
 			return
@@ -178,13 +188,23 @@ func (s *Server) handleControl(
 			writeJSON(response, http.StatusOK, map[string]string{"url": checkoutURL})
 			return
 		}
-		transactionID, checkoutURL, err := s.createPaddleCheckout(request.Context(), current.Account.ID)
+		// Reuse the stored Paddle customer when a previously billed account
+		// returns; a missing customer is fine because the first checkout
+		// creates it on Paddle's side.
+		customerID, err := s.store.GetBillingProviderCustomerID(request.Context(), current.Account.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			s.internalError(response, request, err)
+			return
+		}
+		transactionID, checkoutURL, err := s.createPaddleCheckout(
+			request.Context(), current.Account.ID, body.PlanID, customerID,
+		)
 		if err != nil {
 			s.internalError(response, request, err)
 			return
 		}
 		selectedID, err := s.store.RecordPendingBillingCheckout(
-			request.Context(), current.Account.ID, transactionID, now,
+			request.Context(), current.Account.ID, transactionID, body.PlanID, now,
 		)
 		if err != nil {
 			s.internalError(response, request, err)

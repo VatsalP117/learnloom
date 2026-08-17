@@ -1,12 +1,12 @@
 # Learnloom launch film — Remotion
 
-> **V1/V2 are legacy compositions.** They contain older UI and publication
-> behavior. `LearnloomLaunchV3` is the current footage-led cut; review its final
+> **V1/V2/V3 are legacy compositions.** They contain older UI, pacing, or publication
+> behavior. `LearnloomLaunchV4` is the current interaction-led cut; review its final
 > claims and pacing before publishing.
 
 The legacy 45-second composition is built around the July 2026 Learnloom UI.
-The current V3 cut uses the refined August product, a white/warm-paper visual
-system, black editorial typography, sharp lime accents, and fresh product
+The current V4 cut uses the refined August product, a clean white visual system,
+black editorial typography, restrained lime accents, and action-led product
 recordings.
 
 The main demo is a continuous animated Learnloom workspace rather than a
@@ -40,6 +40,7 @@ npm run render:v1.1
 npm run render:v2
 npm run capture
 npm run render:v3
+npm run render:v4
 ```
 
 The 45-second composition is `LearnloomLaunch` and renders to
@@ -51,3 +52,10 @@ The 45-second composition is `LearnloomLaunch` and renders to
 `public/product-clips/`. Start the Vite demo at `http://127.0.0.1:4173`, run
 `npm run capture`, then render with `npm run render:v3`. The output is
 `../output/learnloom-launch-v3.mp4`.
+
+`LearnloomLaunchV4` is the current 29.4-second launch cut. It replaces decorative
+transitions with a direct choose → understand → retrieve → keep story, uses
+full-bleed product actions, and carries only the continuous music bed—no typing
+or transition sound effects. A dedicated domain reveal introduces each learner's
+personal learning home. Render it with `npm run render:v4`; the output is
+`../output/learnloom-launch-v4.mp4`.

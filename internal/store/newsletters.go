@@ -75,9 +75,8 @@ func (s *Store) CreateNewsletter(
 	if err != nil {
 		return CreateNewsletterResult{}, err
 	}
-	if maximumPerAccount < 1 {
-		maximumPerAccount = 10
-	}
+	// maximumPerAccount is an optional emergency operational ceiling. Zero or
+	// negative disables it; plan stream enforcement below is authoritative.
 	now := time.Now().UTC()
 	next, err := NextRhythmOccurrence(
 		now,
@@ -115,8 +114,11 @@ func (s *Store) CreateNewsletter(
 	).Scan(&count); err != nil {
 		return CreateNewsletterResult{}, fmt.Errorf("count Account Newsletters: %w", err)
 	}
-	if count >= maximumPerAccount {
-		return CreateNewsletterResult{}, ErrQuotaExceeded
+	// The accounts row is locked above, so the plan allowance check below is
+	// atomic with this creation: concurrent creators cannot overshoot the
+	// plan's stream allowance.
+	if err := enforceStreamEntitlementTx(ctx, tx, accountID, count, maximumPerAccount, now); err != nil {
+		return CreateNewsletterResult{}, err
 	}
 	publicSlug, err := allocateNewsletterSlug(ctx, tx, accountID, normalized.Name)
 	if err != nil {

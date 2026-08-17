@@ -23,6 +23,14 @@ func TestGenerationEntitlementReservationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	initial, err := database.GetBillingEntitlement(ctx, account.ID, now)
+	if err != nil || initial.PlanID != "none" || initial.CanGenerate ||
+		initial.StreamAllowance == nil || *initial.StreamAllowance != 0 {
+		t.Fatalf("paid-only initial entitlement=%#v err=%v", initial, err)
+	}
+	if err := activateIntegrationPlan(ctx, database, account.ID, "essential", now); err != nil {
+		t.Fatal(err)
+	}
 	input := integrationNewsletterInput([]domain.SourceDefinition{{
 		Name: "Entitlement source", URL: "https://example.com/entitlement", Limit: 5,
 	}})
@@ -31,9 +39,9 @@ func TestGenerationEntitlementReservationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	entitlement, err := database.GetBillingEntitlement(ctx, account.ID, now)
-	if err != nil || entitlement.PlanID != "free" ||
-		entitlement.GenerationAllowance != 3 || entitlement.GenerationUsed != 1 ||
-		entitlement.GenerationRemaining != 2 || !entitlement.CanGenerate {
+	if err != nil || entitlement.PlanID != "essential" ||
+		!entitlement.GenerationUnlimited || entitlement.GenerationUsed != 1 ||
+		!entitlement.CanGenerate {
 		t.Fatalf("initial entitlement=%#v err=%v", entitlement, err)
 	}
 	duplicate, err := database.EnqueueManualIssue(ctx, account.ID, created.Newsletter.ID, 20)
@@ -49,7 +57,7 @@ func TestGenerationEntitlementReservationIntegration(t *testing.T) {
 	`, created.FirstIssue.ID, now); err != nil {
 		t.Fatal(err)
 	}
-	for expectedUsed := 2; expectedUsed <= 3; expectedUsed++ {
+	for expectedUsed := 2; expectedUsed <= 5; expectedUsed++ {
 		issue, err := database.EnqueueManualIssue(ctx, account.ID, created.Newsletter.ID, 20)
 		if err != nil {
 			t.Fatal(err)
@@ -64,14 +72,10 @@ func TestGenerationEntitlementReservationIntegration(t *testing.T) {
 			t.Fatalf("used=%d entitlement=%#v err=%v", expectedUsed, entitlement, err)
 		}
 	}
-	if _, err := database.EnqueueManualIssue(
-		ctx, account.ID, created.Newsletter.ID, 20,
-	); !errors.Is(err, ErrEntitlementRequired) {
-		t.Fatalf("fourth free generation err=%v", err)
-	}
 	entitlement, err = database.GetBillingEntitlement(ctx, account.ID, now)
-	if err != nil || entitlement.GenerationRemaining != 0 || entitlement.CanGenerate {
-		t.Fatalf("exhausted entitlement=%#v err=%v", entitlement, err)
+	if err != nil || entitlement.GenerationUsed != 5 || !entitlement.CanGenerate ||
+		!entitlement.GenerationUnlimited {
+		t.Fatalf("unlimited generation entitlement=%#v err=%v", entitlement, err)
 	}
 	var issueCount int
 	if err := database.pool.QueryRow(ctx, `
@@ -79,8 +83,8 @@ func TestGenerationEntitlementReservationIntegration(t *testing.T) {
 	`, created.Newsletter.ID).Scan(&issueCount); err != nil {
 		t.Fatal(err)
 	}
-	if issueCount != 3 {
-		t.Fatalf("entitlement rejection created work: issues=%d", issueCount)
+	if issueCount != 5 {
+		t.Fatalf("unexpected generated issue count=%d", issueCount)
 	}
 }
 
@@ -99,7 +103,7 @@ func TestBillingLifecycleIsReplaySafeAndMonotonicIntegration(t *testing.T) {
 	trialAt := now.Add(time.Minute)
 	trialEnd := now.Add(14 * 24 * time.Hour)
 	trial := BillingLifecycleUpdate{
-		AccountID: account.ID, ProviderEventID: "evt-trial-" + uuid.NewString(),
+		AccountID: account.ID, PlanID: "pro", ProviderEventID: "evt-trial-" + uuid.NewString(),
 		EventType: "subscription.created", ProviderCustomerID: "ctm_test",
 		ProviderSubscriptionID: "sub_test", SubscriptionStatus: "trialing",
 		PeriodStart: now, PeriodEnd: trialEnd, TrialEndsAt: &trialEnd,
@@ -118,7 +122,7 @@ func TestBillingLifecycleIsReplaySafeAndMonotonicIntegration(t *testing.T) {
 	}
 	entitlement, err := database.GetBillingEntitlement(ctx, account.ID, trialAt)
 	if err != nil || entitlement.PlanID != "pro" || entitlement.SubscriptionStatus != "trialing" ||
-		entitlement.GenerationAllowance != 30 || !entitlement.CanGenerate {
+		!entitlement.GenerationUnlimited || !entitlement.CanGenerate {
 		t.Fatalf("trial entitlement=%#v err=%v", entitlement, err)
 	}
 	pastDueAt := trialAt.Add(48 * time.Hour)
@@ -155,8 +159,7 @@ func TestBillingLifecycleIsReplaySafeAndMonotonicIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	entitlement, err = database.GetBillingEntitlement(ctx, account.ID, refunded.EventOccurredAt)
-	if err != nil || entitlement.SubscriptionStatus != "refunded" || entitlement.CanGenerate ||
-		entitlement.GenerationRemaining != 3 {
+	if err != nil || entitlement.PlanID != "none" || entitlement.SubscriptionStatus != "refunded" || entitlement.CanGenerate {
 		t.Fatalf("refunded entitlement=%#v err=%v", entitlement, err)
 	}
 	var eventCount int
@@ -227,7 +230,7 @@ func TestApprovedRefundIsFinancialFactNotSubscriptionCancellationIntegration(t *
 		t.Fatal(err)
 	}
 	activation := BillingLifecycleUpdate{
-		AccountID: account.ID, ProviderEventID: "evt-paid-" + uuid.NewString(),
+		AccountID: account.ID, PlanID: "essential", ProviderEventID: "evt-paid-" + uuid.NewString(),
 		EventType: "transaction.completed", ProviderCustomerID: "ctm_refund_test",
 		ProviderSubscriptionID: "sub_refund_test", SubscriptionStatus: "active",
 		PeriodStart: now, PeriodEnd: now.Add(30 * 24 * time.Hour),
@@ -316,21 +319,21 @@ func TestPendingBillingCheckoutIsReusedAndCompletedIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstID := "txn_first_" + uuid.NewString()
-	selected, err := database.RecordPendingBillingCheckout(ctx, account.ID, firstID, now)
+	selected, err := database.RecordPendingBillingCheckout(ctx, account.ID, firstID, "pro", now)
 	if err != nil || selected != firstID {
 		t.Fatalf("first checkout=%q err=%v", selected, err)
 	}
 	secondID := "txn_second_" + uuid.NewString()
-	selected, err = database.RecordPendingBillingCheckout(ctx, account.ID, secondID, now.Add(time.Second))
+	selected, err = database.RecordPendingBillingCheckout(ctx, account.ID, secondID, "pro", now.Add(time.Second))
 	if err != nil || selected != firstID {
 		t.Fatalf("concurrent checkout selected=%q err=%v", selected, err)
 	}
-	pending, err := database.GetPendingBillingCheckout(ctx, account.ID, now.Add(time.Minute))
+	pending, err := database.GetPendingBillingCheckout(ctx, account.ID, "pro", now.Add(time.Minute))
 	if err != nil || pending != firstID {
 		t.Fatalf("pending checkout=%q err=%v", pending, err)
 	}
 	activation := BillingLifecycleUpdate{
-		AccountID: account.ID, ProviderEventID: "evt-checkout-paid-" + uuid.NewString(),
+		AccountID: account.ID, PlanID: "pro", ProviderEventID: "evt-checkout-paid-" + uuid.NewString(),
 		EventType: "transaction.completed", ProviderTransactionID: firstID,
 		ProviderCustomerID: "ctm_checkout", ProviderSubscriptionID: "sub_checkout",
 		SubscriptionStatus: "active", PeriodStart: now,
@@ -341,7 +344,7 @@ func TestPendingBillingCheckoutIsReusedAndCompletedIntegration(t *testing.T) {
 	if err := database.ApplyBillingLifecycleUpdate(ctx, activation, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	pending, err = database.GetPendingBillingCheckout(ctx, account.ID, now.Add(2*time.Minute))
+	pending, err = database.GetPendingBillingCheckout(ctx, account.ID, "pro", now.Add(2*time.Minute))
 	if err != nil || pending != "" {
 		t.Fatalf("completed checkout remained pending=%q err=%v", pending, err)
 	}
@@ -355,7 +358,7 @@ func TestBillingLifecycleRejectsUnknownAccountAndMissingRevenueIntegration(t *te
 	defer cancel()
 	now := time.Now().UTC()
 	unknown := BillingLifecycleUpdate{
-		AccountID: uuid.NewString(), ProviderEventID: "evt-unknown-" + uuid.NewString(),
+		AccountID: uuid.NewString(), PlanID: "pro", ProviderEventID: "evt-unknown-" + uuid.NewString(),
 		EventType: "subscription.created", ProviderCustomerID: "ctm_unknown",
 		ProviderSubscriptionID: "sub_unknown", SubscriptionStatus: "trialing",
 		PeriodStart: now, PeriodEnd: now.Add(14 * 24 * time.Hour),
@@ -387,7 +390,7 @@ func TestBillingLifecycleRejectsUnknownAccountAndMissingRevenueIntegration(t *te
 		t.Fatal("completed transaction without revenue was accepted")
 	}
 	entitlement, err := database.GetBillingEntitlement(ctx, account.ID, now)
-	if err != nil || entitlement.PlanID != "free" {
+	if err != nil || entitlement.PlanID != "none" {
 		t.Fatalf("missing revenue activated entitlement=%#v err=%v", entitlement, err)
 	}
 	activated := missing
@@ -410,4 +413,23 @@ func TestBillingLifecycleRejectsUnknownAccountAndMissingRevenueIntegration(t *te
 	`, account.ID).Scan(&revenueCount); err != nil || revenueCount != 0 {
 		t.Fatalf("subscription activation invented revenue=%d err=%v", revenueCount, err)
 	}
+}
+
+func activateIntegrationPlan(
+	ctx context.Context,
+	database *Store,
+	accountID, planID string,
+	now time.Time,
+) error {
+	if _, err := database.GetBillingEntitlement(ctx, accountID, now); err != nil {
+		return err
+	}
+	_, err := database.pool.Exec(ctx, `
+		UPDATE account_billing SET
+		  provider = 'paddle', plan_id = $2, subscription_status = 'active',
+		  entitlement_status = 'active', current_period_start = $3,
+		  current_period_end = $3::timestamptz + interval '30 days', updated_at = $3
+		WHERE account_id = $1
+	`, accountID, planID, now)
+	return err
 }

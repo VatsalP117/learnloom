@@ -46,7 +46,9 @@ type Config struct {
 	PaddleWebhookSecret      string
 	PaddleAPIKey             string
 	PaddleAPIBaseURL         string
+	PaddleEssentialPriceID   string
 	PaddleProPriceID         string
+	PaddleClientToken        string
 	PaidCommerceApproved     bool
 	PaddleHTTPClient         *http.Client
 	MaxRequestBodyBytes      int64
@@ -113,9 +115,6 @@ func NewServer(
 	cfg.FeaturedSites = featuredSites
 	if cfg.MaxRequestBodyBytes == 0 {
 		cfg.MaxRequestBodyBytes = 1 << 20
-	}
-	if cfg.MaxNewsletters == 0 {
-		cfg.MaxNewsletters = 10
 	}
 	if cfg.DailyAccountLimit == 0 {
 		cfg.DailyAccountLimit = 5
@@ -386,6 +385,9 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 	case "/webhooks/paddle":
 		s.handlePaddleWebhook(response, request)
 		return
+	case "/api/billing/config":
+		s.handleBillingConfig(response, request)
+		return
 	case "/public-follow/confirm":
 		s.handlePublicFollowLifecycle(response, request, true)
 		return
@@ -545,7 +547,11 @@ func (s *Server) serveIndex(response http.ResponseWriter, request *http.Request)
 		s.internalError(response, request, fmt.Errorf("read frontend index: %w", err))
 		return
 	}
-	s.applyAppCSP(response)
+	if request.URL.Path == "/checkout" {
+		s.applyCheckoutCSP(response)
+	} else {
+		s.applyAppCSP(response)
+	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(http.StatusOK)
@@ -561,7 +567,11 @@ func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http
 		return
 	}
 	body = decorateMarketingIndex(body, s.cfg.ApexOrigin)
-	s.applyAppCSP(response)
+	if request.URL.Path == "/checkout" {
+		s.applyCheckoutCSP(response)
+	} else {
+		s.applyAppCSP(response)
+	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(http.StatusOK)
@@ -609,20 +619,35 @@ func isFaviconPath(requestPath string) bool {
 }
 
 func (s *Server) applyAppCSP(response http.ResponseWriter) {
+	response.Header().Set("Content-Security-Policy", s.appCSP())
+}
+
+func (s *Server) appCSP() string {
 	clerkOrigin := strings.TrimRight(s.cfg.ClerkFrontendOrigin, "/")
 	sources := "'self'"
 	if clerkOrigin != "" {
 		sources += " " + clerkOrigin
 	}
-	response.Header().Set(
-		"Content-Security-Policy",
-		"default-src 'self'; script-src "+sources+
-			" https://challenges.cloudflare.com; connect-src "+sources+
-			"; img-src 'self' data: https://img.clerk.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; "+
-			"font-src 'self' https://cdn.fontshare.com; worker-src 'self' blob:; "+
-			"frame-src https://challenges.cloudflare.com; "+
-			"base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
-	)
+	return "default-src 'self'; script-src " + sources +
+		" https://challenges.cloudflare.com; connect-src " + sources +
+		"; img-src 'self' data: https://img.clerk.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; " +
+		"font-src 'self' https://cdn.fontshare.com; worker-src 'self' blob:; " +
+		"frame-src https://challenges.cloudflare.com; " +
+		"base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"
+}
+
+// applyCheckoutCSP extends the app policy only for the public /checkout page,
+// where Paddle.js must load its script from the Paddle CDN, call the Paddle
+// API, and render the hosted checkout overlay in an iframe. All other routes
+// keep the strict base policy.
+func (s *Server) applyCheckoutCSP(response http.ResponseWriter) {
+	policy := strings.Replace(s.appCSP(),
+		"script-src ", "script-src https://cdn.paddle.com ", 1)
+	policy = strings.Replace(policy,
+		"connect-src ", "connect-src https://*.paddle.com https://*.paddle.io ", 1)
+	policy = strings.Replace(policy,
+		"frame-src ", "frame-src https://*.paddle.com https://*.paddle.io ", 1)
+	response.Header().Set("Content-Security-Policy", policy)
 }
 
 func (s *Server) handleReady(response http.ResponseWriter, request *http.Request) {

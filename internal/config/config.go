@@ -105,7 +105,9 @@ type Paddle struct {
 	APIKey            string
 	APIBaseURL        string
 	WebhookSecret     string
+	EssentialPriceID  string
 	ProPriceID        string
+	ClientToken       string
 	CommerceApproved  bool
 	ApprovalReference string
 }
@@ -204,7 +206,9 @@ func Load() (Config, error) {
 			APIKey:            os.Getenv("PADDLE_API_KEY"),
 			APIBaseURL:        env("PADDLE_API_BASE_URL", "https://api.paddle.com"),
 			WebhookSecret:     os.Getenv("PADDLE_WEBHOOK_SECRET"),
+			EssentialPriceID:  os.Getenv("PADDLE_ESSENTIAL_PRICE_ID"),
 			ProPriceID:        os.Getenv("PADDLE_PRO_PRICE_ID"),
+			ClientToken:       os.Getenv("PADDLE_CLIENT_TOKEN"),
 			CommerceApproved:  envBool("PAID_COMMERCE_APPROVED", false),
 			ApprovalReference: os.Getenv("PAID_COMMERCE_APPROVAL_REFERENCE"),
 		},
@@ -236,8 +240,10 @@ func Load() (Config, error) {
 			MaxItemCharacters:         envInt("MAX_ITEM_CHARACTERS", 1_800),
 			MaxIntermediateCharacters: envInt("MAX_INTERMEDIATE_CHARACTERS", 24_000),
 			HistoryEntries:            envInt("LEARNING_HISTORY_ENTRIES", 14),
-			MaxNewslettersPerAccount:  envInt("MAX_NEWSLETTERS_PER_ACCOUNT", 10),
-			RequestBodyBytes:          envInt64("MAX_REQUEST_BODY_BYTES", 1<<20),
+			// Disabled (0) by default: plan enforcement is authoritative. An
+			// explicit nonzero value remains an emergency operational ceiling.
+			MaxNewslettersPerAccount: envInt("MAX_NEWSLETTERS_PER_ACCOUNT", 0),
+			RequestBodyBytes:         envInt64("MAX_REQUEST_BODY_BYTES", 1<<20),
 		},
 		SourceIntelligence: SourceIntelligence{
 			DiscoveryEnabled:       envBool("SOURCE_DISCOVERY_ENABLED", false),
@@ -304,9 +310,28 @@ func (c Config) ValidateFor(role string) error {
 	if role == "web" && c.Environment == "production" && strings.TrimSpace(c.Clerk.FrontendOrigin) == "" {
 		problems = append(problems, errors.New("CLERK_FRONTEND_ORIGIN is required in production"))
 	}
-	if (c.Paddle.APIKey != "" || c.Paddle.WebhookSecret != "" || c.Paddle.ProPriceID != "") &&
-		(c.Paddle.APIKey == "" || c.Paddle.WebhookSecret == "" || c.Paddle.ProPriceID == "") {
-		problems = append(problems, errors.New("PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_PRO_PRICE_ID must be set together"))
+	if (c.Paddle.APIKey != "" || c.Paddle.WebhookSecret != "" || c.Paddle.EssentialPriceID != "" || c.Paddle.ProPriceID != "" ||
+		c.Paddle.ClientToken != "") &&
+		(c.Paddle.APIKey == "" || c.Paddle.WebhookSecret == "" || c.Paddle.EssentialPriceID == "" || c.Paddle.ProPriceID == "" ||
+			c.Paddle.ClientToken == "") {
+		problems = append(problems, errors.New(
+			"PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, PADDLE_CLIENT_TOKEN, PADDLE_ESSENTIAL_PRICE_ID, and PADDLE_PRO_PRICE_ID must be set together",
+		))
+	}
+	if c.Paddle.EssentialPriceID != "" && c.Paddle.EssentialPriceID == c.Paddle.ProPriceID {
+		problems = append(problems, errors.New("Paddle Essential and Pro price IDs must differ"))
+	}
+	if c.Paddle.ClientToken != "" {
+		switch c.Environment {
+		case "staging":
+			if !strings.HasPrefix(c.Paddle.ClientToken, "test_") {
+				problems = append(problems, errors.New("PADDLE_CLIENT_TOKEN must begin with test_ in staging"))
+			}
+		case "production":
+			if !strings.HasPrefix(c.Paddle.ClientToken, "live_") {
+				problems = append(problems, errors.New("PADDLE_CLIENT_TOKEN must begin with live_ in production"))
+			}
+		}
 	}
 	if c.Paddle.APIKey != "" {
 		parsed, err := url.Parse(c.Paddle.APIBaseURL)

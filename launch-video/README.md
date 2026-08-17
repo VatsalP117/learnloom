@@ -1,7 +1,7 @@
 # Learnloom launch film
 
 > **Review before publication.** The V1/V2 renders and legacy storyboard predate
-> the current product UI. `LearnloomLaunchV3` is the current 26.8-second cut,
+> the current product UI. `LearnloomLaunchV4` is the current 29.4-second cut,
 > recorded from the local demo fixtures with the refined Today, Streams, lesson,
 > Review, Library, and Publishing experiences. Give the final render an editorial
 > and claims review before external use.
@@ -48,6 +48,7 @@ npm run render
 npm run render:v2
 npm run capture
 npm run render:v3
+npm run render:v4
 ```
 
 It exports a 45-second `output/learnloom-launch-remotion.mp4`. The current cut
@@ -87,3 +88,21 @@ npm run render:v3
 
 The capture script writes replaceable footage to `public/product-clips/`. The
 render is exported to `launch-video/output/learnloom-launch-v3.mp4`.
+
+## Current V4 cut
+
+`LearnloomLaunchV4` is a 29.4-second interaction-led film organized around four
+clear actions: choose, understand, retrieve, and keep. Product footage is
+full-bleed and shows real navigation, retrieval, filtering, and publication
+state changes without a persistent caption rail. A dedicated
+`maya.learnloom.blog` reveal highlights the personal learning-home domain. It
+uses the continuous music bed without typing or transition sound effects and
+ends on a clean white brand card.
+
+```sh
+cd launch-video/remotion
+npm run capture
+npm run render:v4
+```
+
+The render is exported to `launch-video/output/learnloom-launch-v4.mp4`.

@@ -24,8 +24,30 @@ func TestEmbeddedMigrationLedgerIsContiguous(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 40 {
-		t.Fatalf("embedded migration version = %d, want 40", version)
+	if version != 41 {
+		t.Fatalf("embedded migration version = %d, want 41", version)
+	}
+}
+
+func TestPaidOnlyStreamPackagingMigration(t *testing.T) {
+	t.Parallel()
+	sql, err := migrationFiles.ReadFile("migrations/041_stream_allowance.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(sql)
+	for _, expected := range []string{
+		"('none', 'No active plan', 0, 30, 0, true",
+		"('essential', 'Essential', NULL, 30, 3, true",
+		"generation_allowance = NULL",
+		"stream_allowance = NULL",
+		"active = false",
+		"WHERE plan_id = 'free'",
+		"ADD COLUMN plan_id text REFERENCES billing_plans(id)",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("paid-only stream migration missing %q", expected)
+		}
 	}
 }
 

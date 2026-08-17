@@ -170,7 +170,9 @@ func TestValidateForSeparatesSandboxTestingFromApprovedProductionCommerce(t *tes
 	configurePaddle := func(cfg *Config) {
 		cfg.Paddle.APIKey = "paddle-key"
 		cfg.Paddle.WebhookSecret = "webhook-secret"
+		cfg.Paddle.EssentialPriceID = "pri_essential"
 		cfg.Paddle.ProPriceID = "pri_pro"
+		cfg.Paddle.ClientToken = "test_client"
 	}
 
 	staging := validWorkerConfig()
@@ -192,6 +194,7 @@ func TestValidateForSeparatesSandboxTestingFromApprovedProductionCommerce(t *tes
 	production.AllowInsecurePrivateServices = true
 	production.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
 	configurePaddle(&production)
+	production.Paddle.ClientToken = "live_client"
 	production.Paddle.APIBaseURL = "https://api.paddle.com"
 	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "PAID_COMMERCE_APPROVED") {
 		t.Fatalf("unapproved production commerce should fail: %v", err)

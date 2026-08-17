@@ -39,6 +39,10 @@ type paddleSubscriptionData struct {
 			ID string `json:"id"`
 		} `json:"price"`
 	} `json:"items"`
+	ScheduledChange *struct {
+		Action      string     `json:"action"`
+		EffectiveAt *time.Time `json:"effective_at"`
+	} `json:"scheduled_change"`
 }
 
 type paddleTransactionData struct {
@@ -174,13 +178,14 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 			writeProblem(response, http.StatusBadRequest, "invalid_webhook", "The transaction payload is incomplete.")
 			return
 		}
+		planID, recognized := s.paddlePlanForTransaction(transaction)
+		if !recognized {
+			recordIgnored()
+			return
+		}
 		status := ""
 		switch event.EventType {
 		case "transaction.completed":
-			if !paddleTransactionContainsPrice(transaction, s.cfg.PaddleProPriceID) {
-				recordIgnored()
-				return
-			}
 			status = "active"
 		case "transaction.payment_failed":
 			status = "past_due"
@@ -216,6 +221,7 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 		}
 		err = s.store.ApplyBillingLifecycleUpdate(request.Context(), store.BillingLifecycleUpdate{
 			AccountID:       transaction.CustomData.AccountID,
+			PlanID:          planID,
 			ProviderEventID: event.EventID, EventType: event.EventType,
 			ProviderCustomerID:     transaction.CustomerID,
 			ProviderSubscriptionID: transaction.SubscriptionID,
@@ -239,7 +245,8 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 		writeProblem(response, http.StatusBadRequest, "invalid_webhook", "The subscription payload is incomplete.")
 		return
 	}
-	if !paddleSubscriptionContainsPrice(subscription, s.cfg.PaddleProPriceID) {
+	planID, recognized := s.paddlePlanForSubscription(subscription)
+	if !recognized {
 		recordIgnored()
 		return
 	}
@@ -256,13 +263,24 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 	if status == "trialing" {
 		trialEndsAt = subscription.NextBilledAt
 	}
+	// cancel_at_period_end is true only when Paddle reports a scheduled
+	// cancellation that takes effect in the future; every other subscription
+	// state (including a removed or expired scheduled change) clears it.
+	cancelAtPeriodEnd := status == "canceled"
+	if subscription.ScheduledChange != nil {
+		cancelAtPeriodEnd = subscription.ScheduledChange.Action == "cancel" &&
+			subscription.ScheduledChange.EffectiveAt != nil &&
+			subscription.ScheduledChange.EffectiveAt.After(event.OccurredAt)
+	}
 	err = s.store.ApplyBillingLifecycleUpdate(request.Context(), store.BillingLifecycleUpdate{
 		AccountID:       subscription.CustomData.AccountID,
+		PlanID:          planID,
 		ProviderEventID: event.EventID, EventType: event.EventType,
 		ProviderCustomerID:     subscription.CustomerID,
 		ProviderSubscriptionID: subscription.ID, SubscriptionStatus: status,
 		PeriodStart: periodStart, PeriodEnd: periodEnd, TrialEndsAt: trialEndsAt,
-		EventOccurredAt: event.OccurredAt, PayloadSHA256: hex.EncodeToString(sum[:]),
+		CancelAtPeriodEnd: &cancelAtPeriodEnd,
+		EventOccurredAt:   event.OccurredAt, PayloadSHA256: hex.EncodeToString(sum[:]),
 	}, time.Now().UTC())
 	if err != nil {
 		s.internalError(response, request, err)
@@ -293,6 +311,36 @@ func paddleSubscriptionContainsPrice(subscription paddleSubscriptionData, priceI
 		}
 	}
 	return false
+}
+
+func (s *Server) paddlePlanForTransaction(transaction paddleTransactionData) (string, bool) {
+	planID := ""
+	for _, item := range transaction.Items {
+		matched, ok := s.paddlePlanForPrice(item.Price.ID)
+		if !ok {
+			continue
+		}
+		if planID != "" && planID != matched {
+			return "", false
+		}
+		planID = matched
+	}
+	return planID, planID != ""
+}
+
+func (s *Server) paddlePlanForSubscription(subscription paddleSubscriptionData) (string, bool) {
+	planID := ""
+	for _, item := range subscription.Items {
+		matched, ok := s.paddlePlanForPrice(item.Price.ID)
+		if !ok {
+			continue
+		}
+		if planID != "" && planID != matched {
+			return "", false
+		}
+		planID = matched
+	}
+	return planID, planID != ""
 }
 
 func verifyPaddleSignature(

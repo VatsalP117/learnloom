@@ -12,6 +12,7 @@ import (
 
 type BillingLifecycleUpdate struct {
 	AccountID              string
+	PlanID                 string
 	ProviderEventID        string
 	EventType              string
 	ProviderCustomerID     string
@@ -27,11 +28,15 @@ type BillingLifecycleUpdate struct {
 	CurrencyCode           string
 	AmountMinor            *int64
 	ProviderFeeMinor       *int64
+	// CancelAtPeriodEnd, when non-nil, authoritatively sets the stored
+	// cancel_at_period_end flag for this event. When nil, the flag falls back
+	// to the canceled-status projection.
+	CancelAtPeriodEnd *bool
 }
 
 func (s *Store) GetPendingBillingCheckout(
 	ctx context.Context,
-	accountID string,
+	accountID, planID string,
 	now time.Time,
 ) (string, error) {
 	if now.IsZero() {
@@ -42,18 +47,24 @@ func (s *Store) GetPendingBillingCheckout(
 		return "", err
 	}
 	defer rollback(tx)
+	if planID != "essential" && planID != "pro" {
+		return "", errors.New("billing checkout plan is invalid")
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, accountID); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE billing_checkout_sessions SET status = 'expired', updated_at = $2
 		WHERE account_id = $1 AND status = 'pending'
-		  AND created_at < $2::timestamptz - interval '30 minutes'
-	`, accountID, now); err != nil {
+		  AND (created_at < $2::timestamptz - interval '30 minutes' OR plan_id <> $3)
+	`, accountID, now, planID); err != nil {
 		return "", err
 	}
 	var transactionID string
 	err = tx.QueryRow(ctx, `
 		SELECT transaction_id FROM billing_checkout_sessions
-		WHERE account_id = $1 AND status = 'pending'
-	`, accountID).Scan(&transactionID)
+		WHERE account_id = $1 AND plan_id = $2 AND status = 'pending'
+	`, accountID, planID).Scan(&transactionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if err := tx.Commit(ctx); err != nil {
 			return "", err
@@ -71,10 +82,11 @@ func (s *Store) GetPendingBillingCheckout(
 
 func (s *Store) RecordPendingBillingCheckout(
 	ctx context.Context,
-	accountID, transactionID string,
+	accountID, transactionID, planID string,
 	now time.Time,
 ) (string, error) {
-	if accountID == "" || !strings.HasPrefix(transactionID, "txn_") {
+	if accountID == "" || !strings.HasPrefix(transactionID, "txn_") ||
+		(planID != "essential" && planID != "pro") {
 		return "", errors.New("billing checkout is invalid")
 	}
 	if now.IsZero() {
@@ -85,22 +97,25 @@ func (s *Store) RecordPendingBillingCheckout(
 		return "", err
 	}
 	defer rollback(tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, accountID); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE billing_checkout_sessions SET status = 'expired', updated_at = $2
 		WHERE account_id = $1 AND status = 'pending'
-		  AND created_at < $2::timestamptz - interval '30 minutes'
-	`, accountID, now); err != nil {
+		  AND (created_at < $2::timestamptz - interval '30 minutes' OR plan_id <> $3)
+	`, accountID, now, planID); err != nil {
 		return "", err
 	}
 	var selectedID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO billing_checkout_sessions (
-		  transaction_id, account_id, status, created_at, updated_at
-		) VALUES ($1, $2, 'pending', $3, $3)
+		  transaction_id, account_id, plan_id, status, created_at, updated_at
+		) VALUES ($1, $2, $3, 'pending', $4, $4)
 		ON CONFLICT (account_id) WHERE status = 'pending' DO UPDATE SET
 		  updated_at = billing_checkout_sessions.updated_at
 		RETURNING transaction_id
-	`, transactionID, accountID, now).Scan(&selectedID)
+	`, transactionID, accountID, planID, now).Scan(&selectedID)
 	if err != nil {
 		return "", err
 	}
@@ -286,6 +301,9 @@ func (s *Store) ApplyBillingLifecycleUpdate(
 		len(update.PayloadSHA256) != 64 || update.EventOccurredAt.IsZero() {
 		return errors.New("billing lifecycle update is invalid")
 	}
+	if update.PlanID != "essential" && update.PlanID != "pro" {
+		return errors.New("billing lifecycle plan is invalid")
+	}
 	update.CurrencyCode = strings.ToUpper(strings.TrimSpace(update.CurrencyCode))
 	if update.AmountMinor != nil && (*update.AmountMinor < 0 || len(update.CurrencyCode) != 3) {
 		return errors.New("billing lifecycle amount is invalid")
@@ -330,6 +348,10 @@ func (s *Store) ApplyBillingLifecycleUpdate(
 		periodEnd = periodStart.Add(30 * 24 * time.Hour)
 	}
 	var updated bool
+	cancelAtPeriodEnd := status == "canceled"
+	if update.CancelAtPeriodEnd != nil {
+		cancelAtPeriodEnd = *update.CancelAtPeriodEnd
+	}
 	err = tx.QueryRow(ctx, `
 		WITH changed AS (
 		  UPDATE account_billing SET
@@ -348,8 +370,8 @@ func (s *Store) ApplyBillingLifecycleUpdate(
 		)
 		SELECT EXISTS (SELECT 1 FROM changed)
 	`, update.AccountID, update.ProviderCustomerID, update.ProviderSubscriptionID,
-		billingPlanForStatus(status), status, entitlement, periodStart, periodEnd,
-		update.TrialEndsAt, graceEndsAt, status == "canceled",
+		billingPlanForStatus(status, update.PlanID), status, entitlement, periodStart, periodEnd,
+		update.TrialEndsAt, graceEndsAt, cancelAtPeriodEnd,
 		update.EventOccurredAt, now).Scan(&updated)
 	if err != nil {
 		return fmt.Errorf("apply billing lifecycle: %w", err)
@@ -443,11 +465,11 @@ func billingStatusProjection(
 	}
 }
 
-func billingPlanForStatus(status string) string {
+func billingPlanForStatus(status, paidPlan string) string {
 	if status == "trialing" || status == "active" || status == "past_due" {
-		return "pro"
+		return paidPlan
 	}
-	return "free"
+	return "none"
 }
 
 type BillingEntitlement struct {
@@ -456,8 +478,13 @@ type BillingEntitlement struct {
 	SubscriptionStatus  string     `json:"subscriptionStatus"`
 	EntitlementStatus   string     `json:"entitlementStatus"`
 	GenerationAllowance int        `json:"generationAllowance"`
+	GenerationUnlimited bool       `json:"generationUnlimited"`
 	GenerationUsed      int        `json:"generationUsed"`
 	GenerationRemaining int        `json:"generationRemaining"`
+	StreamAllowance     *int       `json:"streamAllowance"`
+	StreamUnlimited     bool       `json:"streamUnlimited"`
+	StreamUsed          int        `json:"streamUsed"`
+	StreamRemaining     *int       `json:"streamRemaining"`
 	PeriodStart         time.Time  `json:"periodStart"`
 	PeriodEnd           time.Time  `json:"periodEnd"`
 	TrialEndsAt         *time.Time `json:"trialEndsAt,omitempty"`
@@ -498,7 +525,7 @@ func (s *Store) RecordBillingFeedback(
 		FROM account_billing billing
 		WHERE billing.account_id = $1
 		  AND (
-		    ($2 = 'non_conversion' AND billing.plan_id = 'free')
+		    ($2 = 'non_conversion' AND billing.plan_id = 'none')
 		    OR ($2 = 'cancellation' AND billing.subscription_status IN ('canceled', 'refunded'))
 		  )
 		ON CONFLICT (account_id, context) DO UPDATE SET
@@ -562,7 +589,7 @@ func ensureBillingAccountTx(
 		  entitlement_status, current_period_start, current_period_end,
 		  created_at, updated_at
 		)
-		SELECT id, 'none', 'free', 'free', 'active', $2::timestamptz,
+		SELECT id, 'none', 'none', 'free', 'generation_paused', $2::timestamptz,
 		       $2::timestamptz + interval '30 days', $2::timestamptz, $2::timestamptz
 		FROM accounts WHERE id = $1 AND status = 'active'
 		ON CONFLICT (account_id) DO NOTHING
@@ -598,7 +625,7 @@ func reserveGenerationUsageTx(
 		return err
 	}
 	var planID, entitlementStatus string
-	var allowance int
+	var allowance *int
 	var periodStart, periodEnd time.Time
 	var graceEndsAt *time.Time
 	err := tx.QueryRow(ctx, `
@@ -644,7 +671,7 @@ func reserveGenerationUsageTx(
 	`, accountID, periodStart).Scan(&used); err != nil {
 		return err
 	}
-	if used >= allowance {
+	if allowance != nil && used >= *allowance {
 		return ErrEntitlementRequired
 	}
 	_, err = tx.Exec(ctx, `
@@ -656,6 +683,45 @@ func reserveGenerationUsageTx(
 	`, issueID, accountID, planID, periodStart, now)
 	if err != nil {
 		return fmt.Errorf("reserve generation usage: %w", err)
+	}
+	return nil
+}
+
+// enforceStreamEntitlementTx enforces the account's plan stream allowance
+// inside the caller's transaction. The caller must already hold the accounts
+// row lock so concurrent creations serialize. A NULL plan allowance means the
+// plan has no stream cap; an explicitly configured nonzero maximumPerAccount
+// remains a hard operational ceiling returning ErrQuotaExceeded. The plan
+// allowance is authoritative and returns ErrEntitlementRequired (HTTP 402).
+func enforceStreamEntitlementTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	accountID string,
+	currentStreamCount int,
+	maximumPerAccount int,
+	now time.Time,
+) error {
+	if err := ensureBillingAccountTx(ctx, tx, accountID, now); err != nil {
+		return err
+	}
+	var allowance *int
+	err := tx.QueryRow(ctx, `
+		SELECT plan.stream_allowance
+		FROM account_billing billing
+		JOIN billing_plans plan ON plan.id = billing.plan_id AND plan.active
+		WHERE billing.account_id = $1
+	`, accountID).Scan(&allowance)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrEntitlementRequired
+	}
+	if err != nil {
+		return fmt.Errorf("load stream entitlement: %w", err)
+	}
+	if allowance != nil && currentStreamCount >= *allowance {
+		return ErrEntitlementRequired
+	}
+	if maximumPerAccount > 0 && currentStreamCount >= maximumPerAccount {
+		return ErrQuotaExceeded
 	}
 	return nil
 }
@@ -692,9 +758,14 @@ func (s *Store) GetBillingEntitlement(
 	var result BillingEntitlement
 	err = tx.QueryRow(ctx, `
 		SELECT billing.plan_id, plan.display_name, billing.subscription_status,
-		       billing.entitlement_status, plan.generation_allowance,
+		       billing.entitlement_status, COALESCE(plan.generation_allowance, 0)::int,
 		       COALESCE(usage.used, 0)::int,
-		       GREATEST(0, plan.generation_allowance - COALESCE(usage.used, 0))::int,
+		       CASE WHEN plan.generation_allowance IS NULL THEN 0
+		            ELSE GREATEST(0, plan.generation_allowance - COALESCE(usage.used, 0))::int END,
+		       plan.stream_allowance,
+		       COALESCE(streams.used, 0)::int,
+		       CASE WHEN plan.stream_allowance IS NULL THEN NULL
+		            ELSE GREATEST(0, plan.stream_allowance - COALESCE(streams.used, 0))::int END,
 		       billing.current_period_start, billing.current_period_end,
 		       billing.trial_ends_at, billing.grace_ends_at,
 		       billing.cancel_at_period_end
@@ -707,20 +778,28 @@ func (s *Store) GetBillingEntitlement(
 		    AND reservation.period_start = billing.current_period_start
 		    AND reservation.state IN ('reserved', 'consumed')
 		) usage ON true
+		LEFT JOIN LATERAL (
+		  SELECT count(*)::int AS used
+		  FROM newsletters stream
+		  WHERE stream.owner_account_id = billing.account_id
+		) streams ON true
 		WHERE billing.account_id = $1
 	`, accountID).Scan(
 		&result.PlanID, &result.PlanName, &result.SubscriptionStatus,
 		&result.EntitlementStatus, &result.GenerationAllowance,
 		&result.GenerationUsed, &result.GenerationRemaining,
+		&result.StreamAllowance, &result.StreamUsed, &result.StreamRemaining,
 		&result.PeriodStart, &result.PeriodEnd, &result.TrialEndsAt,
 		&result.GraceEndsAt, &result.CancelAtPeriodEnd,
 	)
 	if err != nil {
 		return BillingEntitlement{}, err
 	}
-	result.CanGenerate = result.GenerationRemaining > 0 &&
-		(result.EntitlementStatus == "active" ||
-			(result.EntitlementStatus == "grace" && result.GraceEndsAt != nil && now.Before(*result.GraceEndsAt)))
+	result.StreamUnlimited = result.StreamAllowance == nil
+	result.GenerationUnlimited = result.PlanID == "essential" || result.PlanID == "pro"
+	entitled := result.EntitlementStatus == "active" ||
+		(result.EntitlementStatus == "grace" && result.GraceEndsAt != nil && now.Before(*result.GraceEndsAt))
+	result.CanGenerate = entitled && (result.GenerationUnlimited || result.GenerationRemaining > 0)
 	if err := tx.Commit(ctx); err != nil {
 		return BillingEntitlement{}, err
 	}
