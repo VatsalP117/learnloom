@@ -239,6 +239,7 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		w.cfg.MaxDeliveryAttempts,
 	)
 	if err != nil {
+		w.captureError(err, "recover_expired_claims", nil)
 		return err
 	}
 	if recovered > 0 {
@@ -250,6 +251,7 @@ func (w *Worker) Cycle(ctx context.Context) error {
 	}
 	dispatched, err := w.lifecycle.DispatchDue(ctx, now, 100)
 	if err != nil {
+		w.captureError(err, "dispatch_issues", nil)
 		return err
 	}
 	if dispatched > 0 {
@@ -265,6 +267,7 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		return err
 	}
 	if dispatched, err := w.lifecycle.DispatchWeeklyRecaps(ctx, now, 100); err != nil {
+		w.captureError(err, "dispatch_weekly_recaps", nil)
 		return err
 	} else if dispatched > 0 {
 		w.logger.InfoContext(ctx, "dispatched weekly Recaps", "count", dispatched)
@@ -273,6 +276,7 @@ func (w *Worker) Cycle(ctx context.Context) error {
 		return err
 	}
 	if dispatched, err := w.lifecycle.DispatchPublicFollowUpdates(ctx, now, 100); err != nil {
+		w.captureError(err, "dispatch_public_follow", nil)
 		return err
 	} else if dispatched > 0 {
 		w.logger.InfoContext(ctx, "dispatched public path updates", "count", dispatched)
@@ -294,6 +298,7 @@ func (w *Worker) Cycle(ctx context.Context) error {
 			ctx,
 			now.Add(-30*24*time.Hour),
 		); err != nil {
+			w.captureError(err, "operational_cleanup", nil)
 			return err
 		}
 		w.lastCleanup = now
@@ -310,6 +315,7 @@ func (w *Worker) processPublicFollowDeliveries(ctx context.Context) error {
 			ctx, w.now(), w.cfg.ClaimDuration, w.cfg.MaxDeliveryAttempts,
 		)
 		if err != nil {
+			w.captureError(err, "claim_next_public_follow", nil)
 			return err
 		}
 		if claim == nil {
@@ -373,6 +379,9 @@ func (w *Worker) processPublicFollowDelivery(
 		return nil
 	}
 	w.metrics.deliveryFailed.Add(1)
+	w.captureError(err, "public_follow_delivery", map[string]string{
+		"claim_id": claim.ID,
+	})
 	var unknown *delivery.OutcomeUnknownError
 	var transitionErr error
 	if errors.As(err, &unknown) || errors.Is(err, context.Canceled) ||
@@ -440,6 +449,7 @@ func (w *Worker) processWeeklyRecaps(ctx context.Context) error {
 			w.cfg.MaxDeliveryAttempts,
 		)
 		if err != nil {
+			w.captureError(err, "claim_next_weekly_recap", nil)
 			return err
 		}
 		if claim == nil {
@@ -494,6 +504,10 @@ func (w *Worker) processWeeklyRecap(
 		return nil
 	}
 	w.metrics.deliveryFailed.Add(1)
+	w.captureError(err, "weekly_recap", map[string]string{
+		"recap_id":   claim.ID,
+		"week_start": claim.WeekStart,
+	})
 	var unknown *delivery.OutcomeUnknownError
 	var transitionErr error
 	if errors.As(err, &unknown) ||
@@ -641,6 +655,7 @@ func (w *Worker) processIssues(ctx context.Context) error {
 			break
 		}
 		if err != nil {
+			w.captureError(err, "claim_next_issue", nil)
 			return err
 		}
 		if claim == nil {
@@ -911,6 +926,16 @@ func (w *Worker) processIssue(ctx context.Context, claim *store.IssueClaim) erro
 			}
 		} else {
 			w.metrics.generationFailed.Add(1)
+			w.captureError(err, "generate_issue", map[string]string{
+				"issue_id":         claim.Issue.ID,
+				"incident_id":      detail.IncidentID,
+				"failure_code":     detail.Code,
+				"failure_category": string(detail.Category),
+				"failure_stage":    detail.Stage,
+				"retryable":        fmt.Sprintf("%t", detail.Retryable),
+				"model":            w.cfg.AttemptContext.ModelName,
+				"pipeline":         w.cfg.AttemptContext.PipelineVersion,
+			})
 			failErr = w.lifecycle.FailIssue(
 				context.Background(),
 				claim.Issue.ID,
@@ -1006,6 +1031,7 @@ func (w *Worker) processDeliveries(ctx context.Context) error {
 			w.cfg.MaxDeliveryAttempts,
 		)
 		if err != nil {
+			w.captureError(err, "claim_next_delivery", nil)
 			return err
 		}
 		if claim == nil {
@@ -1094,6 +1120,10 @@ func (w *Worker) processDelivery(
 		return nil
 	}
 	w.metrics.deliveryFailed.Add(1)
+	w.captureError(err, "deliver_issue", map[string]string{
+		"issue_id": claim.Issue.ID,
+		"token":    claim.Token,
+	})
 	var unknown *delivery.OutcomeUnknownError
 	var transitionErr error
 	if errors.As(err, &unknown) ||
@@ -1135,6 +1165,21 @@ func (w *Worker) observeDuration(
 		"operation": operation,
 		"outcome":   outcome,
 	}, duration.Seconds())
+}
+
+// captureError reports an operational failure to Sentry with an operation
+// discriminator and any caller-provided context. It is a no-op when Sentry is
+// not configured.
+func (w *Worker) captureError(err error, operation string, tags map[string]string) {
+	if err == nil {
+		return
+	}
+	merged := make(map[string]string, len(tags)+1)
+	for key, value := range tags {
+		merged[key] = value
+	}
+	merged["operation"] = operation
+	telemetry.CaptureError(err, merged)
 }
 
 func (w *Worker) WriteDurationMetrics(writer io.Writer) error {
@@ -1198,6 +1243,9 @@ func (w *Worker) processDeletion(ctx context.Context) error {
 		return err
 	}
 	if err := w.artifacts.DeleteAccount(ctx, claim.AccountID); err != nil {
+		w.captureError(err, "account_deletion", map[string]string{
+			"account_id": claim.AccountID,
+		})
 		_ = w.lifecycle.FailAccountDeletion(
 			context.Background(),
 			claim.AccountID,
@@ -1227,6 +1275,9 @@ func (w *Worker) processArtifactCleanup(ctx context.Context) error {
 		return err
 	}
 	if err := w.artifacts.Delete(ctx, claim.Key); err != nil {
+		w.captureError(err, "artifact_cleanup", map[string]string{
+			"artifact_key": claim.Key,
+		})
 		transitionErr := w.lifecycle.FailArtifactCleanup(
 			context.Background(), claim.Key, claim.Token, err, w.now(),
 		)

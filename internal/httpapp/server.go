@@ -230,6 +230,13 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 				"panic", recovered,
 				"stack", string(debug.Stack()),
 			)
+			telemetry.CapturePanic(recovered, debug.Stack(), map[string]string{
+				"operation":  "http_panic",
+				"request_id": requestID,
+				"method":     request.Method,
+				"path":       request.URL.Path,
+				"host":       request.Host,
+			})
 			if !writer.wroteHeader {
 				writeProblem(writer, http.StatusInternalServerError, "internal_error", "An internal error occurred.")
 			}
@@ -769,6 +776,13 @@ func (s *Server) internalError(
 		"request_id", requestID(request.Context()),
 		"error", err,
 	)
+	telemetry.CaptureError(err, map[string]string{
+		"operation":  "http_5xx",
+		"request_id": requestID(request.Context()),
+		"method":     request.Method,
+		"path":       request.URL.Path,
+		"host":       request.Host,
+	})
 	writeProblem(response, http.StatusInternalServerError, "internal_error", "An internal error occurred.")
 }
 

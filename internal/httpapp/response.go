@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/VatsalP117/learnloom/internal/telemetry"
 )
 
 type problem struct {
@@ -33,6 +34,7 @@ func writePrivateCacheableJSON(
 ) {
 	body, err := json.Marshal(value)
 	if err != nil {
+		telemetry.CaptureError(err, map[string]string{"operation": "http_response_encoding"})
 		writeProblem(response, http.StatusInternalServerError, "internal_error", "The response could not be encoded.")
 		return
 	}
