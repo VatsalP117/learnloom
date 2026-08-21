@@ -13,7 +13,7 @@ require (
 	github.com/getsentry/sentry-go v0.48.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/svix/svix-webhooks v1.98.0
+	github.com/svix/svix-webhooks v1.99.1
 	golang.org/x/net v0.55.0
 	golang.org/x/sync v0.21.0
 )
