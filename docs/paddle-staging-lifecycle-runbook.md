@@ -11,6 +11,10 @@ customer email addresses, or payment details into repository evidence.
 - `PADDLE_API_BASE_URL=https://sandbox-api.paddle.com`.
 - Sandbox-only API key, client token, webhook secret, and separate recurring
   Essential ($9/month) and Pro ($19/month) prices.
+- Self-serve upgrades and downgrades are outside the launch scope while Paddle
+  product collections remain an early-access feature. Do not advertise plan
+  switching in the customer portal until Paddle grants access and the flow has
+  passed this lifecycle exercise.
 - Paddle default payment link set to `https://app.learnloom.blog/checkout` for
   live and to the equivalent dedicated hostname for staging. The page must be
   approved by Paddle and must load Paddle.js.
