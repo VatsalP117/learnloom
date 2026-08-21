@@ -24,6 +24,7 @@ func TestModelBudgetClaimEnforcementIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, time.Now().UTC())
 	t.Cleanup(func() {
 		_, _ = database.pool.Exec(
 			context.Background(),

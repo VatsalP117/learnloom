@@ -53,8 +53,8 @@ func (s *Store) RecordSourceRetrievalPolicy(
 	}
 	defer rollback(tx)
 	if _, err := tx.Exec(ctx, `
-		SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
-	`, scope+"\x00"+normalized); err != nil {
+		SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))
+	`, scope, normalized); err != nil {
 		return fmt.Errorf("lock source retrieval policy: %w", err)
 	}
 	var active bool

@@ -58,6 +58,7 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, time.Now().UTC())
 	site, err := database.ClaimSite(
 		ctx,
 		account.ID,
@@ -1247,6 +1248,7 @@ func TestOperationalSnapshotCountsConsecutiveAccountFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	input := integrationNewsletterInput(nil)
 	input.SourceMode = domain.SourceModeDiscovered
 	created, err := database.CreateNewsletter(
@@ -1297,6 +1299,7 @@ func TestSourceCatalogReconciliationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, time.Now().UTC())
 	input := integrationNewsletterInput([]domain.SourceDefinition{
 		{Name: "First", URL: "https://example.com/first", Limit: 5},
 		{Name: "Remove me", URL: "https://example.com/remove", Limit: 6},
@@ -1404,6 +1407,7 @@ func TestSourceControlsPreserveFrozenEvidenceIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	input := integrationNewsletterInput([]domain.SourceDefinition{{
 		Name: "Original", URL: "https://example.com/original", Limit: 8,
 	}})
@@ -1561,6 +1565,7 @@ func TestCreateNewsletterDailyQuotaRollsBackIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, time.Now().UTC())
 	input := integrationNewsletterInput([]domain.SourceDefinition{{
 		Name: "One", URL: "https://example.com/one", Limit: 5,
 	}})
@@ -1604,6 +1609,7 @@ func TestSourcePortfolioApprovalLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	input := integrationNewsletterInput(nil)
 	input.SourceMode = domain.SourceModeDiscovered
 	input.SourceReviewMode = domain.SourceReviewBeforeLesson
@@ -1706,6 +1712,7 @@ func TestLearningRhythmSchedulingAndBacklogThrottleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	created, err := database.CreateNewsletter(
 		ctx,
 		account.ID,
@@ -1899,6 +1906,7 @@ func TestNovelIssueEvidenceComparisonIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	created, err := database.CreateNewsletter(
 		ctx,
 		account.ID,
@@ -2008,6 +2016,7 @@ func TestReentryBacklogResetPreservesLibraryAndRestoresRhythmIntegration(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	created, err := database.CreateNewsletter(
 		ctx,
 		account.ID,
@@ -2110,6 +2119,7 @@ func TestPublicationStatesDefaultPrivateAndRequireFirstPublishReviewIntegration(
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	site, err := database.ClaimSite(
 		ctx, account.ID, "publisher-"+uuid.NewString()[:8], "Publisher",
 	)
@@ -2365,6 +2375,7 @@ func TestOnboardingDraftResumeAndCompletionIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
 	first, err := database.SaveOnboardingDraft(
 		ctx,
 		account.ID,
@@ -2540,6 +2551,7 @@ func TestOperatorPublicHoldIsExactAuditedAndIdempotentIntegration(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, owner.ID, now)
 	operator, err := database.SyncAccountIdentity(
 		ctx, "clerk-rights-operator-"+uuid.NewString(), "rights-operator@example.com",
 		domain.AccountActive, now.Add(time.Millisecond).UnixMilli(),
@@ -2709,6 +2721,7 @@ func TestSourceEvidenceAndDiscoveryRepositoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, time.Now().UTC())
 	input := integrationNewsletterInput(nil)
 	input.SourceMode = domain.SourceModeDiscovered
 	created, err := database.CreateNewsletter(ctx, account.ID, input, 10, 5)
@@ -2840,6 +2853,19 @@ func openIntegrationStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	return database
+}
+
+func requirePaidIntegrationPlan(
+	t *testing.T,
+	ctx context.Context,
+	database *Store,
+	accountID string,
+	now time.Time,
+) {
+	t.Helper()
+	if err := activateIntegrationPlan(ctx, database, accountID, "pro", now); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func integrationNewsletterInput(sources []domain.SourceDefinition) NewsletterInput {
