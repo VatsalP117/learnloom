@@ -27,6 +27,8 @@ x-runtime: &runtime
   DATABASE_URL: postgresql://learnloom:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/learnloom?sslmode=disable
   PAID_COMMERCE_APPROVED: ${PAID_COMMERCE_APPROVED:-false}
   PAID_COMMERCE_APPROVAL_REFERENCE: ${PAID_COMMERCE_APPROVAL_REFERENCE:-}
+  # Optional: error capture to Sentry from the web and worker roles.
+  SENTRY_DSN: ${SENTRY_DSN:-}
 
 x-object-store: &object-store
   S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}

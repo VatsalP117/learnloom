@@ -23,6 +23,7 @@ import (
 	"github.com/VatsalP117/learnloom/internal/httpapp"
 	"github.com/VatsalP117/learnloom/internal/source"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/VatsalP117/learnloom/internal/telemetry"
 )
 
 var buildReleaseVersion = "unknown"
@@ -43,6 +44,15 @@ func main() {
 		os.Exit(1)
 	}
 	logger := newLogger(cfg.LogLevel)
+	flushSentry := func() {}
+	if role == "web" || role == "worker" {
+		flushSentry = telemetry.ConfigureSentry(telemetry.SentryConfig{
+			DSN:         cfg.Sentry.DSN,
+			Environment: cfg.Environment,
+			Release:     cfg.ReleaseVersion,
+		})
+	}
+	defer flushSentry()
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
@@ -60,6 +70,7 @@ func main() {
 	}
 	if runErr != nil && !errors.Is(runErr, context.Canceled) &&
 		!errors.Is(runErr, http.ErrServerClosed) {
+		telemetry.CaptureError(runErr, map[string]string{"operation": "runtime_stop", "role": role})
 		logger.Error("runtime stopped", "role", role, "error", runErr)
 		os.Exit(1)
 	}

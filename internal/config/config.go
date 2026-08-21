@@ -29,6 +29,13 @@ type Config struct {
 	Worker                       Worker
 	Limits                       Limits
 	SourceIntelligence           SourceIntelligence
+	Sentry                       SentryConfig
+}
+
+// SentryConfig optionally enables error capture to Sentry. With an empty DSN
+// all capture helpers are no-ops, so local and CI environments run untouched.
+type SentryConfig struct {
+	DSN string
 }
 
 type SourceIntelligence struct {
@@ -258,6 +265,9 @@ func Load() (Config, error) {
 			DefaultMaxStaleAge:     envDuration("SOURCE_DEFAULT_MAX_STALE_AGE", 720*time.Hour),
 			MaxConcurrency:         envInt("SOURCE_FETCH_CONCURRENCY", 4),
 		},
+		Sentry: SentryConfig{
+			DSN: strings.TrimSpace(os.Getenv("SENTRY_DSN")),
+		},
 	}
 	cfg.HTTP.ApexOrigin = "https://" + cfg.HTTP.RootDomain
 	return cfg, nil
@@ -463,6 +473,12 @@ func (c Config) ValidateFor(role string) error {
 					"SEARXNG_BASE_URL must be an HTTP(S) origin without credentials when discovery is enabled",
 				))
 			}
+		}
+	}
+	if c.Sentry.DSN != "" {
+		parsed, err := url.Parse(c.Sentry.DSN)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			problems = append(problems, errors.New("SENTRY_DSN must be an HTTP(S) URL"))
 		}
 	}
 	return errors.Join(problems...)

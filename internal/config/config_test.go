@@ -251,3 +251,19 @@ func TestValidateForRequiresSearXNGWhenDiscoveryEnabled(t *testing.T) {
 		t.Fatalf("valid internal SearXNG URL failed: %v", err)
 	}
 }
+
+func TestValidateForSentryDSN(t *testing.T) {
+	cfg := validWorkerConfig()
+	if err := cfg.ValidateFor("worker"); err != nil {
+		t.Fatalf("baseline worker config failed: %v", err)
+	}
+	cfg.Sentry.DSN = "not-a-url"
+	if err := cfg.ValidateFor("worker"); err == nil ||
+		!strings.Contains(err.Error(), "SENTRY_DSN") {
+		t.Fatalf("expected SENTRY_DSN validation error, got %v", err)
+	}
+	cfg.Sentry.DSN = "https://example.sentry.io/1234567"
+	if err := cfg.ValidateFor("worker"); err != nil {
+		t.Fatalf("valid SENTRY_DSN failed: %v", err)
+	}
+}
