@@ -1,6 +1,6 @@
 module github.com/VatsalP117/learnloom
 
-go 1.25.12
+go 1.25.13
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2

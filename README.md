@@ -26,7 +26,7 @@ logs, dashboards, alerts, and external checks are covered by the
 
 ## Development
 
-Requirements: Go 1.25.12+, Node 24+, Docker with Compose.
+Requirements: Go 1.25.13+, Node 24+, Docker with Compose.
 
 ```sh
 cp .env.example .env
