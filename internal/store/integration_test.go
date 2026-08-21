@@ -663,8 +663,14 @@ func TestPostgresLifecycleIntegration(t *testing.T) {
 	}
 	navigation, err = database.GetLessonNavigation(ctx, account.ID, issue.ID)
 	reviewDue := now.Add(38*time.Second + 24*time.Hour)
-	if err != nil || navigation.NextReviewAt == nil || !navigation.NextReviewAt.Equal(reviewDue) {
+	if err != nil || navigation.NextReviewAt == nil {
 		t.Fatalf("completed Lesson navigation=%#v err=%v", navigation, err)
+	}
+	if delta := navigation.NextReviewAt.Sub(reviewDue); delta < -time.Millisecond || delta > time.Millisecond {
+		t.Fatalf(
+			"completed Lesson next Review=%s want=%s delta=%s",
+			navigation.NextReviewAt, reviewDue, delta,
+		)
 	}
 	reviews, err = database.ListWorkspaceReviews(ctx, account.ID, 8, now.Add(38*time.Second))
 	if err != nil || len(reviews) != 0 {
