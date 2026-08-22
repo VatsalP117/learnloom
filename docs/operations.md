@@ -117,6 +117,15 @@ curl --get http://127.0.0.1:8080/search \
   --data 'format=json'
 ```
 
+Container health is separate from functional discovery checks. The SearXNG
+service runs a non-invasive health check against its local `/healthz`
+endpoint (`wget --spider http://127.0.0.1:8080/healthz`); with the discovery
+profile enabled, `web` and `worker` wait for that health check to pass before
+starting. It only confirms the HTTP service is answering — it never runs a
+real search query. The `curl ... /search?format=json` command above is the
+separate, one-time functional check that discovery actually returns JSON
+results; treat a green `/healthz` and a `200` JSON search as distinct signals.
+
 Do not expose SearXNG publicly unless it has an appropriate reverse proxy and
 rate limits. Search outages do not affect provided-only streams. Hybrid
 streams continue only when their provided catalog already satisfies the hard

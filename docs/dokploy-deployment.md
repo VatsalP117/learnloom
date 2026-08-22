@@ -181,8 +181,19 @@ change to either requires a fresh image build, not only a container restart.
    container on port `3000`.
 
 The Compose deployment runs a one-shot migration after Postgres becomes
-healthy. The web and worker roles start only after migrations succeed and
-report unhealthy readiness if the configured R2 bucket is unavailable.
+healthy. The web and worker roles start only after migrations succeed, after
+SearXNG passes its container health check, and report unhealthy readiness if
+the configured R2 bucket is unavailable. SearXNG's health check only hits its
+local `/healthz` endpoint to confirm the HTTP service answers; it never runs a
+real search query. Verify functional discovery separately with a one-time
+functional search from inside the private container network and treat a `200`
+JSON response as a distinct signal from a green container health check:
+
+```sh
+docker compose -f compose.dokploy.yaml exec -T searxng \
+  wget -qO- 'http://127.0.0.1:8080/search?q=Learnloom%20health%20check&format=json'
+```
+
 Postgres, SearXNG, Valkey, and worker metrics have no published ports.
 
 `ALLOW_INSECURE_PRIVATE_SERVICES=true` is intentionally fixed in this Compose
@@ -211,11 +222,14 @@ The custom wildcard certificate must already be loaded into Traefik.
 
 Click **Deploy** and watch the logs in this order:
 
-1. `postgres` starts and becomes healthy.
-2. `migrate` logs no error and exits with code `0`.
-3. `web` logs `web listening` on `:3000`.
-4. `worker` logs its metrics listener and begins polling.
-5. `searxng` and `searxng-valkey` remain healthy/running.
+1. `postgres` and `searxng-valkey` start and become healthy.
+2. `searxng` starts and passes its `/healthz` container health check.
+3. `migrate` logs no error and exits with code `0`.
+4. `web` logs `web listening` on `:3000`.
+5. `worker` logs its metrics listener and begins polling.
+
+`web` and `worker` wait for both their migration dependency and the SearXNG
+health check; the migration and SearXNG startup branches may run concurrently.
 
 Confirm the migration job applied schema version 40 before testing billing or
 generation. Version 37 adds durable cleanup for artifacts whose upload succeeds

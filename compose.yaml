@@ -109,6 +109,9 @@ services:
         condition: service_completed_successfully
       create-bucket:
         condition: service_completed_successfully
+      searxng:
+        condition: service_healthy
+        required: false
     ports:
       - "127.0.0.1:3000:3000"
       - "127.0.0.1:9091:9091"
@@ -159,6 +162,9 @@ services:
         condition: service_completed_successfully
       create-bucket:
         condition: service_completed_successfully
+      searxng:
+        condition: service_healthy
+        required: false
     ports:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
@@ -173,6 +179,12 @@ services:
     volumes:
       - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
       - searxng-cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       searxng-valkey:
         condition: service_healthy

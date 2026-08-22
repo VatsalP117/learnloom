@@ -112,6 +112,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      searxng:
+        condition: service_healthy
     expose:
       - "3000"
       - "9091"
@@ -198,7 +200,7 @@ services:
       migrate:
         condition: service_completed_successfully
       searxng:
-        condition: service_started
+        condition: service_healthy
     labels:
       - "com.learnloom.monitor=true"
       - "com.learnloom.service=worker"
@@ -215,6 +217,12 @@ services:
       SEARXNG_VALKEY_URL: valkey://searxng-valkey:6379/0
     volumes:
       - searxng-cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       searxng-valkey:
         condition: service_healthy
