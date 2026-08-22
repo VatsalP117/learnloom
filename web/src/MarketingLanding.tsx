@@ -24,7 +24,7 @@ export default function MarketingLanding() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    document.title = "Learnloom | Give us a topic. We’ll build your learning home.";
+    document.title = "Learnloom | Stay current. Build understanding that compounds.";
   }, []);
 
   return (
@@ -35,11 +35,10 @@ export default function MarketingLanding() {
           <span>Learnloom</span>
         </a>
         <nav className="ll-nav-links" id="ll-main-navigation" aria-label="Main navigation">
-          <a href="/solutions" onClick={() => setMenuOpen(false)}>Solutions</a>
-          <a href="/product/ai-learning-assistant" onClick={() => setMenuOpen(false)}>Product</a>
-          <a href="/guides" onClick={() => setMenuOpen(false)}>Guides</a>
-          <a href="/examples" onClick={() => setMenuOpen(false)}>Examples</a>
           <a href="#how-it-works" onClick={() => setMenuOpen(false)}>How it works</a>
+          <a href="#why-learnloom" onClick={() => setMenuOpen(false)}>Why Learnloom</a>
+          <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
+          <a href="/guides" onClick={() => setMenuOpen(false)}>Guides</a>
         </nav>
         <div className="ll-nav-actions">
           <a className="ll-sign-in" href={`${appOrigin}/sign-in`}>Sign in</a>
@@ -63,73 +62,61 @@ export default function MarketingLanding() {
         <section className="ll-hero">
           <div className="ll-hero-scrim" />
           <div className="ll-hero-copy">
-            <p className="ll-kicker"><span /> Your personal learning home on the web</p>
+            <p className="ll-kicker"><span /> For professionals following fast-moving fields</p>
             <h1>
-              Give us a topic.
+              Stay current.
               <br />
-              <em>We’ll build your learning home.</em>
+              <em>Build understanding that compounds.</em>
             </h1>
             <p className="ll-hero-description">
-              Learnloom finds useful sources, builds each lesson, and gives
-              everything you learn a lasting home at your own Learnloom address.
+              Give Learnloom a topic. It establishes a credible source base,
+              prepares a focused 8–15 minute lesson, prompts you to retrieve the
+              idea, and makes the next lesson build on the last.
             </p>
             <div className="ll-hero-actions">
               <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
-                Build my learning home <ArrowRight size={17} />
+                Build my learning path <ArrowRight size={17} />
               </a>
-              <a className="ll-text-link" href="/examples/ai-evaluation">
+              <a className="ll-text-link" href={`${appOrigin}/examples/ai-evaluation`}>
                 Read a complete Dossier <ChevronRight size={16} />
               </a>
             </div>
           </div>
 
-          <div className="ll-address-pill" aria-label="Example personal Learnloom home">
-            <span className="ll-address-status"><BookOpen size={15} /></span>
-            <span><strong>{personalSiteHost("maya")}</strong> · your learning home</span>
-            <span className="ll-live-dot"><i /> Yours to build</span>
+          <div className="ll-hero-proof" aria-label="Learnloom learning path benefits">
+            <span><strong>8–15 min</strong> focused sessions</span>
+            <span><strong>Visible sources</strong> you can inspect</span>
+            <span><strong>Active recall</strong> before the idea fades</span>
           </div>
 
           <LearningLoopPreview />
         </section>
 
-        <section className="ll-subdomain-section" id="product">
-          <div className="ll-section-intro">
-            <p className="ll-eyebrow">A home for everything you understand</p>
-            <h2>Your learning deserves<br />its own address.</h2>
-            <p>
-              Every path, lesson, source, and idea returns to one personal home.
-              Keep it private while you learn, then publish only what you choose
-              at an address like <strong>{personalSiteHost("maya")}</strong>.
-            </p>
-          </div>
-          <PersonalHomePreview />
-        </section>
-
         <section className="ll-flow-section" id="how-it-works">
           <div className="ll-flow-heading">
-            <p className="ll-eyebrow">Quietly working in the background</p>
-            <h2>From today’s sources<br />to tomorrow’s understanding.</h2>
+            <p className="ll-eyebrow">A maintained learning path</p>
+            <h2>Stop managing the feeds.<br />Start building command.</h2>
           </div>
           <div className="ll-flow-grid">
             <FlowCard
               number="01"
               icon={<Search size={21} />}
-              title="Name what you want to understand"
-              copy="Start with a topic. Learnloom discovers and validates useful sources—or you can bring your own."
+              title="Set the learning intent"
+              copy="Name the topic, your current level, and the capability you want. Learnloom discovers and validates useful sources—or uses yours."
               visual={<SourceVisual />}
             />
             <FlowCard
               number="02"
               icon={<BrainCircuit size={21} />}
-              title="Build real understanding"
-              copy="Every Dossier connects ideas, explains mechanisms, checks misconceptions, and cites its sources."
+              title="Learn the next useful concept"
+              copy="A focused Dossier explains the mechanism, works through an example, challenges weak assumptions, and keeps its evidence visible."
               visual={<ThinkingVisual />}
             />
             <FlowCard
               number="03"
               icon={<BookOpen size={21} />}
-              title="Return to what you know"
-              copy="Your Learning History creates continuity, so each new lesson builds on the last."
+              title="Retrieve, then adapt"
+              copy="Recall turns reading into a learning cycle. Your response and Learning History shape what deserves your attention next."
               visual={<ArchiveVisual />}
             />
           </div>
@@ -149,18 +136,18 @@ export default function MarketingLanding() {
               <li><Check size={17} /> New ideas connect to your Learning History</li>
               <li><Check size={17} /> Questions turn reading into recall</li>
             </ul>
-            <a className="ll-text-link ll-text-link-dark" href="/examples/ai-evaluation">
+            <a className="ll-text-link ll-text-link-dark" href={`${appOrigin}/examples/ai-evaluation`}>
               Read a complete Dossier <ArrowRight size={16} />
             </a>
           </div>
           <DossierPreview />
         </section>
 
-        <section className="ll-comparison-section" aria-labelledby="comparison-heading">
+        <section className="ll-comparison-section" id="why-learnloom" aria-labelledby="comparison-heading">
           <div className="ll-section-intro">
-            <p className="ll-eyebrow">Choose the workflow, not the category label</p>
-            <h2 id="comparison-heading">Different tools solve<br />different parts of learning.</h2>
-            <p>Learnloom is for a topic you need to follow and master over time. These comparisons describe workflow defaults, not universal limitations.</p>
+            <p className="ll-eyebrow">Why Learnloom</p>
+            <h2 id="comparison-heading">Information tools help you find.<br />Learnloom helps you progress.</h2>
+            <p>Use Learnloom for a topic you need to follow and master over time. It maintains the source–lesson–retrieval loop that other tools leave you to assemble.</p>
           </div>
           <div className="ll-comparison-table" role="table" aria-label="Learning workflow comparison">
             <ComparisonRow tool="General chat assistants" strength="Fast explanations and questions" tradeoff="You repeatedly supply context, judge sources, and decide what comes next" />
@@ -175,7 +162,7 @@ export default function MarketingLanding() {
           <div><p className="ll-eyebrow">Trust is a product surface</p><h2 id="trust-heading">Inspect the evidence.<br />Keep the boundary.</h2></div>
           <div className="ll-trust-grid">
             <article><strong>Explainable selection</strong><p>See source roles and why candidates were chosen. Prefer, block, replace, or provide your own sources.</p><a href="/editorial-principles">Source methodology <ArrowRight size={13} /></a></article>
-            <article><strong>Claims stay checkable</strong><p>Material factual claims link to frozen source evidence. Weak coverage can defer a lesson instead of manufacturing certainty.</p><a href="/examples/ai-evaluation">Inspect a Dossier <ArrowRight size={13} /></a></article>
+            <article><strong>Claims stay checkable</strong><p>Material factual claims link to frozen source evidence when the mapping is available. Weak coverage can defer a lesson instead of manufacturing certainty.</p><a href={`${appOrigin}/examples/ai-evaluation`}>Inspect a Dossier <ArrowRight size={13} /></a></article>
             <article><strong>Private by default</strong><p>New paths and lessons begin private or draft. Publishing, search indexing, and follow-by-email each require an explicit action.</p><a href="/privacy">Privacy details <ArrowRight size={13} /></a></article>
             <article><strong>Models have limits</strong><p>Learnloom ranks signals and produces instructional synthesis; it does not certify truth. Corrections and source reporting remain available.</p><a href="/how-learnloom-works">How it works <ArrowRight size={13} /></a></article>
           </div>
@@ -183,9 +170,9 @@ export default function MarketingLanding() {
 
         <section className="ll-pricing-section" id="pricing" aria-labelledby="pricing-heading">
           <div className="ll-section-intro">
-            <p className="ll-eyebrow">Paid beta pricing</p>
-            <h2 id="pricing-heading">Choose how many subjects<br />you want to keep moving.</h2>
-            <p>Both plans include unlimited lesson generation subject to fair-use and service-safety safeguards. The plan boundary is the number of learning streams, not an artificial monthly lesson quota.</p>
+            <p className="ll-eyebrow">Straightforward paid beta pricing</p>
+            <h2 id="pricing-heading">Pay for a learning practice,<br />not a pile of generated words.</h2>
+            <p>Both plans include the complete source, lesson, retrieval, review, archive, and publishing loop. Choose by how many subjects you want to keep moving—not by an artificial monthly lesson quota.</p>
           </div>
           <div className="ll-pricing-grid">
             <article><p>Essential</p><h3>$9</h3><span>per month</span><ul><li><Check size={15} /> Up to 3 learning streams</li><li><Check size={15} /> Unlimited generated lessons</li><li><Check size={15} /> Private archive, review, and publishing</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Choose Essential <ArrowRight size={15} /></a></article>
@@ -223,22 +210,35 @@ export default function MarketingLanding() {
           </div>
         </section>
 
+        <section className="ll-subdomain-section" id="learning-home">
+          <div className="ll-section-intro">
+            <p className="ll-eyebrow">A durable home for what you understand</p>
+            <h2>Your learning path<br />doesn’t disappear into chat history.</h2>
+            <p>
+              Every lesson, source, review, and connection returns to your private,
+              searchable library. When there is something worth sharing, publish
+              only what you choose at an address like <strong>{personalSiteHost("maya")}</strong>.
+            </p>
+          </div>
+          <PersonalHomePreview />
+        </section>
+
         <section className="ll-quote-section">
           <Quote size={31} />
           <blockquote>
-            The web gives us endless things to read.<br />
-            Learnloom gives each idea <em>somewhere to live.</em>
+            The web keeps producing more to follow.<br />
+            Learnloom makes your understanding <em>keep moving.</em>
           </blockquote>
-          <p>Designed for curious people building a lifelong body of knowledge.</p>
+          <p>Designed for professionals who need current knowledge to become usable judgment.</p>
         </section>
 
         <section className="ll-final-cta">
           <div className="ll-final-clouds" />
           <div className="ll-final-content">
             <span className="ll-brand-mark"><BrandMark /></span>
-            <p className="ll-eyebrow">Your learning home is waiting</p>
-            <h2>Make curiosity<br /><em>a place you return to.</em></h2>
-            <p>Start a private path from one topic. Publishing stays optional.</p>
+            <p className="ll-eyebrow">One topic is enough to begin</p>
+            <h2>Stop rebuilding context.<br /><em>Start compounding it.</em></h2>
+            <p>Choose a paid plan, start a private learning path, and let each focused session build on the last. Publishing stays optional.</p>
             <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
               Get started with Learnloom <ArrowRight size={17} />
             </a>
@@ -249,11 +249,11 @@ export default function MarketingLanding() {
       <footer className="ll-footer">
         <div className="ll-footer-brand">
           <a className="ll-brand" href="#top"><span className="ll-brand-mark"><BrandMark /></span><span>Learnloom</span></a>
-          <p>Current sources, woven into durable understanding.</p>
+          <p>A maintained learning path for fast-moving fields.</p>
         </div>
         <div className="ll-footer-links">
-          <div><strong>Product</strong><a href="/product/ai-learning-assistant">AI learning assistant</a><a href="/product/trusted-source-learning">Trusted-source learning</a><a href="/how-learnloom-works">How Learnloom works</a></div>
-          <div><strong>Learn</strong><a href="/guides">Learning guides</a><a href="/examples">Public examples</a><a href="/editorial-principles">Editorial principles</a></div>
+          <div><strong>On this page</strong><a href="#how-it-works">How it works</a><a href="#why-learnloom">Why Learnloom</a><a href="#pricing">Pricing</a></div>
+          <div><strong>Learn</strong><a href="/guides">Learning guides</a><a href={`${appOrigin}/examples/ai-evaluation`}>Complete Dossier</a><a href="/editorial-principles">Editorial principles</a></div>
           <div><strong>Account</strong><a href={`${appOrigin}/sign-in`}>Sign in</a><a href={`${appOrigin}/sign-up`}>Get started</a></div>
           <div><strong>Legal</strong><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
         </div>
