@@ -65,13 +65,13 @@ export default function MarketingLanding() {
             <p className="ll-kicker"><span /> For professionals following fast-moving fields</p>
             <h1>
               Stay current.
-              <br />
-              <em>Build understanding that compounds.</em>
+              <span className="ll-hero-accent">Build understanding that compounds.</span>
             </h1>
             <p className="ll-hero-description">
-              Give Learnloom a topic. It establishes a credible source base,
-              prepares a focused 8–15 minute lesson, prompts you to retrieve the
-              idea, and makes the next lesson build on the last.
+              Each day, Learnloom checks credible sources for what is worth
+              learning, prepares one focused lesson when the evidence supports
+              it, prompts active recall, and makes the next lesson build on what
+              you know.
             </p>
             <div className="ll-hero-actions">
               <a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>
@@ -84,9 +84,9 @@ export default function MarketingLanding() {
           </div>
 
           <div className="ll-hero-proof" aria-label="Learnloom learning path benefits">
-            <span><strong>8–15 min</strong> focused sessions</span>
+            <span><strong>Daily rhythm</strong> led by evidence</span>
             <span><strong>Visible sources</strong> you can inspect</span>
-            <span><strong>Active recall</strong> before the idea fades</span>
+            <span><strong>Active recall</strong> shapes the next lesson</span>
           </div>
 
           <LearningLoopPreview />

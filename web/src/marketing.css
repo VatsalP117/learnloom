@@ -111,12 +111,28 @@ html { scroll-behavior: smooth; }
   line-height: .96;
   letter-spacing: -.067em;
 }
-.ll-hero h1 em, .ll-dossier-copy h2 em, .ll-final-content h2 em {
+.ll-hero h1 .ll-hero-accent {
+  display: block;
+  color: #54754f;
+  font-family: inherit;
+  font-weight: 520;
+  font-style: normal;
+  letter-spacing: -.067em;
+}
+.ll-hero h1 .ll-hero-accent::after {
+  content: "";
+  display: block;
+  width: 58px;
+  height: 2px;
+  margin: .5em auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(84,117,79,0), rgba(84,117,79,.9), rgba(84,117,79,0));
+}
+.ll-dossier-copy h2 em, .ll-final-content h2 em {
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 400;
   letter-spacing: -.055em;
 }
-.ll-hero h1 em { color: #54754f; }
 .ll-hero-description {
   max-width: 650px;
   margin: 27px auto 0;
@@ -510,8 +526,7 @@ html { scroll-behavior: smooth; }
     background-position: 50% bottom;
   }
   .ll-hero h1 { font-size: clamp(47px, 14vw, 66px); }
-  .ll-hero h1 br { display: none; }
-  .ll-hero h1 em { display: block; margin-top: .06em; }
+  .ll-hero h1 .ll-hero-accent { margin-top: .06em; }
   .ll-hero-description { font-size: 14px; }
   .ll-hero-actions { flex-direction: column; gap: 18px; }
   .ll-hero-proof { width: min(100%, 350px); display: grid; grid-template-columns: 1fr; padding: 7px 16px; border-radius: 18px; }
