@@ -11,7 +11,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
@@ -22,10 +22,6 @@ import "./marketing.css";
 
 export default function MarketingLanding() {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    document.title = "Learnloom | Stay current. Build understanding that compounds.";
-  }, []);
 
   return (
     <div className="ll-page">

@@ -5,8 +5,50 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"regexp"
 	"strings"
 )
+
+var (
+	titleTagPattern         = regexp.MustCompile(`(?i)<title[^>]*>[^<]*</title>`)
+	metaDescriptionPattern  = regexp.MustCompile(`(?i)<meta\s+name=["']description["'][^>]*>`)
+	canonicalLinkTagPattern = regexp.MustCompile(`(?i)<link\s+rel=["']canonical["'][^>]*>`)
+	managedSEOBlockPattern  = regexp.MustCompile(`(?s)<!-- learnloom-seo:start -->.*?<!-- learnloom-seo:end -->`)
+)
+
+type legalPage struct {
+	Path        string
+	Title       string
+	Description string
+	H1          string
+}
+
+// legalPages are crawlable even though they must never be indexed. The server
+// decorates the shared SPA shell with path-specific metadata and a visible
+// static fallback so crawlers and non-JS clients see what each page is about.
+var legalPages = []legalPage{
+	{
+		Path:        "/privacy",
+		Title:       "Privacy Policy | Learnloom",
+		Description: "Learn how Learnloom handles account, learning, source, publishing, delivery, and technical information, and the choices available to you.",
+		H1:          "Privacy Policy",
+	},
+	{
+		Path:        "/terms",
+		Title:       "Terms of Service | Learnloom",
+		Description: "Read the terms governing Learnloom accounts, source-grounded learning, publishing, subscriptions, acceptable use, and service availability.",
+		H1:          "Terms of Service",
+	},
+}
+
+func legalPageForPath(path string) (legalPage, bool) {
+	for _, page := range legalPages {
+		if page.Path == path {
+			return page, true
+		}
+	}
+	return legalPage{}, false
+}
 
 type seoPage struct {
 	Path        string
@@ -357,6 +399,29 @@ func renderSEODocument(page seoPage, canonical, appOrigin string) string {
 }
 
 func renderSEOHead(title, description, canonical, apexOrigin string) string {
+	return `<title>` + html.EscapeString(title) + `</title>` +
+		`<meta name="description" content="` + html.EscapeString(description) + `">` +
+		renderSocialMetadata(title, description, canonical, apexOrigin) +
+		renderSchemaMetadata(description, canonical)
+}
+
+// renderSocialMetadata emits the canonical, Open Graph, and Twitter head
+// metadata. It deliberately excludes <title> and the description meta tag so
+// it can be injected into documents whose base title/description were already
+// normalized without duplicating them.
+func renderSocialMetadata(title, description, canonical, apexOrigin string) string {
+	return `<link rel="canonical" href="` + html.EscapeString(canonical) + `">` +
+		`<meta property="og:type" content="website">` +
+		`<meta property="og:site_name" content="Learnloom">` +
+		`<meta property="og:title" content="` + html.EscapeString(title) + `">` +
+		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
+		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
+		renderSocialImageMetadata(apexOrigin) +
+		`<meta name="twitter:title" content="` + html.EscapeString(title) + `">` +
+		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">`
+}
+
+func renderSchemaMetadata(description, canonical string) string {
 	schema := map[string]any{
 		"@context": "https://schema.org",
 		"@graph": []any{
@@ -381,42 +446,114 @@ func renderSEOHead(title, description, canonical, apexOrigin string) string {
 		},
 	}
 	encoded, _ := json.Marshal(schema)
-	return `<title>` + html.EscapeString(title) + `</title>` +
-		`<meta name="description" content="` + html.EscapeString(description) + `">` +
-		`<link rel="canonical" href="` + html.EscapeString(canonical) + `">` +
-		`<meta property="og:type" content="website">` +
-		`<meta property="og:site_name" content="Learnloom">` +
-		`<meta property="og:title" content="` + html.EscapeString(title) + `">` +
-		`<meta property="og:description" content="` + html.EscapeString(description) + `">` +
-		`<meta property="og:url" content="` + html.EscapeString(canonical) + `">` +
-		renderSocialImageMetadata(apexOrigin) +
-		`<meta name="twitter:title" content="` + html.EscapeString(title) + `">` +
-		`<meta name="twitter:description" content="` + html.EscapeString(description) + `">` +
-		`<script type="application/ld+json">` + string(encoded) + `</script>`
+	return `<script type="application/ld+json">` + string(encoded) + `</script>`
 }
 
+// decorateMarketingIndex makes the marketing document independently usable
+// with stable title, description, canonical, Open Graph, Twitter, and schema
+// metadata. Normalization is structural rather than tied to obsolete copy, so
+// title/description drift in the source document cannot break or duplicate
+// the output: exactly one <title>, one meta description, one canonical, and
+// one social/schema block are always guaranteed.
 func decorateMarketingIndex(body []byte, apexOrigin string) []byte {
-	const title = "Learnloom | Give us a topic. We’ll build your learning home."
-	const description = "Give Learnloom a topic. It builds a learning path and gives every lesson a lasting home at your own Learnloom address."
+	const title = "Learnloom | Stay current. Build understanding that compounds."
+	const description = "For professionals in fast-moving fields, Learnloom turns credible current sources into connected lessons, active recall, and a learning path that compounds."
 	canonical := strings.TrimRight(apexOrigin, "/") + "/"
-	document := string(body)
-	document = strings.Replace(
-		document,
-		"<title>Learnloom · Knowledge Dossiers</title>",
-		"<title>"+html.EscapeString(title)+"</title>",
-		1,
-	)
-	document = strings.Replace(
-		document,
-		`content="Give Learnloom a topic. It finds and evaluates useful sources, builds a progressive learning path, and helps you remember what matters."`,
-		`content="`+html.EscapeString(description)+`"`,
-		1,
-	)
-	head := renderSEOHead(title, description, canonical, apexOrigin)
-	head = strings.Replace(head, "<title>"+html.EscapeString(title)+"</title>", "", 1)
-	head = strings.Replace(head, `<meta name="description" content="`+html.EscapeString(description)+`">`, "", 1)
-	document = strings.Replace(document, "</head>", head+"</head>", 1)
-	return []byte(document)
+	return decorateSharedIndex(body, title, description, canonical, apexOrigin)
+}
+
+// decorateSharedIndex guarantees exactly one <title> and exactly one
+// <meta name="description"> in the document, drops any pre-existing canonical
+// link, and injects canonical/Open Graph/Twitter/schema metadata exactly once
+// before </head>.
+func decorateSharedIndex(body []byte, title, description, canonical, apexOrigin string) []byte {
+	document := managedSEOBlockPattern.ReplaceAllString(string(body), "")
+	document = ensureSingleTitle(document, title)
+	document = ensureSingleMetaDescription(document, description)
+	document = replaceHeadTags(document, canonicalLinkTagPattern, "")
+	metadata := `<!-- learnloom-seo:start -->` +
+		renderSocialMetadata(title, description, canonical, apexOrigin) +
+		renderSchemaMetadata(description, canonical) +
+		`<!-- learnloom-seo:end -->`
+	return []byte(injectMetadata(document, metadata))
+}
+
+// decorateLegalIndex decorates the shared SPA index for noindex legal pages:
+// path-specific title, description, self-canonical, Open Graph and Twitter
+// metadata, plus a minimal visible fallback inside #root (containing the
+// correct H1 and summary) that React replaces on hydration.
+func decorateLegalIndex(body []byte, page legalPage, apexOrigin string) []byte {
+	canonical := strings.TrimRight(apexOrigin, "/") + page.Path
+	document := managedSEOBlockPattern.ReplaceAllString(string(body), "")
+	document = ensureSingleTitle(document, page.Title)
+	document = ensureSingleMetaDescription(document, page.Description)
+	document = replaceHeadTags(document, canonicalLinkTagPattern, "")
+	metadata := `<!-- learnloom-seo:start -->` +
+		renderSocialMetadata(page.Title, page.Description, canonical, apexOrigin) +
+		`<!-- learnloom-seo:end -->`
+	document = injectMetadata(document, metadata)
+	return []byte(ensureRootFallback(document, page.H1, page.Description))
+}
+
+// replaceHeadTags replaces the first tag matching pattern with replacement
+// and drops every further match, guaranteeing at most a single replacement in
+// the output. It leaves the document untouched when nothing matches.
+func replaceHeadTags(document string, pattern *regexp.Regexp, replacement string) string {
+	matches := pattern.FindAllStringIndex(document, -1)
+	if len(matches) == 0 {
+		return document
+	}
+	var builder strings.Builder
+	builder.Grow(len(document) + len(replacement))
+	builder.WriteString(document[:matches[0][0]])
+	builder.WriteString(replacement)
+	cursor := matches[0][1]
+	for _, match := range matches[1:] {
+		builder.WriteString(document[cursor:match[0]])
+		cursor = match[1]
+	}
+	builder.WriteString(document[cursor:])
+	return builder.String()
+}
+
+func ensureSingleTitle(document, title string) string {
+	replacement := "<title>" + html.EscapeString(title) + "</title>"
+	document = replaceHeadTags(document, titleTagPattern, replacement)
+	if titleTagPattern.MatchString(document) {
+		return document
+	}
+	return injectMetadata(document, replacement)
+}
+
+func ensureSingleMetaDescription(document, description string) string {
+	replacement := `<meta name="description" content="` + html.EscapeString(description) + `">`
+	document = replaceHeadTags(document, metaDescriptionPattern, replacement)
+	if metaDescriptionPattern.MatchString(document) {
+		return document
+	}
+	return injectMetadata(document, replacement)
+}
+
+// injectMetadata inserts metadata immediately before </head>, appending to the
+// document when the source has no head close tag.
+func injectMetadata(document, metadata string) string {
+	if strings.Contains(document, "</head>") {
+		return strings.Replace(document, "</head>", metadata+"</head>", 1)
+	}
+	return document + metadata
+}
+
+// ensureRootFallback inserts a visible static H1 and summary into the React
+// container so crawlers that do not execute JavaScript still see meaningful
+// content. React replaces the children of #root on hydration.
+func ensureRootFallback(document, heading, summary string) string {
+	fallback := `<h1>` + html.EscapeString(heading) + `</h1>` +
+		`<p>` + html.EscapeString(summary) + `</p>`
+	const rootMarker = `<div id="root">`
+	if strings.Contains(document, rootMarker) {
+		return strings.Replace(document, rootMarker, rootMarker+fallback, 1)
+	}
+	return strings.Replace(document, "</body>", "<main>"+fallback+"</main></body>", 1)
 }
 
 const seoCSS = `

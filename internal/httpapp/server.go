@@ -360,7 +360,11 @@ func (s *Server) handleApex(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if request.URL.Path == "/privacy" || request.URL.Path == "/terms" {
+		// Legal pages may be crawled (headers are per-page, not document-wide),
+		// but must never be indexed by search engines.
 		response.Header().Set("X-Robots-Tag", "noindex, follow")
+		s.serveLegalIndex(response, request, request.URL.Path)
+		return
 	}
 	if request.URL.Path == "/" {
 		s.serveMarketingIndex(response, request)
@@ -391,6 +395,9 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 		return
 	case "/webhooks/paddle":
 		s.handlePaddleWebhook(response, request)
+		return
+	case "/robots.txt":
+		s.renderAppRobots(response, request)
 		return
 	case "/api/billing/config":
 		s.handleBillingConfig(response, request)
@@ -474,6 +481,21 @@ func (s *Server) handlePublicFollowLifecycle(
 	response.Header().Set("Cache-Control", "private, no-store")
 	if request.Method != http.MethodHead {
 		_, _ = response.Write([]byte(body))
+	}
+}
+
+// renderAppRobots serves /robots.txt on the app host. The dashboard is an
+// account-neutral React bootstrap and must not be crawled, so the policy
+// disallows every user agent.
+func (s *Server) renderAppRobots(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		methodNotAllowed(response, http.MethodGet, http.MethodHead)
+		return
+	}
+	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	response.Header().Set("Cache-Control", "public, max-age=300")
+	if request.Method != http.MethodHead {
+		_, _ = response.Write([]byte("User-agent: *\nDisallow: /\n"))
 	}
 }
 
@@ -567,6 +589,27 @@ func (s *Server) serveIndex(response http.ResponseWriter, request *http.Request)
 	}
 }
 
+func (s *Server) serveLegalIndex(response http.ResponseWriter, request *http.Request, pagePath string) {
+	page, ok := legalPageForPath(pagePath)
+	if !ok {
+		s.serveIndex(response, request)
+		return
+	}
+	body, err := fs.ReadFile(s.cfg.Static, "index.html")
+	if err != nil {
+		s.internalError(response, request, fmt.Errorf("read frontend index: %w", err))
+		return
+	}
+	body = decorateLegalIndex(body, page, s.cfg.ApexOrigin)
+	s.applyAppCSP(response)
+	response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	response.Header().Set("Cache-Control", "no-store")
+	response.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(body)
+	}
+}
+
 func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http.Request) {
 	body, err := fs.ReadFile(s.cfg.Static, "marketing.html")
 	if err != nil {
@@ -580,7 +623,15 @@ func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http
 		s.applyAppCSP(response)
 	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	response.Header().Set("Cache-Control", "no-store")
+	// The marketing document is public and identical for every visitor: let
+	// browsers reuse it briefly while Cloudflare caches it longer, mirroring
+	// the hosted app shell's explicit CDN caching. Hashed assets keep their
+	// immutable caching and are unaffected.
+	response.Header().Set("Cache-Control", "public, max-age=300")
+	response.Header().Set(
+		"Cloudflare-CDN-Cache-Control",
+		"public, max-age=3600, stale-while-revalidate=86400",
+	)
 	response.WriteHeader(http.StatusOK)
 	if request.Method != http.MethodHead {
 		_, _ = response.Write(body)
