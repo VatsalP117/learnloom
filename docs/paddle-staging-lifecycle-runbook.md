@@ -44,7 +44,8 @@ and whether existing lessons remain accessible.
 | Duplicate webhook | 204; no duplicate lifecycle, revenue, or usage row |
 | Same event ID, changed body | rejected; original receipt preserved |
 | Older webhook after newer state | audited but cannot roll state backward |
-| Payment failure | past_due/grace; generation available only until grace expiry |
+| Initial checkout payment failure | signed transaction event audited; no paid plan or grace granted |
+| Subscription renewal payment failure | `subscription.past_due` grants past_due/grace; generation available only until grace expiry |
 | Paused | generation_paused; existing lessons and review remain readable |
 | Resumed | active; reactivation event; selected stream entitlement restored |
 | Cancellation | Paid entitlement ends according to Paddle state; new streams and generation stop, while content remains readable |

@@ -52,11 +52,23 @@ Git SHA or 64-character release digest—not a branch, mutable tag, or `unknown`
 ### Paddle Billing
 
 Keep all Paddle credential fields blank until sandbox/staging verification is
-ready. When enabled, set `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, and
-`PADDLE_PRO_PRICE_ID` together. Production uses
-`PADDLE_API_BASE_URL=https://api.paddle.com`; staging uses
-`https://sandbox-api.paddle.com` with sandbox-only credentials and price IDs.
-Never mix sandbox and production identifiers.
+ready. When enabled, set these five values together — `PADDLE_API_KEY`,
+`PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ESSENTIAL_PRICE_ID`,
+and `PADDLE_PRO_PRICE_ID` — plus `PADDLE_API_BASE_URL`. The application
+validates them as a set and rejects a partial configuration at startup.
+
+Live and sandbox values differ in three places and must never be mixed with
+each other:
+
+- `PADDLE_API_BASE_URL`: `https://api.paddle.com` in production,
+  `https://sandbox-api.paddle.com` in staging. The application rejects the
+  wrong host for the environment.
+- `PADDLE_CLIENT_TOKEN`: the public Paddle.js token loaded by the checkout
+  page. It must begin with `live_` in production and `test_` in staging; the
+  prefix is enforced at startup.
+- Price IDs: sandbox-only `PADDLE_ESSENTIAL_PRICE_ID` and
+  `PADDLE_PRO_PRICE_ID` in staging, live price IDs in production. The two
+  price IDs must differ from each other.
 
 Paddle credentials do not authorize live sales. Keep
 `PAID_COMMERCE_APPROVED=false` until the exact entity, payout country, seller/

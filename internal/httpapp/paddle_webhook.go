@@ -183,13 +183,12 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 			recordIgnored()
 			return
 		}
-		status := ""
-		switch event.EventType {
-		case "transaction.completed":
-			status = "active"
-		case "transaction.payment_failed":
-			status = "past_due"
-		default:
+		status, changesEntitlement := paddleTransactionEntitlementStatus(event.EventType)
+		if !changesEntitlement {
+			// A failed initial checkout may not have a subscription. Never let
+			// that transaction grant paid grace; subscription.past_due is the
+			// authoritative renewal-dunning event. Keep the signed transaction
+			// event as an audited receipt for reconciliation.
 			recordIgnored()
 			return
 		}
@@ -287,6 +286,13 @@ func (s *Server) handlePaddleWebhook(response http.ResponseWriter, request *http
 		return
 	}
 	response.WriteHeader(http.StatusNoContent)
+}
+
+func paddleTransactionEntitlementStatus(eventType string) (string, bool) {
+	if eventType == "transaction.completed" {
+		return "active", true
+	}
+	return "", false
 }
 
 func paddleTransactionContainsPrice(transaction paddleTransactionData, priceID string) bool {

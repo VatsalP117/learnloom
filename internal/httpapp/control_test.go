@@ -1,17 +1,22 @@
 package httpapp
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/VatsalP117/learnloom/internal/domain"
 	"github.com/VatsalP117/learnloom/internal/failure"
 	"github.com/VatsalP117/learnloom/internal/store"
+	"github.com/google/uuid"
 )
 
 func TestDecodeNewsletterInputSupportsTopicOnlyDefaults(t *testing.T) {
@@ -140,6 +145,126 @@ func TestValidWebVital(t *testing.T) {
 		if validWebVital(test.name, test.value, test.rating, "navigate", test.page) {
 			t.Fatalf("invalid metric was accepted: %#v", test)
 		}
+	}
+}
+
+func TestBillingCheckoutCreationRateLimitPreservesPendingReuse(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	database, err := store.Open(ctx, store.Config{URL: databaseURL, MaxConnections: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	account, err := database.SyncAccountIdentity(
+		ctx, "clerk-test-"+uuid.NewString(),
+		"checkout-limit@example.com", domain.AccountActive,
+		time.Now().UTC().UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var providerCalls atomic.Int64
+	var providerHealthy atomic.Bool
+	providerHealthy.Store(true)
+	var provider *httptest.Server
+	provider = httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		providerCalls.Add(1)
+		if !providerHealthy.Load() {
+			http.Error(response, "provider outage", http.StatusServiceUnavailable)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.WriteHeader(http.StatusCreated)
+		_, _ = response.Write([]byte(
+			`{"data":{"id":"txn_` + uuid.NewString() + `","checkout":{"url":"` +
+				provider.URL + `/checkout?_ptxn=txn_test"}}}`))
+	}))
+	defer provider.Close()
+	server := &Server{cfg: Config{
+		Environment: "staging", AppOrigin: provider.URL,
+		PaddleAPIBaseURL: provider.URL, PaddleAPIKey: "paddle-key",
+		PaddleWebhookSecret: "webhook-secret", PaddleClientToken: "test_token",
+		PaddleEssentialPriceID: "pri_essential", PaddleProPriceID: "pri_pro",
+		PaddleHTTPClient: provider.Client(), MaxRequestBodyBytes: 1 << 20,
+	}, store: database, logger: slog.New(slog.DiscardHandler)}
+
+	post := func(planID string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/me/billing/checkout",
+			strings.NewReader(`{"planId":"`+planID+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.RemoteAddr = "203.0.113.10:43123"
+		request = request.WithContext(context.WithValue(request.Context(), sessionKey{},
+			session{Account: domain.Account{ID: account.ID}}))
+		response := httptest.NewRecorder()
+		server.handleControl(response, request)
+		return response
+	}
+
+	// First creation succeeds through the provider and records a pending
+	// Pro checkout.
+	if response := post("pro"); response.Code != http.StatusCreated {
+		t.Fatalf("initial checkout status=%d body=%s", response.Code, response.Body.String())
+	}
+	// Provider outage: failed creations leave no pending row, so each retry
+	// counts toward the per-account+client creation limit and fails safely.
+	// (The cross-plan attempt also expires the pending Pro checkout, the
+	// store's existing 30-minute single-pending design.)
+	providerHealthy.Store(false)
+	for attempt := 0; attempt < 9; attempt++ {
+		if response := post("essential"); response.Code != http.StatusInternalServerError {
+			t.Fatalf("outage attempt %d status=%d body=%s", attempt, response.Code, response.Body.String())
+		}
+	}
+	// The eleventh creation attempt in the hour is rejected before any
+	// Paddle API call: 429 with Retry-After, and the provider sees no
+	// further traffic.
+	limited := post("essential")
+	if limited.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited checkout status=%d body=%s", limited.Code, limited.Body.String())
+	}
+	if limited.Header().Get("Retry-After") != "3600" {
+		t.Fatalf("Retry-After=%q", limited.Header().Get("Retry-After"))
+	}
+	if !strings.Contains(limited.Body.String(), "rate_limited") {
+		t.Fatalf("rate-limit response body=%s", limited.Body.String())
+	}
+	if calls := providerCalls.Load(); calls != 10 {
+		t.Fatalf("provider calls=%d, want 10 (creation must be limited before Paddle)", calls)
+	}
+	// A pending checkout still wins over the exhausted creation limit:
+	// seed the row a successful creation would have recorded, restore the
+	// provider, and confirm the pending checkout is reused without a new
+	// provider call.
+	seededID := "txn_seeded_" + uuid.NewString()
+	if _, err := database.RecordPendingBillingCheckout(
+		ctx, account.ID, seededID, "pro", time.Now().UTC(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	providerHealthy.Store(true)
+	reused := post("pro")
+	if reused.Code != http.StatusOK || !strings.Contains(reused.Body.String(), "/checkout?_ptxn="+seededID) {
+		t.Fatalf("reused checkout status=%d body=%s", reused.Code, reused.Body.String())
+	}
+	// A plan without a pending checkout stays limited once the provider is
+	// healthy again, and reuse keeps working without consuming the limit.
+	if response := post("essential"); response.Code != http.StatusTooManyRequests {
+		t.Fatalf("post-outage checkout status=%d body=%s", response.Code, response.Body.String())
+	}
+	if calls := providerCalls.Load(); calls != 10 {
+		t.Fatalf("provider calls=%d, want 10", calls)
 	}
 }
 

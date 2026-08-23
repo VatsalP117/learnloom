@@ -25,6 +25,22 @@ func TestVerifyPaddleSignatureChecksBodyAndFreshness(t *testing.T) {
 	}
 }
 
+func TestPaddleTransactionEntitlementStatusRequiresCompletedPayment(t *testing.T) {
+	t.Parallel()
+	if status, ok := paddleTransactionEntitlementStatus("transaction.completed"); !ok || status != "active" {
+		t.Fatalf("completed transaction status=%q ok=%t", status, ok)
+	}
+	for _, eventType := range []string{
+		"transaction.payment_failed",
+		"transaction.past_due",
+		"transaction.updated",
+	} {
+		if status, ok := paddleTransactionEntitlementStatus(eventType); ok || status != "" {
+			t.Fatalf("%s changed entitlement: status=%q ok=%t", eventType, status, ok)
+		}
+	}
+}
+
 func signedPaddleHeader(body []byte, secret string, timestamp int64) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(strconv.FormatInt(timestamp, 10) + ":"))

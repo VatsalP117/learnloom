@@ -188,6 +188,13 @@ func (s *Server) handleControl(
 			writeJSON(response, http.StatusOK, map[string]string{"url": checkoutURL})
 			return
 		}
+		// Creating a checkout calls Paddle and can mint a billable
+		// transaction, so cap creation attempts per account and client.
+		// The pending-checkout reuse above never calls Paddle and remains
+		// available to genuine retries; only new creations are limited.
+		if !s.allowAction(response, request, "billing-checkout", time.Hour, 10) {
+			return
+		}
 		// Reuse the stored Paddle customer when a previously billed account
 		// returns; a missing customer is fine because the first checkout
 		// creates it on Paddle's side.
