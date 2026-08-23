@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { LessonFeedbackPanel, readerAudienceLabel } from "./IssueDetail";
+import { LessonFeedbackPanel, ReaderReturnLink, readerAudienceLabel } from "./IssueDetail";
 
 describe("LessonFeedbackPanel", () => {
   it("hydrates durable learner signals and keeps them optional", () => {
@@ -20,6 +20,26 @@ describe("LessonFeedbackPanel", () => {
     expect(markup).toContain('aria-pressed="true">Very relevant');
     expect(markup).toContain('aria-pressed="true">Partial');
     expect(markup).toContain("These signals are private");
+  });
+});
+
+describe("reader return control", () => {
+  it("renders a real anchor for the contextual origin", () => {
+    const markup = renderToStaticMarkup(
+      <ReaderReturnLink href="/streams?tab=all" label="Streams" />,
+    );
+
+    expect(markup).toContain('href="/streams?tab=all"');
+    expect(markup).toContain("Back to Streams");
+  });
+
+  it("renders the parent-stream fallback anchor", () => {
+    const markup = renderToStaticMarkup(
+      <ReaderReturnLink href="/newsletters/quantum-42" label="Quantum Field Theory" />,
+    );
+
+    expect(markup).toContain('href="/newsletters/quantum-42"');
+    expect(markup).toContain("Back to Quantum Field Theory");
   });
 });
 

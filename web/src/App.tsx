@@ -8,6 +8,7 @@ import ReviewPage from "./ReviewPage";
 import StreamsPage from "./StreamsPage";
 import TodayPage from "./TodayPage";
 import type { Site } from "./types";
+import { readerNavigationState } from "./readerReturn";
 
 const IssueDetail = lazy(() => import("./IssueDetail"));
 const FirstLessonWelcome = lazy(() => import("./FirstLessonWelcome"));
@@ -53,8 +54,21 @@ export default function App({ capabilities = {}, site = null, onSiteUpdate }: Ap
           next.hash)
       ) return;
 
+      const href = `${next.pathname}${next.search}${next.hash}`;
       event.preventDefault();
-      window.history.pushState(null, "", `${next.pathname}${next.search}${next.hash}`);
+      window.history.pushState(
+        readerNavigationState({
+          destination: href,
+          currentPathname: window.location.pathname,
+          currentSearch: window.location.search,
+          currentHash: window.location.hash,
+          origin: window.location.origin,
+          historyState: window.history.state,
+          documentTitle: document.title,
+        }),
+        "",
+        href,
+      );
       updateLocation();
       window.scrollTo({ top: 0 });
     };

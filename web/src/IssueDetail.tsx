@@ -31,6 +31,11 @@ import {
   type RetrievalResponseState,
 } from "./lessonSession";
 import type { IssueModerationResponse } from "./types";
+import {
+  handleReaderReturnClick,
+  parseReaderReturnState,
+  type ReaderReturnState,
+} from "./readerReturn";
 
 interface NoteDraft {
   kind: "note" | "question" | "highlight";
@@ -84,6 +89,10 @@ const emptyRetrievalResponse: RetrievalResponseState = {
 export default function IssueDetail({ issueId }) {
   const [snapshot, setSnapshot] = useState<IssueDetailSnapshot | null>(null);
   const [error, setError] = useState("");
+  const returnState: ReaderReturnState | null =
+    typeof window === "undefined"
+      ? null
+      : parseReaderReturnState(window.history.state);
   const [progress, setProgress] = useState(() => lessonState(issueId).progress ?? 0);
   const [completionError, setCompletionError] = useState("");
   const latestProgress = useRef(progress);
@@ -188,6 +197,7 @@ export default function IssueDetail({ issueId }) {
     <LessonReader
       {...snapshot}
       dossier={normalizeDossier(snapshot.dossier, snapshot.newsletter)}
+      returnState={returnState}
       progress={progress}
       completionError={completionError}
       onComplete={async () => {
@@ -245,6 +255,7 @@ function LessonReader({
   completionError,
   onComplete,
   site = null,
+  returnState = null,
 }) {
   const [completed, setCompleted] = useState(() =>
     Boolean(lessonProgress?.completedAt || lessonState(issue.id).completed));
@@ -261,9 +272,10 @@ function LessonReader({
         <i style={{ width: `${progress}%` }} />
       </div>
       <header className="reader-toolbar">
-        <a href={`/newsletters/${encodeURIComponent(newsletter.id)}`}>
-          <ArrowLeft size={15} /> {newsletter.name}
-        </a>
+        <ReaderReturnLink
+          href={returnState ? returnState.href : `/newsletters/${encodeURIComponent(newsletter.id)}`}
+          label={returnState ? returnState.label : newsletter.name}
+        />
         <span>{Math.round(progress)}% read</span>
         <div>
           <LessonExportButton issueId={issue.id} />
@@ -548,6 +560,25 @@ function LessonReader({
         </div>
       </article>
     </div>
+  );
+}
+
+/**
+ * The reader's top-left return control. With validated contextual state
+ * it is a real anchor pointed at the origin route; an unmodified primary
+ * click travels back in a single history step, while modifier clicks
+ * and the parent-stream fallback stay native.
+ */
+export function ReaderReturnLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        handleReaderReturnClick(event, window.history.state);
+      }}
+    >
+      <ArrowLeft size={15} /> Back to {label}
+    </a>
   );
 }
 
