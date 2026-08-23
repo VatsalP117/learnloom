@@ -381,3 +381,61 @@ func TestReadingSheetsUseOnlyNeutralPalette(t *testing.T) {
 		}
 	}
 }
+
+func TestReadingSheetsNeverReturnSerifOrCustomDisplayFonts(t *testing.T) {
+	t.Parallel()
+
+	for name, sheet := range map[string]string{
+		"readingCSS":        readingCSS,
+		"readingArticleCSS": readingArticleCSS,
+	} {
+		for _, forbidden := range []string{
+			"Iowan", "Palatino", "Georgia", "Manrope", "Avenir", "ui-sans-serif",
+		} {
+			if strings.Contains(sheet, forbidden) {
+				t.Fatalf("%s reintroduced the font %q", name, forbidden)
+			}
+		}
+		if !strings.Contains(sheet, `-apple-system,system-ui,"Segoe UI",sans-serif`) {
+			t.Fatalf("%s dropped the native render stack", name)
+		}
+	}
+}
+
+func TestReadingSheetsPinNativeReadingMetrics(t *testing.T) {
+	t.Parallel()
+
+	for name, sheet := range map[string]string{
+		"readingCSS":        readingCSS,
+		"readingArticleCSS": readingArticleCSS,
+	} {
+		for _, expected := range []string{
+			// White page, body text and 16px/1.65 base from the app artifact.
+			`background:#fff`, `#2e3238`, `16px/1.65`,
+		} {
+			if !strings.Contains(sheet, expected) {
+				t.Fatalf("%s lost the native reading metric %q", name, expected)
+			}
+		}
+	}
+
+	// The Dossier override must preserve the artifact's 760px outer main
+	// (20px horizontal padding inside a border-box) instead of re-typing it.
+	for _, expected := range []string{
+		`max-width:760px!important`,
+		`padding:32px 20px 96px!important`,
+	} {
+		if !strings.Contains(readingArticleCSS, expected) {
+			t.Fatalf("readingArticleCSS lost the article metric %q", expected)
+		}
+	}
+	// Heading metrics must not be overridden away from artifact defaults
+	// (30px/36px/700 h1, 18.72px bold h3 in plain document flow).
+	for _, forbidden := range []string{
+		`h1{font-size`, `>div>h1{`, `h3{font-size`, `h4{font-size`, `font-weight:400`,
+	} {
+		if strings.Contains(readingArticleCSS, forbidden) {
+			t.Fatalf("readingArticleCSS re-typed heading metrics (%q)", forbidden)
+		}
+	}
+}

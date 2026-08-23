@@ -45,6 +45,42 @@ func TestRenderHTMLUsesNeutralInlineDefaults(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLPinsNativeReadingStackAndMetrics(t *testing.T) {
+	t.Parallel()
+	dossier := domain.Dossier{
+		Date:   "2026-08-12",
+		Title:  "A bounded lesson",
+		Lesson: "## Mental model\n\nA useful mechanism.",
+		Learning: domain.LearningContract{
+			EvidenceStatus: domain.EvidenceSourceBounded,
+		},
+	}
+	output := RenderHTML(dossier, "")
+
+	for name, fragment := range map[string]string{
+		"native sans stack": `-apple-system,system-ui,'Segoe UI',sans-serif`,
+		"16px/1.65 base":    `font-size:16px;line-height:1.65`,
+		"white page":        `background:#fff;color:#2e3238`,
+		"760px outer main":  `max-width:760px;margin:0 auto;padding:32px 20px`,
+		"720px content":     `box-sizing:border-box`,
+		"h1 30/36/700":      `font-size:30px;line-height:36px;font-weight:700`,
+		"h1 28px bottom":    `margin:0 0 28px`,
+		"h3 18.72px bold":   `margin:24px 0 10px;font-size:18.72px;line-height:1.4;font-weight:700`,
+		"paragraph flow":    `margin:0 0 14px;line-height:1.65`,
+	} {
+		if !strings.Contains(output, fragment) {
+			t.Fatalf("RenderHTML lost the %s (%q)", name, fragment)
+		}
+	}
+	for _, forbidden := range []string{
+		"Iowan", "Palatino", "Georgia", "Manrope", "Avenir", "ui-sans-serif", "BlinkMacSystemFont",
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("RenderHTML reintroduced the font %q", forbidden)
+		}
+	}
+}
+
 func TestRenderKeepsInternalAuditOutOfLearnerOutput(t *testing.T) {
 	t.Parallel()
 	dossier := domain.Dossier{

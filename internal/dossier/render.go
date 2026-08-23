@@ -119,12 +119,12 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` +
 		html.EscapeString(dossier.Title) + `</title></head>
-<body style="margin:0;background:#fff;color:#2e3238;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-<main style="max-width:720px;margin:0 auto;padding:32px 20px">
+<body style="margin:0;background:#fff;color:#2e3238;font-family:-apple-system,system-ui,'Segoe UI',sans-serif;font-size:16px;line-height:1.65">
+<main style="max-width:760px;margin:0 auto;padding:32px 20px;box-sizing:border-box">
 <div style="background:#fff;border:0;padding:12px 0 32px">
 <p style="margin:0 0 8px;color:#5c626a;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Learnloom · ` +
 		html.EscapeString(dossier.Date) + `</p>
-<h1 style="margin:0 0 28px;font-size:30px;line-height:1.2">` +
+<h1 style="margin:0 0 28px;font-size:30px;line-height:36px;font-weight:700">` +
 		html.EscapeString(dossier.Title) + `</h1>` +
 		webLink +
 		strings.Join(sections, `<hr style="border:0;border-top:1px solid rgba(21,23,25,.12);margin:32px 0">`) +
@@ -196,10 +196,18 @@ func renderMarkdownFragment(markdown string) string {
 		if match := headingPattern.FindStringSubmatch(line); len(match) > 0 {
 			closeList()
 			level := min(len(match[1])+1, 4)
+			// Plain document flow: h3 stays at the browser-native 18.72px bold
+			// scale (16px base), h4 at the 16px bold scale; only margins are
+			// tuned so section rhythm matches the reading language.
+			headingStyle := `margin:24px 0 10px;font-size:18.72px;line-height:1.4;font-weight:700`
+			if level == 4 {
+				headingStyle = `margin:24px 0 10px;font-size:16px;line-height:1.5;font-weight:700`
+			}
 			fmt.Fprintf(
 				&output,
-				`<h%d style="margin:24px 0 10px">%s</h%d>`,
+				`<h%d style="%s">%s</h%d>`,
 				level,
+				headingStyle,
 				formatInline(match[2]),
 				level,
 			)
