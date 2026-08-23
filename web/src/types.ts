@@ -253,29 +253,39 @@ export interface NewsletterCreateResponse {
   newsletter: Pick<Newsletter, "id">;
 }
 
+export interface OnboardingAttribution {
+  dossierPublicId: string;
+  title: string;
+  canonicalUrl: string;
+  ownerName: string;
+}
+
+export interface OnboardingDraftPayload {
+  name?: string;
+  topic?: string;
+  learnerLevel?: string;
+  learnerGoal?: string;
+  lessonMinutes?: number;
+  scheduleTime?: string;
+  timeZone?: string;
+  active?: boolean;
+  emailEnabled?: boolean;
+  aiExplorationEnabled?: boolean;
+  sourceMode?: "discovered" | "provided" | "hybrid";
+  sourceReviewMode?: "auto" | "review";
+  sources?: Source[];
+  templateId?: string;
+  templateVersion?: number;
+  attribution?: OnboardingAttribution;
+}
+
 export interface OnboardingDraftResponse {
   draft: null | {
     id: string;
     step: number;
     revision: number;
     updatedAt: string;
-    payload: {
-      name?: string;
-      topic?: string;
-      learnerLevel?: string;
-      learnerGoal?: string;
-      lessonMinutes?: number;
-      scheduleTime?: string;
-      timeZone?: string;
-      active?: boolean;
-      emailEnabled?: boolean;
-      aiExplorationEnabled?: boolean;
-      sourceMode?: "discovered" | "provided" | "hybrid";
-      sourceReviewMode?: "auto" | "review";
-      sources?: Source[];
-      templateId?: string;
-      templateVersion?: number;
-    };
+    payload: OnboardingDraftPayload;
   };
 }
 

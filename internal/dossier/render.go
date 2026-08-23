@@ -82,9 +82,9 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 	}
 	var exploration string
 	if dossier.Exploration != nil {
-		exploration = `<section style="margin:32px 0 0;padding:24px;border:1px solid #f0c36a;border-radius:12px;background:#fff8e8">
-<p style="margin:0 0 8px;color:#9a5b13;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase">AI Exploration · Opt-in</p>
-<p style="margin:0 0 18px;color:#7c5a2d;font-size:13px;line-height:1.5">Synthetic analogies, deductions, and scenarios that extend beyond cited sources. They may be speculative.</p>` +
+		exploration = `<section style="margin:32px 0 0;padding:28px;border:1px solid rgba(21,23,25,.12);border-radius:3px;background:#fff">
+<p style="margin:0 0 8px;color:#5c626a;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">AI Exploration · Opt-in</p>
+<p style="margin:0 0 18px;color:#2e3238;font-size:13px;line-height:1.5">Synthetic analogies, deductions, and scenarios that extend beyond cited sources. They may be speculative.</p>` +
 			renderMarkdownFragment(*dossier.Exploration) + `</section>`
 	}
 	var sources strings.Builder
@@ -101,7 +101,7 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 		if link != "" {
 			fmt.Fprintf(
 				&sources,
-				`<br><a href="%s" style="color:#047857">%s</a>`,
+				`<br><a href="%s" style="color:#151719">%s</a>`,
 				html.EscapeString(link),
 				html.EscapeString(link),
 			)
@@ -111,7 +111,7 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 	var webLink string
 	if link := safeHTTPURL(webURL); link != "" {
 		webLink = fmt.Sprintf(
-			`<p style="margin:0 0 28px"><a href="%s" style="display:inline-block;padding:11px 17px;border-radius:999px;background:#047857;color:#fff;font-weight:700;text-decoration:none">Read on the web</a></p>`,
+			`<p style="margin:0 0 28px"><a href="%s" style="display:inline-block;min-height:44px;padding:11px 18px;border:1px solid #151719;border-radius:3px;background:#151719;color:#fff;font-weight:700;text-decoration:none">Read on the web</a></p>`,
 			html.EscapeString(link),
 		)
 	}
@@ -119,20 +119,20 @@ func RenderHTML(dossier domain.Dossier, webURL string) string {
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` +
 		html.EscapeString(dossier.Title) + `</title></head>
-<body style="margin:0;background:#f5f5f4;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<body style="margin:0;background:#fff;color:#2e3238;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <main style="max-width:720px;margin:0 auto;padding:32px 20px">
-<div style="background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:32px">
-<p style="margin:0 0 8px;color:#047857;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Learnloom · ` +
+<div style="background:#fff;border:0;padding:12px 0 32px">
+<p style="margin:0 0 8px;color:#5c626a;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Learnloom · ` +
 		html.EscapeString(dossier.Date) + `</p>
 <h1 style="margin:0 0 28px;font-size:30px;line-height:1.2">` +
 		html.EscapeString(dossier.Title) + `</h1>` +
 		webLink +
-		strings.Join(sections, `<hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">`) +
+		strings.Join(sections, `<hr style="border:0;border-top:1px solid rgba(21,23,25,.12);margin:32px 0">`) +
 		exploration +
-		`<hr style="border:0;border-top:1px solid #e7e5e4;margin:32px 0">
+		`<hr style="border:0;border-top:1px solid rgba(21,23,25,.12);margin:32px 0">
 <h2 style="font-size:20px">Sources</h2><ol style="padding-left:22px">` +
 		sources.String() + `</ol>
-<p style="margin-top:28px;color:#78716c;font-size:12px">Model output can be wrong. Verify important claims at linked sources.</p>
+<p style="margin-top:28px;color:#5c626a;font-size:12px">Model output can be wrong. Verify important claims at linked sources.</p>
 </div></main></body></html>`
 }
 
@@ -237,7 +237,7 @@ func formatInline(value string) string {
 	value = strongPattern.ReplaceAllString(value, "<strong>$1</strong>")
 	return codePattern.ReplaceAllString(
 		value,
-		`<code style="background:#f5f5f4;padding:1px 4px;border-radius:4px">$1</code>`,
+		`<code style="background:rgba(21,23,25,.06);padding:1px 4px;border-radius:3px">$1</code>`,
 	)
 }
 

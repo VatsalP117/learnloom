@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildNewsletterPayload,
   canSubmitNewsletter,
+  draftToFormValues,
 } from "./newsletterForm";
+import type { OnboardingDraftPayload } from "./types";
 
 const defaults = {
   name: "",
@@ -82,5 +84,99 @@ describe("Newsletter source mode payloads", () => {
       sourceReviewMode: "review",
     });
     expect(payload.sourceReviewMode).toBe("review");
+  });
+
+  it("never forwards display-only attribution on final creation", () => {
+    const values = {
+      ...defaults,
+      sourceMode: "hybrid",
+      sourceReviewMode: "review" as const,
+      sources: [{ name: "Evidence", url: "https://example.com/feed", limit: 8 }],
+      onboardingDraftId: "a5aa94e1-f83b-4d24-bf40-76048a3fc1f0",
+      onboardingDraftRevision: 1,
+      attribution: {
+        dossierPublicId: "dossier-30000000-0000-0000-0000-000000000000",
+        title: "A public Dossier",
+        canonicalUrl: "https://maya.learnloom.blog/d/dossier-30000000-0000-0000-0000-000000000000/a",
+        ownerName: "Maya",
+      },
+    };
+    const payload = buildNewsletterPayload(values);
+    expect(payload).not.toHaveProperty("attribution");
+    expect(payload).not.toHaveProperty("dossierPublicId");
+    expect(payload).not.toHaveProperty("canonicalUrl");
+    expect(payload).not.toHaveProperty("ownerName");
+  });
+});
+
+describe("draftToFormValues", () => {
+  const seeded: OnboardingDraftPayload = {
+    name: "Systems",
+    topic: "How systems fail",
+    learnerLevel: "intermediate",
+    learnerGoal: "Explain failure modes",
+    lessonMinutes: 12,
+    scheduleTime: "08:00",
+    sourceMode: "hybrid",
+    sourceReviewMode: "review",
+    sources: [
+      { name: "Evidence one", url: "https://example.org/one", limit: 8 },
+      { name: "Evidence two", url: "https://example.org/two" },
+    ],
+    attribution: {
+      dossierPublicId: "dossier-30000000-0000-0000-0000-000000000000",
+      title: "A public Dossier",
+      canonicalUrl: "https://maya.learnloom.blog/d/dossier-30000000-0000-0000-0000-000000000000/a",
+      ownerName: "Maya",
+    },
+  };
+
+  it("maps every seeded field onto editable form values", () => {
+    const values = draftToFormValues(seeded, true);
+    expect(values).toMatchObject({
+      name: "Systems",
+      topic: "How systems fail",
+      learnerLevel: "intermediate",
+      learnerGoal: "Explain failure modes",
+      lessonMinutes: 12,
+      scheduleTime: "08:00",
+      sourceMode: "hybrid",
+      reviewBeforeLesson: true,
+      showSpecificSources: true,
+      templateId: undefined,
+      templateVersion: undefined,
+      attribution: seeded.attribution,
+    });
+    expect(values.sources).toEqual([
+      { name: "Evidence one", url: "https://example.org/one", limit: 8 },
+      { name: "Evidence two", url: "https://example.org/two", limit: 8 },
+    ]);
+  });
+
+  it("keeps source-intent fields editable in hybrid mode without discovery", () => {
+    const values = draftToFormValues(seeded, false);
+    expect(values.sourceMode).toBe("provided");
+    expect(values.showSpecificSources).toBe(true);
+    expect(values.sources).toEqual([
+      { name: "Evidence one", url: "https://example.org/one", limit: 8 },
+      { name: "Evidence two", url: "https://example.org/two", limit: 8 },
+    ]);
+  });
+
+  it("defaults missing fields and supplies the browser timezone later", () => {
+    const values = draftToFormValues({ attribution: seeded.attribution }, true);
+    expect(values).toMatchObject({
+      name: "",
+      topic: "",
+      learnerLevel: "intermediate",
+      learnerGoal: "",
+      lessonMinutes: 12,
+      scheduleTime: "08:00",
+      sourceMode: "discovered",
+      reviewBeforeLesson: false,
+      showSpecificSources: false,
+      sources: [],
+    });
+    expect(values.timeZone).not.toBe("");
   });
 });

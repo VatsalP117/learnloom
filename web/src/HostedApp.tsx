@@ -14,6 +14,10 @@ import AuthPage from "./AuthPage";
 import CalmLoader from "./CalmLoader";
 import { SessionActionsProvider } from "./LearningShell";
 import { apiJSON, configureAPI, setCSRFToken } from "./api";
+import {
+  pendingSourceDossierReturnURL,
+  rememberSourceDossierIntent,
+} from "./startingPath";
 import type { Profile } from "./types";
 import { preloadWorkspace } from "./useWorkspace";
 
@@ -76,7 +80,10 @@ function AuthRoute({ mode }: { mode: "sign-in" | "sign-up" }) {
 
 function AuthenticatedRedirect() {
   useEffect(() => {
-    window.location.replace("/");
+    // An already signed-in account reaching the auth pages returns to the
+    // seeded create page when a valid "Start a path like this" hint exists.
+    rememberSourceDossierIntent(window.location.search);
+    window.location.replace(pendingSourceDossierReturnURL() ?? "/");
   }, []);
 
   return (

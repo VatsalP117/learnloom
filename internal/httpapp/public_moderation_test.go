@@ -35,6 +35,29 @@ func TestDecoratePublicModerationEscapesCorrectionsAndAddsReportForm(t *testing.
 	}
 }
 
+func TestDecoratePublicModerationUsesNeutralPalette(t *testing.T) {
+	t.Parallel()
+	document := `<!doctype html><html><head></head><body><main>Lesson</main></body></html>`
+	output := decoratePublicModeration(document, store.PublicIssue{
+		PublicID: "dossier-123",
+	}, []store.PublicCorrection{{Body: "A note", CreatedAt: time.Now().UTC()}})
+	for _, oldToken := range []string{
+		"496b4c", "1d2c22", "344039", "69736c", "fffef9",
+		"rgba(23,33,27", "border-radius:14px",
+	} {
+		if strings.Contains(output, oldToken) {
+			t.Fatalf("moderation decoration still carries old palette token %q", oldToken)
+		}
+	}
+	for _, expected := range []string{
+		"#151719", "#2e3238", "#5c626a", "border-radius:3px", "min-height:44px",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("moderation decoration missing %q", expected)
+		}
+	}
+}
+
 func TestPublicReporterFingerprintIsStableAndDoesNotRevealAddress(t *testing.T) {
 	t.Parallel()
 	server := &Server{cfg: Config{CSRFSecret: strings.Repeat("s", 32)}}

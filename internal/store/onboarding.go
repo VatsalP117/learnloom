@@ -16,6 +16,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// OnboardingAttribution is display-only provenance for a seeded draft. It is
+// stored in the onboarding JSON payload but must never be copied into the
+// newsletter creation payload or the newsletters row.
+type OnboardingAttribution struct {
+	DossierPublicID string `json:"dossierPublicId,omitempty"`
+	Title           string `json:"title,omitempty"`
+	CanonicalURL    string `json:"canonicalUrl,omitempty"`
+	OwnerName       string `json:"ownerName,omitempty"`
+}
+
 type OnboardingDraftPayload struct {
 	Name                 string                    `json:"name,omitempty"`
 	Topic                string                    `json:"topic,omitempty"`
@@ -32,6 +42,7 @@ type OnboardingDraftPayload struct {
 	Sources              []domain.SourceDefinition `json:"sources,omitempty"`
 	TemplateID           string                    `json:"templateId,omitempty"`
 	TemplateVersion      int                       `json:"templateVersion,omitempty"`
+	Attribution          *OnboardingAttribution    `json:"attribution,omitempty"`
 }
 
 type OnboardingDraft struct {
@@ -267,6 +278,11 @@ func validateOnboardingDraft(step int, payload OnboardingDraftPayload) error {
 	if step < 1 || step > 3 {
 		return errors.New("onboarding step must be from 1 to 3")
 	}
+	if payload.Attribution != nil {
+		if err := validateOnboardingAttribution(*payload.Attribution); err != nil {
+			return err
+		}
+	}
 	for _, field := range []struct {
 		name  string
 		value string
@@ -320,13 +336,7 @@ func validateOnboardingDraft(step int, payload OnboardingDraftPayload) error {
 			(parsed.Scheme != "http" && parsed.Scheme != "https") {
 			return fmt.Errorf("source %d URL is invalid", index+1)
 		}
-		host := strings.ToLower(parsed.Hostname())
-		if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-			return fmt.Errorf("source %d URL must use a public host", index+1)
-		}
-		if address, parseErr := netip.ParseAddr(host); parseErr == nil &&
-			(!address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() ||
-				address.IsLinkLocalUnicast() || address.IsMulticast() || address.IsUnspecified()) {
+		if !urlUsesPublicHost(parsed) {
 			return fmt.Errorf("source %d URL must use a public host", index+1)
 		}
 		if item.Limit != 0 && (item.Limit < 1 || item.Limit > 50) {
@@ -334,4 +344,54 @@ func validateOnboardingDraft(step int, payload OnboardingDraftPayload) error {
 		}
 	}
 	return nil
+}
+
+// validateOnboardingAttribution bounds the display-only seeded provenance. The
+// Dossier public ID must use the dossier-<uuid> shape, text fields are
+// bounded, and the canonical URL must be an HTTPS URL on a public host using
+// the same safety rules as onboarding source URLs.
+func validateOnboardingAttribution(attribution OnboardingAttribution) error {
+	rawID := strings.TrimPrefix(attribution.DossierPublicID, "dossier-")
+	if rawID == attribution.DossierPublicID {
+		return errors.New("attribution Dossier public ID must use the dossier-<uuid> shape")
+	}
+	if _, err := uuid.Parse(rawID); err != nil {
+		return errors.New("attribution Dossier public ID must use the dossier-<uuid> shape")
+	}
+	for _, field := range []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{"attribution title", attribution.Title, 200},
+		{"attribution owner name", attribution.OwnerName, 80},
+		{"attribution canonical URL", attribution.CanonicalURL, 2048},
+	} {
+		if utf8.RuneCountInString(field.value) > field.limit {
+			return fmt.Errorf("%s is too long", field.name)
+		}
+	}
+	parsed, err := url.Parse(strings.TrimSpace(attribution.CanonicalURL))
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Scheme != "https" {
+		return errors.New("attribution canonical URL must be a public HTTPS URL")
+	}
+	if !urlUsesPublicHost(parsed) {
+		return errors.New("attribution canonical URL must use a public host")
+	}
+	return nil
+}
+
+// urlUsesPublicHost reports whether the URL host is a reachable public target:
+// no localhost aliases and no non-global or private addresses.
+func urlUsesPublicHost(parsed *url.URL) bool {
+	host := strings.ToLower(parsed.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil &&
+		(!address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() ||
+			address.IsLinkLocalUnicast() || address.IsMulticast() || address.IsUnspecified()) {
+		return false
+	}
+	return true
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -2542,6 +2543,307 @@ func TestOnboardingDraftResumeAndCompletionIntegration(t *testing.T) {
 		  AND subject_id = $2
 	`, account.ID, abandoned.ID).Scan(&confirmed); err != nil || confirmed != 1 {
 		t.Fatalf("abandoned=%d err=%v", confirmed, err)
+	}
+}
+
+func TestPublicStartingPathReferralAttributionIntegration(t *testing.T) {
+	database := openIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	now := time.Now().UTC()
+	account, err := database.SyncAccountIdentity(
+		ctx,
+		"clerk-starting-path-"+uuid.NewString(),
+		"starting-path@example.com",
+		domain.AccountActive,
+		now.UnixMilli(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirePaidIntegrationPlan(t, ctx, database, account.ID, now)
+	site, err := database.ClaimSite(
+		ctx, account.ID, "starter-"+uuid.NewString()[:8], "Starting Paths",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	site, err = database.UpdateSite(ctx, account.ID, domain.SitePublic, nil, nil, nil)
+	if err != nil || site.Visibility != domain.SitePublic {
+		t.Fatalf("site=%#v err=%v", site, err)
+	}
+	input := integrationNewsletterInput([]domain.SourceDefinition{{
+		Name: "Seed source", URL: "https://example.com/seed", Limit: 8,
+	}})
+	input.SiteVisible = true
+	created, err := database.CreateNewsletter(ctx, account.ID, input, 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `
+		UPDATE issues SET
+			status = 'generated', dossier_title = 'A public Dossier',
+			generation_id = gen_random_uuid(), artifact_key = 'test/start/artifact',
+			public_slug = 'a-public-dossier', completed_at = $2
+		WHERE id = $1
+	`, created.FirstIssue.ID, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SetIssuePublication(
+		ctx, account.ID, created.FirstIssue.ID,
+		PublicationChange{
+			State: domain.PublicationPublished, AudienceConfirmed: true,
+			Now: now.Add(2 * time.Second),
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	var specID string
+	if err := database.pool.QueryRow(ctx, `
+		SELECT id::text FROM source_specs
+		WHERE newsletter_id = $1 AND canonical_url = $2
+	`, created.Newsletter.ID, input.Sources[0].URL).Scan(&specID); err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := database.UpsertSourceEndpoint(ctx, domain.SourceEndpoint{
+		ID: uuid.NewString(), SourceSpecID: specID,
+		EndpointURL: input.Sources[0].URL, CanonicalURL: input.Sources[0].URL,
+		Kind: domain.SourceKindHTML, Health: "healthy", UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Freeze nine evidence items where one canonical URL repeats: the seed
+	// must project at most eight unique canonical URLs in position order.
+	canonicalURLs := []string{
+		"https://example.net/item-0", "https://example.net/item-1",
+		"https://example.net/item-2", "https://example.net/item-3",
+		"https://example.net/item-4", "https://example.net/item-5",
+		"https://example.net/item-6", "https://example.net/item-7",
+		"https://example.net/item-3",
+	}
+	links := make([]domain.IssueSource, 0, len(canonicalURLs))
+	for index, canonical := range canonicalURLs {
+		snapshotID, err := database.InsertSourceSnapshot(ctx, domain.SourceSnapshot{
+			ID: uuid.NewString(), SourceEndpointID: endpoint.ID,
+			ItemKey:       fmt.Sprintf("item-%d", index),
+			Title:         fmt.Sprintf("Evidence %d", index),
+			CanonicalURL:  canonical,
+			Content:       strings.Repeat("evidence ", 40),
+			ContentSource: "article", ContentSHA256: fmt.Sprintf("content-%d", index),
+			Metadata: `{}`, FetchedAt: now,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		links = append(links, domain.IssueSource{
+			IssueID: created.FirstIssue.ID, SourceSnapshotID: snapshotID,
+			Position: index, CreatedAt: now,
+		})
+	}
+	if inserted, err := database.InsertIssueSources(ctx, created.FirstIssue.ID, links); err != nil || !inserted {
+		t.Fatalf("freeze inserted=%v err=%v", inserted, err)
+	}
+	unique := strings.ReplaceAll(account.ID, "-", "")
+	fingerprint := strings.Repeat("b", 64-len(unique)) + unique
+	clickedAt := now.Add(3 * time.Second)
+	if err := database.RecordPublicGrowthEvent(
+		ctx, site.Username, created.FirstIssue.PublicID,
+		PublicGrowthCTAClick, "", fingerprint, clickedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	path, err := database.GetPublicStartingPath(ctx, fingerprint, clickedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path.PublicID != created.FirstIssue.PublicID ||
+		path.Title != "A public Dossier" ||
+		path.NewsletterName != created.Newsletter.Name ||
+		path.OwnerDisplayName != "Starting Paths" ||
+		path.SiteUsername != site.Username || len(path.Sources) != 8 {
+		t.Fatalf("starting path=%#v", path)
+	}
+	for index, source := range path.Sources {
+		want := canonicalURLs[index]
+		if source.CanonicalURL != want {
+			t.Fatalf("source %d canonical=%q want %q", index, source.CanonicalURL, want)
+		}
+	}
+	if path.Sources[0].Title != "Evidence 0" {
+		t.Fatalf("source order lost: %#v", path.Sources)
+	}
+	// A newer CTA click on a second published Dossier becomes the latest
+	// eligible starting path.
+	second := integrationNewsletterInput([]domain.SourceDefinition{{
+		Name: "Second source", URL: "https://example.com/second", Limit: 8,
+	}})
+	second.SiteVisible = true
+	second.Name = "Second stream"
+	createdSecond, err := database.CreateNewsletter(ctx, account.ID, second, 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `
+		UPDATE issues SET
+			status = 'generated', dossier_title = 'Second Dossier',
+			generation_id = gen_random_uuid(), artifact_key = 'test/start/second',
+			public_slug = 'second-dossier', completed_at = $2
+		WHERE id = $1
+	`, createdSecond.FirstIssue.ID, now.Add(4*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SetIssuePublication(
+		ctx, account.ID, createdSecond.FirstIssue.ID,
+		PublicationChange{
+			State: domain.PublicationPublished, AudienceConfirmed: true,
+			Now: now.Add(5 * time.Second),
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordPublicGrowthEvent(
+		ctx, site.Username, createdSecond.FirstIssue.PublicID,
+		PublicGrowthCTAClick, "", fingerprint, now.Add(6*time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+	path, err = database.GetPublicStartingPath(ctx, fingerprint, now.Add(7*time.Second))
+	if err != nil || path.PublicID != createdSecond.FirstIssue.PublicID {
+		t.Fatalf("latest starting path=%#v err=%v", path, err)
+	}
+	// Unknown fingerprints and events that are not CTA clicks never qualify.
+	noClick := strings.Repeat("c", 64)
+	if _, err := database.GetPublicStartingPath(
+		ctx, noClick, now.Add(7*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown fingerprint err=%v", err)
+	}
+	if err := database.RecordPublicGrowthEvent(
+		ctx, site.Username, created.FirstIssue.PublicID,
+		PublicGrowthView, "", noClick, now.Add(8*time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordPublicGrowthEvent(
+		ctx, site.Username, created.FirstIssue.PublicID,
+		PublicGrowthShare, "linkedin", noClick, now.Add(8*time.Second),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetPublicStartingPath(
+		ctx, noClick, now.Add(9*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("non-CTA events qualified: %v", err)
+	}
+	// Clicks outside the 30-day attribution window never qualify.
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, clickedAt.Add(31*24*time.Hour),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale click qualified: %v", err)
+	}
+	// Private, unpublished, invisible, or moderated targets are re-checked at
+	// seed time. Every negative case retires both clicked Dossiers so no
+	// older eligible click can still qualify.
+	if _, err := database.UpdateSite(ctx, account.ID, domain.SitePrivate, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, now.Add(10*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("hidden site qualified: %v", err)
+	}
+	if _, err := database.UpdateSite(ctx, account.ID, domain.SitePublic, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range []domain.Issue{created.FirstIssue, createdSecond.FirstIssue} {
+		if _, err := database.SetIssuePublication(
+			ctx, account.ID, issue.ID,
+			PublicationChange{State: domain.PublicationPrivate, Now: now.Add(11 * time.Second)},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, now.Add(12*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unpublished Dossier qualified: %v", err)
+	}
+	for _, issue := range []domain.Issue{created.FirstIssue, createdSecond.FirstIssue} {
+		if _, err := database.SetIssuePublication(
+			ctx, account.ID, issue.ID,
+			PublicationChange{
+				State: domain.PublicationPublished, AudienceConfirmed: true,
+				Now: now.Add(13 * time.Second),
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, newsletterID := range []string{created.Newsletter.ID, createdSecond.Newsletter.ID} {
+		if err := database.SetNewsletterSiteVisible(
+			ctx, account.ID, newsletterID, false,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, now.Add(15*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("invisible stream qualified: %v", err)
+	}
+	for _, newsletterID := range []string{created.Newsletter.ID, createdSecond.Newsletter.ID} {
+		if err := database.SetNewsletterSiteVisible(
+			ctx, account.ID, newsletterID, true,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, issue := range []domain.Issue{created.FirstIssue, createdSecond.FirstIssue} {
+		if err := database.SetIssueModerationState(
+			ctx, account.ID, issue.ID,
+			"held", "Reviewing the report.", now.Add(17*time.Second),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, now.Add(18*time.Second),
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("held Dossier qualified: %v", err)
+	}
+	// An existing onboarding draft wins cleanly: a second seed attempt
+	// conflicts instead of overwriting.
+	for _, issue := range []domain.Issue{created.FirstIssue, createdSecond.FirstIssue} {
+		if err := database.SetIssueModerationState(
+			ctx, account.ID, issue.ID,
+			"clear", "Correction published and source verified.", now.Add(19*time.Second),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The referral flow does not depend on signup conversions: a fingerprint
+	// recorded after the account was created still resolves.
+	if _, err := database.GetPublicStartingPath(
+		ctx, fingerprint, now.Add(20*time.Second),
+	); err != nil {
+		t.Fatalf("existing account lost attribution: %v", err)
+	}
+	seedPayload := OnboardingDraftPayload{Topic: "Seeded path"}
+	firstDraft, err := database.SaveOnboardingDraft(
+		ctx, account.ID, uuid.NewString(), 0, 1, seedPayload, now.Add(21*time.Second),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SaveOnboardingDraft(
+		ctx, account.ID, uuid.NewString(), 0, 1, seedPayload, now.Add(22*time.Second),
+	); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second seeding draft err=%v want ErrConflict", err)
+	}
+	loaded, err := database.GetOnboardingDraft(ctx, account.ID)
+	if err != nil || loaded == nil || loaded.ID != firstDraft.ID {
+		t.Fatalf("existing draft lost: %#v err=%v", loaded, err)
 	}
 }
 

@@ -9000,6 +9000,55 @@
 
 /* -- Draft status & error -------------------------------------------------- */
 
+.atelier-today .create-page .starting-path-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 640px;
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--create-green-line);
+  border-radius: 12px;
+  color: var(--td-fg);
+  background: var(--create-green-tint);
+}
+
+.atelier-today .create-page .starting-path-banner svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--td-success);
+}
+
+.atelier-today .create-page .starting-path-banner p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.atelier-today .create-page .starting-path-banner a {
+  color: var(--td-success);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.atelier-today .create-page .starting-path-banner button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  margin: 2px 0 0 auto;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--td-success);
+  background: transparent;
+  cursor: pointer;
+}
+
+.atelier-today .create-page .starting-path-banner button:hover {
+  background: rgba(255, 255, 255, 0.65);
+}
+
 .atelier-today .create-page .onboarding-draft-status {
   width: max-content;
   max-width: 100%;

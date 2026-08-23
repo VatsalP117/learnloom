@@ -9,6 +9,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LearningShell from "./LearningShell";
@@ -16,6 +17,7 @@ import { apiJSON } from "./api";
 import { firstLessonPreparation } from "./preparation";
 import type {
   NewsletterCreateResponse,
+  OnboardingAttribution,
   OnboardingDraftResponse,
   SourcePortfolioPreviewResponse,
   SourceValidationResponse,
@@ -23,9 +25,13 @@ import type {
 import {
   buildNewsletterPayload,
   canSubmitNewsletter,
+  draftToFormValues,
   usableSources,
 } from "./newsletterForm";
 import { streamTemplates, type StreamTemplate } from "./streamTemplates";
+import {
+  resolveInitialOnboardingDraft,
+} from "./startingPath";
 
 const defaultSource = () => ({ name: "", url: "", limit: 8 });
 const topicIdeas = [
@@ -65,6 +71,8 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [draftStatus, setDraftStatus] = useState("");
+  const [attribution, setAttribution] = useState<OnboardingAttribution | null>(null);
+  const [attributionDismissed, setAttributionDismissed] = useState(false);
   const restoredDraft = useRef(false);
   const onboardingDraftID = useRef<string>(crypto.randomUUID());
   const onboardingDraftRevision = useRef(0);
@@ -95,67 +103,91 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   useEffect(() => {
     const controller = new AbortController();
     let activeRequest = true;
-    apiJSON<OnboardingDraftResponse>("/api/onboarding/draft", { signal: controller.signal })
-      .then(async ({ draft }) => {
-        if (!draft) {
-          if (activeRequest) setDraftReady(true);
-          return;
-        }
-        restoredDraft.current = true;
-        onboardingDraftID.current = draft.id;
-        onboardingDraftRevision.current = draft.revision;
-        const payload = draft.payload;
-        const restoredMode = payload.sourceMode ?? (sourceDiscovery ? "discovered" : "provided");
-        setName(payload.name ?? "");
-        setTopic(payload.topic ?? "");
-        setLearnerLevel(payload.learnerLevel ?? "intermediate");
-        setLearnerGoal(payload.learnerGoal ?? "");
-        setLessonMinutes(payload.lessonMinutes ?? 12);
-        setScheduleTime(payload.scheduleTime ?? "08:00");
-        setTimeZone(payload.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
-        setActive(payload.active ?? true);
-        setEmailEnabled(payload.emailEnabled ?? false);
-        setAIExplorationEnabled(payload.aiExplorationEnabled ?? false);
-        setSourceMode(restoredMode);
-        setReviewBeforeLesson(payload.sourceReviewMode === "review");
-        setShowSpecificSources(restoredMode !== "discovered");
-        const restoredTemplate = streamTemplates.find((template) =>
-          template.id === payload.templateId && template.version === payload.templateVersion,
-        );
-        setSelectedTemplate(restoredTemplate ?? null);
-        setSources(payload.sources?.length
-          ? payload.sources.map((source) => ({ ...source, limit: source.limit ?? 8 }))
-          : restoredMode === "discovered" ? [] : [defaultSource()]);
-        const restoredStep = Math.max(1, Math.min(3, draft.step));
-        setStep(restoredStep);
-        setDraftStatus(`Restored setup saved ${formatDraftTime(draft.updatedAt)}.`);
-        if (restoredStep === 3 && sourceDiscovery && restoredMode !== "provided" && payload.topic) {
-          try {
-            const preview = await apiJSON<SourcePortfolioPreviewResponse>(
-              "/api/source-portfolio/preview",
-              {
-                method: "POST",
-                body: {
-                  topic: payload.topic,
-                  learnerGoal: payload.learnerGoal ?? "",
-                  learnerLevel: payload.learnerLevel ?? "intermediate",
-                  onboardingDraftId: draft.id,
-                },
-                signal: controller.signal,
-              },
-            );
-            setPortfolioPreview(preview);
-          } catch (requestError) {
+    const restoreDraft = (draft: NonNullable<OnboardingDraftResponse["draft"]>, seeded: boolean) => {
+      restoredDraft.current = true;
+      onboardingDraftID.current = draft.id;
+      onboardingDraftRevision.current = draft.revision;
+      const values = draftToFormValues(draft.payload, sourceDiscovery);
+      setName(values.name);
+      setTopic(values.topic);
+      setLearnerLevel(values.learnerLevel);
+      setLearnerGoal(values.learnerGoal);
+      setLessonMinutes(values.lessonMinutes);
+      setScheduleTime(values.scheduleTime);
+      setTimeZone(values.timeZone);
+      setActive(values.active);
+      setEmailEnabled(values.emailEnabled);
+      setAIExplorationEnabled(values.aiExplorationEnabled);
+      setSourceMode(values.sourceMode);
+      setReviewBeforeLesson(values.reviewBeforeLesson);
+      setShowSpecificSources(values.showSpecificSources);
+      const restoredTemplate = values.templateId
+        ? streamTemplates.find((template) =>
+            template.id === values.templateId && template.version === values.templateVersion,
+          ) ?? null
+        : null;
+      setSelectedTemplate(restoredTemplate);
+      setSources(values.sources.map((source) => ({
+        name: source.name,
+        url: source.url,
+        limit: Number(source.limit ?? 8),
+      })));
+      setAttribution(values.attribution ?? null);
+      const restoredStep = Math.max(1, Math.min(3, draft.step));
+      setStep(restoredStep);
+      setDraftStatus(seeded
+        ? "Started from a public path; this setup stays private until you create it."
+        : `Restored setup saved ${formatDraftTime(draft.updatedAt)}.`);
+      setDraftReady(true);
+      if (restoredStep === 3 && sourceDiscovery && values.sourceMode !== "provided" && values.topic) {
+        apiJSON<SourcePortfolioPreviewResponse>(
+          "/api/source-portfolio/preview",
+          {
+            method: "POST",
+            body: {
+              topic: values.topic,
+              learnerGoal: values.learnerGoal,
+              learnerLevel: values.learnerLevel,
+              onboardingDraftId: draft.id,
+            },
+            signal: controller.signal,
+          },
+        )
+          .then(setPortfolioPreview)
+          .catch((requestError) => {
             if (requestError.name !== "AbortError") setPreviewError(requestError.message);
-          }
-        }
-        if (activeRequest) setDraftReady(true);
-      })
-      .catch((requestError) => {
-        if (requestError.name !== "AbortError") {
-          setDraftStatus("Setup will remain on this device until syncing is available.");
-        }
+          });
+      }
+    };
+    const loadDraft = async () => {
+      const resolution = await resolveInitialOnboardingDraft({
+        getDraft: () => apiJSON<OnboardingDraftResponse>(
+          "/api/onboarding/draft",
+          { signal: controller.signal },
+        ),
+        startSeeded: () => apiJSON<OnboardingDraftResponse>(
+          "/api/onboarding/draft/start",
+          { method: "POST", body: {}, signal: controller.signal },
+        ),
+        search: window.location.search,
       });
+      if (!activeRequest) return;
+      const failure = resolution.error instanceof Error ? resolution.error : null;
+      if (failure && failure.name !== "AbortError" && !resolution.seeded) {
+        setDraftStatus("Setup will remain on this device until syncing is available.");
+      }
+      if (resolution.draft) {
+        // Both the existing draft and a freshly seeded one hydrate unchanged.
+        restoreDraft(resolution.draft, resolution.seeded);
+        return;
+      }
+      setDraftReady(true);
+    };
+    loadDraft().catch((requestError) => {
+      if (requestError.name !== "AbortError") {
+        setDraftStatus("Setup will remain on this device until syncing is available.");
+      }
+    });
     return () => {
       activeRequest = false;
       controller.abort();
@@ -188,6 +220,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
         sources,
         templateId: selectedTemplate?.id,
         templateVersion: selectedTemplate?.version,
+        attribution: attribution ?? undefined,
       },
     };
     const queued = draftSaveQueue.current
@@ -214,6 +247,7 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
   }, [
     active,
     aiExplorationEnabled,
+    attribution,
     draftReady,
     emailEnabled,
     learnerGoal,
@@ -429,6 +463,26 @@ export default function NewsletterCreate({ sourceDiscovery = false }) {
                   : "See how Learnloom will build the evidence base, then choose how much control you want."}
             </p>
           </section>
+
+          {attribution && !attributionDismissed ? (
+            <aside className="starting-path-banner" role="note">
+              <Sparkles size={16} aria-hidden="true" />
+              <p>
+                Starting from{" "}
+                <a href={attribution.canonicalUrl} target="_blank" rel="noopener noreferrer">
+                  {attribution.title}
+                </a>
+                , a public path by {attribution.ownerName}.
+              </p>
+              <button
+                type="button"
+                aria-label="Dismiss starting path attribution"
+                onClick={() => setAttributionDismissed(true)}
+              >
+                <X size={14} />
+              </button>
+            </aside>
+          ) : null}
 
           <ol className="setup-steps" aria-label="Learning stream setup progress">
             {steps.map((item) => (

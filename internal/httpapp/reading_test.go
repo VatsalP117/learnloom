@@ -37,6 +37,8 @@ func TestDecoratePublicGrowthShowsPathRelatedSharingAndAttributedCTA(t *testing.
 		"Double opt-in",
 		"/go/dossier-1/start",
 		"/go/dossier-1/linkedin",
+		"Start a path like this",
+		"private, personalized path",
 	} {
 		if !strings.Contains(document, expected) {
 			t.Fatalf("public growth surface missing %q", expected)
@@ -304,7 +306,8 @@ func TestRenderReadingHeaderAndFooterEscapeSiteFields(t *testing.T) {
 		`<footer class="site-footer" id="about">`,
 		`Ada &lt;Lovelace&gt;`,
 		`Notes &amp; &lt;observations&gt; from the field.`,
-		`Grown with`,
+		`Published with`,
+		`A personal learning archive`,
 	} {
 		if !strings.Contains(footer, expected) {
 			t.Fatalf("renderReadingFooter() missing %q in %s", expected, footer)
@@ -332,6 +335,48 @@ func TestReadingSheetsRemainImageLightAndAssetFree(t *testing.T) {
 		} {
 			if strings.Contains(sheet, forbidden) {
 				t.Fatalf("%s reintroduced %q", name, forbidden)
+			}
+		}
+	}
+}
+
+func TestReadingSheetsUseOnlyNeutralPalette(t *testing.T) {
+	t.Parallel()
+
+	for name, sheet := range map[string]string{
+		"readingCSS":        readingCSS,
+		"readingArticleCSS": readingArticleCSS,
+	} {
+		for _, oldToken := range []string{
+			"#047857", "#f0c36a", "#fff8e8", "#9a5b13", "#7c5a2d",
+			"#496b4c", "#56634b", "#9c4e2c", "#315b44", "#172319", "#17241a",
+			"#262e20", "#1d2c22", "#f6f3ea", "#fdfbf4", "#efe9db",
+			"gradient", "999px", "moss", "rust",
+		} {
+			// readingArticleCSS may mention legacy inline values only inside
+			// [style*="..."] attribute selectors that neutralize stored artifacts.
+			if (strings.HasPrefix(oldToken, "#") || oldToken == "999px") && strings.Contains(sheet, `style*="`) {
+				rest := sheet
+				mentioned := false
+				for {
+					index := strings.Index(rest, oldToken)
+					if index == -1 {
+						break
+					}
+					mentioned = true
+					selectorStart := strings.LastIndex(rest[:index], `style*="`)
+					quoteEnd := strings.Index(rest[index+len(oldToken):], `"`)
+					if selectorStart == -1 || quoteEnd == -1 {
+						t.Fatalf("%s uses old palette token %q outside a legacy override selector", name, oldToken)
+					}
+					rest = rest[index+len(oldToken):]
+				}
+				if mentioned {
+					continue
+				}
+			}
+			if strings.Contains(sheet, oldToken) {
+				t.Fatalf("%s still carries the old palette token %q", name, oldToken)
 			}
 		}
 	}

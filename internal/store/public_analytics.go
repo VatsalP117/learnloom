@@ -103,6 +103,113 @@ func (s *Store) RecordPublicGrowthEvent(
 	return nil
 }
 
+// PublicStartingSource is a display-only projection of one frozen evidence
+// item used to seed a private onboarding draft. It carries no artifact body
+// or content.
+type PublicStartingSource struct {
+	Title        string
+	CanonicalURL string
+}
+
+// PublicStartingPath is the latest eligible public starting point for a
+// referral visitor, resolved from recorded CTA clicks within the 30-day
+// attribution window. It intentionally carries no artifact body/content and
+// no private columns.
+type PublicStartingPath struct {
+	IssueID          string
+	PublicID         string
+	PublicSlug       string
+	Title            string
+	NewsletterID     string
+	NewsletterName   string
+	NewsletterTopic  string
+	NewsletterGoal   string
+	OwnerDisplayName string
+	SiteUsername     string
+	Sources          []PublicStartingSource
+}
+
+// GetPublicStartingPath resolves the visitor's latest eligible recorded
+// cta_click by referral fingerprint. The Dossier must still be fully public:
+// active owner, public site, visible parent stream, and a generated,
+// published, moderation-clear Issue. The frozen issue_sources evidence is
+// projected separately, ordered by position with at most 8 unique canonical
+// URLs.
+func (s *Store) GetPublicStartingPath(
+	ctx context.Context,
+	referralFingerprint string,
+	now time.Time,
+) (PublicStartingPath, error) {
+	if len(referralFingerprint) != 64 {
+		return PublicStartingPath{}, errors.New("public referral fingerprint is invalid")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	var path PublicStartingPath
+	err := s.pool.QueryRow(ctx, `
+		SELECT i.id::text, 'dossier-' || i.public_id::text, i.public_slug,
+		       i.dossier_title, n.id::text, n.name, n.topic, n.learner_goal,
+		       site.display_name, site.username
+		FROM public_growth_events event
+		JOIN issues i ON i.id = event.issue_id
+		JOIN newsletters n ON n.id = i.newsletter_id
+		JOIN accounts account ON account.id = n.owner_account_id
+		JOIN personal_sites site ON site.owner_account_id = account.id
+		WHERE event.event_name = 'cta_click'
+		  AND event.channel = ''
+		  AND event.visitor_fingerprint = $1
+		  AND event.occurred_at >= $2::timestamptz - interval '30 days'
+		  AND account.status = 'active' AND site.visibility = 'public'
+		  AND n.site_visible
+		  AND i.status = 'generated' AND i.publication_state = 'published'
+		  AND i.moderation_state = 'clear'
+		ORDER BY event.occurred_at DESC, event.id DESC
+		LIMIT 1
+	`, referralFingerprint, now).Scan(
+		&path.IssueID, &path.PublicID, &path.PublicSlug, &path.Title,
+		&path.NewsletterID, &path.NewsletterName, &path.NewsletterTopic,
+		&path.NewsletterGoal, &path.OwnerDisplayName, &path.SiteUsername,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PublicStartingPath{}, ErrNotFound
+	}
+	if err != nil {
+		return PublicStartingPath{}, fmt.Errorf("get public starting path: %w", err)
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT COALESCE(ss.title, ''), COALESCE(ss.canonical_url, '')
+		FROM issue_sources isrc
+		JOIN source_snapshots ss ON ss.id = isrc.source_snapshot_id
+		WHERE isrc.issue_id = $1
+		ORDER BY isrc.position
+		LIMIT 40
+	`, path.IssueID)
+	if err != nil {
+		return PublicStartingPath{}, fmt.Errorf("get public starting path evidence: %w", err)
+	}
+	defer rows.Close()
+	seen := make(map[string]bool, 8)
+	for rows.Next() {
+		var source PublicStartingSource
+		if err := rows.Scan(&source.Title, &source.CanonicalURL); err != nil {
+			return PublicStartingPath{}, fmt.Errorf("scan public starting path evidence: %w", err)
+		}
+		if source.CanonicalURL == "" || seen[source.CanonicalURL] {
+			continue
+		}
+		seen[source.CanonicalURL] = true
+		path.Sources = append(path.Sources, source)
+		if len(path.Sources) == 8 {
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return PublicStartingPath{}, fmt.Errorf("read public starting path evidence: %w", err)
+	}
+	return path, nil
+}
+
 func (s *Store) RecordPublicSignupConversion(
 	ctx context.Context,
 	accountID, referralFingerprint string,

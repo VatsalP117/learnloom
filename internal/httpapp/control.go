@@ -372,6 +372,10 @@ func (s *Server) handleControl(
 		}
 		return
 	}
+	if request.URL.Path == "/api/onboarding/draft/start" {
+		s.onboardingDraftStart(response, request, current)
+		return
+	}
 	if request.URL.Path == "/api/onboarding/draft" {
 		s.onboardingDraft(response, request, current)
 		return

@@ -6,10 +6,14 @@ import {
   Leaf,
   LoaderCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
 import BrandMark from "./BrandMark";
 import CalmLoader from "./CalmLoader";
+import {
+  pendingSourceDossierReturnURL,
+  rememberSourceDossierIntent,
+} from "./startingPath";
 import "./auth.css";
 
 const AUTH_COPY = {
@@ -45,7 +49,7 @@ function throwIfClerkError(result) {
 }
 
 function navigateHome({ decorateUrl }) {
-  window.location.assign(decorateUrl("/"));
+  window.location.assign(decorateUrl(pendingSourceDossierReturnURL() ?? "/"));
 }
 
 export default function AuthPage({
@@ -54,6 +58,13 @@ export default function AuthPage({
   statusDetail = "This will only take a moment.",
   statusKind = "loading",
 }) {
+  // Remember a valid "Start a path like this" hint before authentication so
+  // the successful flow can return to the seeded create page. Invalid hints
+  // are ignored and leave normal auth behavior untouched.
+  useEffect(() => {
+    rememberSourceDossierIntent(window.location.search);
+  }, []);
+
   if (status && statusKind === "loading") {
     return <CalmLoader label={status} detail={statusDetail} />;
   }
@@ -137,7 +148,7 @@ function SignInFlow() {
     try {
       throwIfClerkError(await signIn.sso({
         strategy: "oauth_google",
-        redirectUrl: "/",
+        redirectUrl: pendingSourceDossierReturnURL() ?? "/",
         redirectCallbackUrl: "/sso-callback",
       }));
     } catch (requestError) {
@@ -377,7 +388,7 @@ function SignUpFlow() {
     try {
       throwIfClerkError(await signUp.sso({
         strategy: "oauth_google",
-        redirectUrl: "/",
+        redirectUrl: pendingSourceDossierReturnURL() ?? "/",
         redirectCallbackUrl: "/sso-callback",
       }));
     } catch (requestError) {

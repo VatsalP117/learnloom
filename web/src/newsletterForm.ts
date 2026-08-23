@@ -1,3 +1,8 @@
+import type {
+  OnboardingAttribution,
+  OnboardingDraftPayload,
+} from "./types";
+
 export interface NewsletterSourceInput {
   name: string;
   url: string;
@@ -23,6 +28,66 @@ export interface NewsletterFormValues {
   templateVersion?: number;
   onboardingDraftId?: string;
   onboardingDraftRevision?: number;
+  /** Display-only seeded provenance; never sent on final creation. */
+  attribution?: OnboardingAttribution | null;
+}
+
+export interface DraftFormValues {
+  name: string;
+  topic: string;
+  learnerLevel: string;
+  learnerGoal: string;
+  lessonMinutes: number;
+  scheduleTime: string;
+  timeZone: string;
+  active: boolean;
+  emailEnabled: boolean;
+  aiExplorationEnabled: boolean;
+  sourceMode: "discovered" | "provided" | "hybrid";
+  reviewBeforeLesson: boolean;
+  showSpecificSources: boolean;
+  sources: NewsletterSourceInput[];
+  templateId?: string;
+  templateVersion?: number;
+  attribution?: OnboardingAttribution | null;
+}
+
+/**
+ * Maps a restored onboarding draft payload onto editable form values.
+ * Seeded hybrid mode degrades to provided when source discovery is off so
+ * seeded sources stay editable, and display-only attribution is carried
+ * through for the banner and autosave persistence.
+ */
+export function draftToFormValues(
+  payload: OnboardingDraftPayload,
+  sourceDiscovery: boolean,
+): DraftFormValues {
+  const sourceMode = payload.sourceMode ?? (sourceDiscovery ? "discovered" : "provided");
+  const restoredMode = sourceDiscovery || sourceMode !== "hybrid" ? sourceMode : "provided";
+  const sources = payload.sources?.length
+    ? payload.sources.map((source) => ({ ...source, limit: source.limit ?? 8 }))
+    : restoredMode === "discovered"
+      ? []
+      : [{ name: "", url: "", limit: 8 }];
+  return {
+    name: payload.name ?? "",
+    topic: payload.topic ?? "",
+    learnerLevel: payload.learnerLevel ?? "intermediate",
+    learnerGoal: payload.learnerGoal ?? "",
+    lessonMinutes: payload.lessonMinutes ?? 12,
+    scheduleTime: payload.scheduleTime ?? "08:00",
+    timeZone: payload.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    active: payload.active ?? true,
+    emailEnabled: payload.emailEnabled ?? false,
+    aiExplorationEnabled: payload.aiExplorationEnabled ?? false,
+    sourceMode: restoredMode,
+    reviewBeforeLesson: payload.sourceReviewMode === "review",
+    showSpecificSources: restoredMode !== "discovered",
+    sources,
+    templateId: payload.templateId,
+    templateVersion: payload.templateVersion,
+    attribution: payload.attribution ?? null,
+  };
 }
 
 export function usableSources(sources: NewsletterSourceInput[]) {
