@@ -1,4 +1,7 @@
-# Paddle staging lifecycle runbook
+# Historical Paddle staging lifecycle runbook
+
+> Historical reference only. Paddle is no longer the active billing provider;
+> use `docs/dodo-staging-lifecycle-runbook.md` for current verification.
 
 This runbook is required evidence for `LL-911`. Do not run it against live
 prices or a production customer. Do not copy webhook payloads, API keys,

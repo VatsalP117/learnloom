@@ -85,7 +85,7 @@ func (s *Store) RecordPendingBillingCheckout(
 	accountID, transactionID, planID string,
 	now time.Time,
 ) (string, error) {
-	if accountID == "" || !strings.HasPrefix(transactionID, "txn_") ||
+	if accountID == "" || !strings.HasPrefix(transactionID, "cks_") ||
 		(planID != "essential" && planID != "pro") {
 		return "", errors.New("billing checkout is invalid")
 	}
@@ -146,7 +146,7 @@ type BillingRefundAdjustment struct {
 
 // ApplyBillingRefundAdjustment records an approved partial or full refund as
 // a financial fact without guessing that the related subscription was
-// canceled. Paddle reports cancellation separately through subscription events.
+// canceled. Dodo Payments reports cancellation separately through subscription events.
 func (s *Store) ApplyBillingRefundAdjustment(
 	ctx context.Context,
 	adjustment BillingRefundAdjustment,
@@ -178,7 +178,7 @@ func (s *Store) ApplyBillingRefundAdjustment(
 	var accountID string
 	err = tx.QueryRow(ctx, `
 		SELECT account_id::text FROM account_billing
-		WHERE provider = 'paddle' AND provider_customer_id = $1
+		WHERE provider = 'dodo' AND provider_customer_id = $1
 		  AND ($2 = '' OR provider_subscription_id = $2)
 		FOR UPDATE
 	`, adjustment.ProviderCustomerID, adjustment.ProviderSubscriptionID).Scan(&accountID)
@@ -214,7 +214,7 @@ func (s *Store) ApplyBillingRefundAdjustment(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE billing_webhook_events SET processed_at = $2, error = NULL
-		WHERE provider = 'paddle' AND event_id = $1
+		WHERE provider = 'dodo' AND event_id = $1
 	`, adjustment.ProviderEventID, now); err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func (s *Store) RecordIgnoredBillingWebhook(
 	if inserted {
 		if _, err := tx.Exec(ctx, `
 			UPDATE billing_webhook_events SET processed_at = $2, error = NULL
-			WHERE provider = 'paddle' AND event_id = $1
+			WHERE provider = 'dodo' AND event_id = $1
 		`, receipt.ProviderEventID, now); err != nil {
 			return err
 		}
@@ -270,7 +270,7 @@ func recordBillingWebhookTx(
 		  provider, event_id, event_type, event_occurred_at,
 		  received_at, payload_sha256
 		)
-		VALUES ('paddle', $1, $2, $3, $4, $5)
+		VALUES ('dodo', $1, $2, $3, $4, $5)
 		ON CONFLICT (provider, event_id) DO NOTHING
 	`, eventID, eventType, eventOccurredAt, now, payloadSHA256)
 	if err != nil {
@@ -282,7 +282,7 @@ func recordBillingWebhookTx(
 	var existingHash string
 	if err := tx.QueryRow(ctx, `
 		SELECT payload_sha256 FROM billing_webhook_events
-		WHERE provider = 'paddle' AND event_id = $1
+		WHERE provider = 'dodo' AND event_id = $1
 	`, eventID).Scan(&existingHash); err != nil {
 		return false, fmt.Errorf("load billing webhook replay: %w", err)
 	}
@@ -290,6 +290,96 @@ func recordBillingWebhookTx(
 		return false, errors.New("billing webhook event ID was replayed with a different payload")
 	}
 	return false, nil
+}
+
+type BillingPayment struct {
+	ProviderEventID        string
+	EventType              string
+	ProviderCustomerID     string
+	ProviderSubscriptionID string
+	ProviderTransactionID  string
+	CheckoutSessionID      string
+	AccountID              string
+	PlanID                 string
+	CurrencyCode           string
+	AmountMinor            int64
+	EventOccurredAt        time.Time
+	PayloadSHA256          string
+}
+
+// ApplyBillingPayment records money without granting entitlement. Attribution
+// must already be anchored by a server-created checkout or a signed,
+// product-validated subscription event.
+func (s *Store) ApplyBillingPayment(ctx context.Context, payment BillingPayment, now time.Time) error {
+	if payment.ProviderEventID == "" || payment.EventType != "payment.succeeded" ||
+		payment.ProviderCustomerID == "" || payment.ProviderSubscriptionID == "" ||
+		payment.ProviderTransactionID == "" || payment.AmountMinor < 0 ||
+		len(payment.PayloadSHA256) != 64 || payment.EventOccurredAt.IsZero() {
+		return errors.New("billing payment is invalid")
+	}
+	payment.CurrencyCode = strings.ToUpper(strings.TrimSpace(payment.CurrencyCode))
+	if len(payment.CurrencyCode) != 3 {
+		return errors.New("billing payment currency is invalid")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	inserted, err := recordBillingWebhookTx(ctx, tx, payment.ProviderEventID, payment.EventType, payment.EventOccurredAt, payment.PayloadSHA256, now)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return tx.Commit(ctx)
+	}
+	var accountID, planID string
+	err = tx.QueryRow(ctx, `
+		SELECT account_id::text, plan_id FROM (
+		  SELECT account_id, plan_id, 0 AS priority
+		  FROM billing_checkout_sessions
+		  WHERE transaction_id = NULLIF($1, '')
+		  UNION ALL
+		  SELECT account_id, plan_id, 1 AS priority
+		  FROM account_billing
+		  WHERE provider = 'dodo' AND provider_customer_id = $2
+		    AND provider_subscription_id = $3
+		) attribution ORDER BY priority LIMIT 1
+	`, payment.CheckoutSessionID, payment.ProviderCustomerID, payment.ProviderSubscriptionID).Scan(&accountID, &planID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if (payment.AccountID != "" && payment.AccountID != accountID) || (payment.PlanID != "" && payment.PlanID != planID) {
+		return errors.New("billing payment attribution does not match")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO billing_lifecycle_events (account_id, event_name, provider_event_id, occurred_at, metadata, currency_code, amount_minor)
+		VALUES ($1, 'payment_succeeded', $2, $3, jsonb_build_object('event_type', $4::text), $5, $6)
+		ON CONFLICT (provider_event_id, event_name) WHERE provider_event_id IS NOT NULL DO NOTHING
+	`, accountID, payment.ProviderEventID, payment.EventOccurredAt, payment.EventType, payment.CurrencyCode, payment.AmountMinor); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO billing_revenue_events (provider_event_id, account_id, event_type, currency_code, amount_minor, occurred_at)
+		VALUES ($1, $2, 'payment', $3, $4, $5) ON CONFLICT (provider_event_id) DO NOTHING
+	`, payment.ProviderEventID, accountID, payment.CurrencyCode, payment.AmountMinor, payment.EventOccurredAt); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE billing_webhook_events SET processed_at = $2, error = NULL WHERE provider = 'dodo' AND event_id = $1`, payment.ProviderEventID, now); err != nil {
+		return err
+	}
+	if payment.CheckoutSessionID != "" {
+		if _, err := tx.Exec(ctx, `UPDATE billing_checkout_sessions SET status = 'completed', updated_at = $2 WHERE transaction_id = $1 AND account_id = $3 AND status = 'pending'`, payment.CheckoutSessionID, now, accountID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) ApplyBillingLifecycleUpdate(
@@ -355,7 +445,7 @@ func (s *Store) ApplyBillingLifecycleUpdate(
 	err = tx.QueryRow(ctx, `
 		WITH changed AS (
 		  UPDATE account_billing SET
-		    provider = 'paddle',
+		    provider = 'dodo',
 			    provider_customer_id = COALESCE(NULLIF($2, ''), provider_customer_id),
 			    provider_subscription_id = COALESCE(NULLIF($3, ''), provider_subscription_id),
 			    plan_id = $4, subscription_status = $5, entitlement_status = $6,
@@ -414,7 +504,7 @@ func (s *Store) ApplyBillingLifecycleUpdate(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE billing_webhook_events SET processed_at = $2, error = NULL
-		WHERE provider = 'paddle' AND event_id = $1
+		WHERE provider = 'dodo' AND event_id = $1
 	`, update.ProviderEventID, now); err != nil {
 		return err
 	}
@@ -546,7 +636,7 @@ func (s *Store) GetBillingProviderCustomerID(ctx context.Context, accountID stri
 	var customerID string
 	err := s.pool.QueryRow(ctx, `
 		SELECT COALESCE(provider_customer_id, '')
-		FROM account_billing WHERE account_id = $1 AND provider = 'paddle'
+		FROM account_billing WHERE account_id = $1 AND provider = 'dodo'
 	`, accountID).Scan(&customerID)
 	if errors.Is(err, pgx.ErrNoRows) || customerID == "" {
 		return "", ErrNotFound

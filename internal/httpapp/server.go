@@ -43,14 +43,13 @@ type Config struct {
 	ClerkJWTKey              string
 	ClerkWebhookSecret       string
 	ClerkFrontendOrigin      string
-	PaddleWebhookSecret      string
-	PaddleAPIKey             string
-	PaddleAPIBaseURL         string
-	PaddleEssentialPriceID   string
-	PaddleProPriceID         string
-	PaddleClientToken        string
+	DodoWebhookSecret        string
+	DodoAPIKey               string
+	DodoAPIBaseURL           string
+	DodoEssentialProductID   string
+	DodoProProductID         string
 	PaidCommerceApproved     bool
-	PaddleHTTPClient         *http.Client
+	DodoHTTPClient           *http.Client
 	MaxRequestBodyBytes      int64
 	MaxNewsletters           int
 	DailyAccountLimit        int
@@ -393,14 +392,11 @@ func (s *Server) handleApp(response http.ResponseWriter, request *http.Request) 
 	case "/webhooks/clerk":
 		s.handleClerkWebhook(response, request)
 		return
-	case "/webhooks/paddle":
-		s.handlePaddleWebhook(response, request)
+	case "/webhooks/dodo":
+		s.handleDodoWebhook(response, request)
 		return
 	case "/robots.txt":
 		s.renderAppRobots(response, request)
-		return
-	case "/api/billing/config":
-		s.handleBillingConfig(response, request)
 		return
 	case "/public-follow/confirm":
 		s.handlePublicFollowLifecycle(response, request, true)
@@ -576,11 +572,7 @@ func (s *Server) serveIndex(response http.ResponseWriter, request *http.Request)
 		s.internalError(response, request, fmt.Errorf("read frontend index: %w", err))
 		return
 	}
-	if request.URL.Path == "/checkout" {
-		s.applyCheckoutCSP(response)
-	} else {
-		s.applyAppCSP(response)
-	}
+	s.applyAppCSP(response)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(http.StatusOK)
@@ -617,11 +609,7 @@ func (s *Server) serveMarketingIndex(response http.ResponseWriter, request *http
 		return
 	}
 	body = decorateMarketingIndex(body, s.cfg.ApexOrigin)
-	if request.URL.Path == "/checkout" {
-		s.applyCheckoutCSP(response)
-	} else {
-		s.applyAppCSP(response)
-	}
+	s.applyAppCSP(response)
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// The marketing document is public and identical for every visitor: let
 	// browsers reuse it briefly while Cloudflare caches it longer, mirroring
@@ -692,20 +680,6 @@ func (s *Server) appCSP() string {
 		"font-src 'self' https://cdn.fontshare.com; worker-src 'self' blob:; " +
 		"frame-src https://challenges.cloudflare.com; " +
 		"base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"
-}
-
-// applyCheckoutCSP extends the app policy only for the public /checkout page,
-// where Paddle.js must load its script from the Paddle CDN, call the Paddle
-// API, and render the hosted checkout overlay in an iframe. All other routes
-// keep the strict base policy.
-func (s *Server) applyCheckoutCSP(response http.ResponseWriter) {
-	policy := strings.Replace(s.appCSP(),
-		"script-src ", "script-src https://cdn.paddle.com ", 1)
-	policy = strings.Replace(policy,
-		"connect-src ", "connect-src https://*.paddle.com https://*.paddle.io ", 1)
-	policy = strings.Replace(policy,
-		"frame-src ", "frame-src https://*.paddle.com https://*.paddle.io ", 1)
-	response.Header().Set("Content-Security-Policy", policy)
 }
 
 func (s *Server) handleReady(response http.ResponseWriter, request *http.Request) {

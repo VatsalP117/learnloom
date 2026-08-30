@@ -345,7 +345,7 @@ The current application supports:
 - Durable retrieval practice, learner feedback, Today selection, and adaptive
   learning rhythm.
 - Server-enforced Free/Pro entitlements and a provider-backed billing lifecycle
-  in the repository; live commercial claims remain gated on Paddle staging and
+  in the repository; live commercial claims remain gated on Dodo Payments staging and
   legal/business review.
 
 ## Product promise

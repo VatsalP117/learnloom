@@ -187,17 +187,15 @@ func TestBillingCheckoutCreationRateLimitPreservesPendingReuse(t *testing.T) {
 		}
 		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusCreated)
-		_, _ = response.Write([]byte(
-			`{"data":{"id":"txn_` + uuid.NewString() + `","checkout":{"url":"` +
-				provider.URL + `/checkout?_ptxn=txn_test"}}}`))
+		_, _ = response.Write([]byte(`{"session_id":"cks_` + uuid.NewString() + `","checkout_url":"https://test.checkout.dodopayments.com/session/cks_test"}`))
 	}))
 	defer provider.Close()
 	server := &Server{cfg: Config{
 		Environment: "staging", AppOrigin: provider.URL,
-		PaddleAPIBaseURL: provider.URL, PaddleAPIKey: "paddle-key",
-		PaddleWebhookSecret: "webhook-secret", PaddleClientToken: "test_token",
-		PaddleEssentialPriceID: "pri_essential", PaddleProPriceID: "pri_pro",
-		PaddleHTTPClient: provider.Client(), MaxRequestBodyBytes: 1 << 20,
+		DodoAPIBaseURL: provider.URL, DodoAPIKey: "dodo-key",
+		DodoWebhookSecret:      "webhook-secret",
+		DodoEssentialProductID: "pdt_essential", DodoProProductID: "pdt_pro",
+		DodoHTTPClient: provider.Client(), MaxRequestBodyBytes: 1 << 20,
 	}, store: database, logger: slog.New(slog.DiscardHandler)}
 
 	post := func(planID string) *httptest.ResponseRecorder {
@@ -228,7 +226,7 @@ func TestBillingCheckoutCreationRateLimitPreservesPendingReuse(t *testing.T) {
 		}
 	}
 	// The eleventh creation attempt in the hour is rejected before any
-	// Paddle API call: 429 with Retry-After, and the provider sees no
+	// Dodo Payments API call: 429 with Retry-After, and the provider sees no
 	// further traffic.
 	limited := post("essential")
 	if limited.Code != http.StatusTooManyRequests {
@@ -241,13 +239,13 @@ func TestBillingCheckoutCreationRateLimitPreservesPendingReuse(t *testing.T) {
 		t.Fatalf("rate-limit response body=%s", limited.Body.String())
 	}
 	if calls := providerCalls.Load(); calls != 10 {
-		t.Fatalf("provider calls=%d, want 10 (creation must be limited before Paddle)", calls)
+		t.Fatalf("provider calls=%d, want 10 (creation must be limited before Dodo Payments)", calls)
 	}
 	// A pending checkout still wins over the exhausted creation limit:
 	// seed the row a successful creation would have recorded, restore the
 	// provider, and confirm the pending checkout is reused without a new
 	// provider call.
-	seededID := "txn_seeded_" + uuid.NewString()
+	seededID := "cks_seeded_" + uuid.NewString()
 	if _, err := database.RecordPendingBillingCheckout(
 		ctx, account.ID, seededID, "pro", time.Now().UTC(),
 	); err != nil {

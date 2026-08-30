@@ -25,7 +25,7 @@ type Config struct {
 	Model                        Model
 	Clerk                        Clerk
 	Resend                       Resend
-	Paddle                       Paddle
+	DodoPayments                 DodoPayments
 	Worker                       Worker
 	Limits                       Limits
 	SourceIntelligence           SourceIntelligence
@@ -108,15 +108,14 @@ type Resend struct {
 	SubjectPrefix string
 }
 
-type Paddle struct {
-	APIKey            string
-	APIBaseURL        string
-	WebhookSecret     string
-	EssentialPriceID  string
-	ProPriceID        string
-	ClientToken       string
-	CommerceApproved  bool
-	ApprovalReference string
+type DodoPayments struct {
+	APIKey             string
+	APIBaseURL         string
+	WebhookSecret      string
+	EssentialProductID string
+	ProProductID       string
+	CommerceApproved   bool
+	ApprovalReference  string
 }
 
 type Worker struct {
@@ -209,15 +208,14 @@ func Load() (Config, error) {
 			From:          os.Getenv("RESEND_FROM"),
 			SubjectPrefix: env("RESEND_SUBJECT_PREFIX", "Learnloom"),
 		},
-		Paddle: Paddle{
-			APIKey:            os.Getenv("PADDLE_API_KEY"),
-			APIBaseURL:        env("PADDLE_API_BASE_URL", "https://api.paddle.com"),
-			WebhookSecret:     os.Getenv("PADDLE_WEBHOOK_SECRET"),
-			EssentialPriceID:  os.Getenv("PADDLE_ESSENTIAL_PRICE_ID"),
-			ProPriceID:        os.Getenv("PADDLE_PRO_PRICE_ID"),
-			ClientToken:       os.Getenv("PADDLE_CLIENT_TOKEN"),
-			CommerceApproved:  envBool("PAID_COMMERCE_APPROVED", false),
-			ApprovalReference: os.Getenv("PAID_COMMERCE_APPROVAL_REFERENCE"),
+		DodoPayments: DodoPayments{
+			APIKey:             os.Getenv("DODO_PAYMENTS_API_KEY"),
+			APIBaseURL:         env("DODO_PAYMENTS_API_BASE_URL", "https://test.dodopayments.com"),
+			WebhookSecret:      os.Getenv("DODO_PAYMENTS_WEBHOOK_SECRET"),
+			EssentialProductID: os.Getenv("DODO_PAYMENTS_ESSENTIAL_PRODUCT_ID"),
+			ProProductID:       os.Getenv("DODO_PAYMENTS_PRO_PRODUCT_ID"),
+			CommerceApproved:   envBool("PAID_COMMERCE_APPROVED", false),
+			ApprovalReference:  os.Getenv("PAID_COMMERCE_APPROVAL_REFERENCE"),
 		},
 		Worker: Worker{
 			PollInterval:        envDuration("WORKER_POLL_INTERVAL", 2*time.Second),
@@ -320,50 +318,36 @@ func (c Config) ValidateFor(role string) error {
 	if role == "web" && c.Environment == "production" && strings.TrimSpace(c.Clerk.FrontendOrigin) == "" {
 		problems = append(problems, errors.New("CLERK_FRONTEND_ORIGIN is required in production"))
 	}
-	if (c.Paddle.APIKey != "" || c.Paddle.WebhookSecret != "" || c.Paddle.EssentialPriceID != "" || c.Paddle.ProPriceID != "" ||
-		c.Paddle.ClientToken != "") &&
-		(c.Paddle.APIKey == "" || c.Paddle.WebhookSecret == "" || c.Paddle.EssentialPriceID == "" || c.Paddle.ProPriceID == "" ||
-			c.Paddle.ClientToken == "") {
+	dodo := c.DodoPayments
+	if (dodo.APIKey != "" || dodo.WebhookSecret != "" || dodo.EssentialProductID != "" || dodo.ProProductID != "") &&
+		(dodo.APIKey == "" || dodo.WebhookSecret == "" || dodo.EssentialProductID == "" || dodo.ProProductID == "") {
 		problems = append(problems, errors.New(
-			"PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, PADDLE_CLIENT_TOKEN, PADDLE_ESSENTIAL_PRICE_ID, and PADDLE_PRO_PRICE_ID must be set together",
+			"DODO_PAYMENTS_API_KEY, DODO_PAYMENTS_WEBHOOK_SECRET, DODO_PAYMENTS_ESSENTIAL_PRODUCT_ID, and DODO_PAYMENTS_PRO_PRODUCT_ID must be set together",
 		))
 	}
-	if c.Paddle.EssentialPriceID != "" && c.Paddle.EssentialPriceID == c.Paddle.ProPriceID {
-		problems = append(problems, errors.New("Paddle Essential and Pro price IDs must differ"))
+	if dodo.EssentialProductID != "" && dodo.EssentialProductID == dodo.ProProductID {
+		problems = append(problems, errors.New("Dodo Payments Essential and Pro product IDs must differ"))
 	}
-	if c.Paddle.ClientToken != "" {
-		switch c.Environment {
-		case "staging":
-			if !strings.HasPrefix(c.Paddle.ClientToken, "test_") {
-				problems = append(problems, errors.New("PADDLE_CLIENT_TOKEN must begin with test_ in staging"))
-			}
-		case "production":
-			if !strings.HasPrefix(c.Paddle.ClientToken, "live_") {
-				problems = append(problems, errors.New("PADDLE_CLIENT_TOKEN must begin with live_ in production"))
-			}
+	for name, productID := range map[string]string{"DODO_PAYMENTS_ESSENTIAL_PRODUCT_ID": dodo.EssentialProductID, "DODO_PAYMENTS_PRO_PRODUCT_ID": dodo.ProProductID} {
+		if productID != "" && !strings.HasPrefix(productID, "pdt_") {
+			problems = append(problems, fmt.Errorf("%s must begin with pdt_", name))
 		}
 	}
-	if c.Paddle.APIKey != "" {
-		parsed, err := url.Parse(c.Paddle.APIBaseURL)
+	if dodo.APIKey != "" {
+		parsed, err := url.Parse(dodo.APIBaseURL)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
 			(parsed.Path != "" && parsed.Path != "/") {
-			problems = append(problems, errors.New("PADDLE_API_BASE_URL must be an HTTPS origin without credentials or a path"))
+			problems = append(problems, errors.New("DODO_PAYMENTS_API_BASE_URL must be an HTTPS origin without credentials or a path"))
 		}
-		if err == nil && c.Environment == "staging" && parsed.Hostname() != "sandbox-api.paddle.com" {
-			problems = append(problems, errors.New(
-				"PADDLE_API_BASE_URL must use sandbox-api.paddle.com in staging",
-			))
+		if err == nil && c.Environment != "production" && parsed.Hostname() != "test.dodopayments.com" {
+			problems = append(problems, errors.New("DODO_PAYMENTS_API_BASE_URL must use test.dodopayments.com outside production"))
 		}
-		if err == nil && c.Environment == "production" && parsed.Hostname() != "api.paddle.com" {
-			problems = append(problems, errors.New(
-				"PADDLE_API_BASE_URL must use api.paddle.com in production",
-			))
+		if err == nil && c.Environment == "production" && parsed.Hostname() != "live.dodopayments.com" {
+			problems = append(problems, errors.New("DODO_PAYMENTS_API_BASE_URL must use live.dodopayments.com in production"))
 		}
-		if c.Environment == "production" && (!c.Paddle.CommerceApproved ||
-			strings.TrimSpace(c.Paddle.ApprovalReference) == "" ||
-			len(c.Paddle.ApprovalReference) > 160) {
+		if c.Environment == "production" && (!dodo.CommerceApproved || strings.TrimSpace(dodo.ApprovalReference) == "" || len(dodo.ApprovalReference) > 160) {
 			problems = append(problems, errors.New(
-				"production Paddle billing requires PAID_COMMERCE_APPROVED=true and a bounded PAID_COMMERCE_APPROVAL_REFERENCE",
+				"production Dodo Payments billing requires PAID_COMMERCE_APPROVED=true and a bounded PAID_COMMERCE_APPROVAL_REFERENCE",
 			))
 		}
 	}

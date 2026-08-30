@@ -160,7 +160,7 @@ export default function SettingsPage() {
                   <small>{billing.billing.generationUsed} lessons generated this period</small>
                 </span>
               </div>
-              {checkoutStatus === "activating" ? <p className="billing-notice" role="status">Payment completed. Paddle is activating your plan; this usually takes a few seconds.</p> : null}
+              {checkoutStatus === "activating" ? <p className="billing-notice" role="status">Payment completed. Dodo Payments is activating your plan; this usually takes a few seconds.</p> : null}
               {checkoutStatus === "active" ? <p className="billing-notice" role="status">Your paid plan is active.</p> : null}
               {billing.billing.cancelAtPeriodEnd ? <p className="billing-notice" role="status">Your subscription is scheduled to end after the current billing period. Existing lessons will remain readable.</p> : null}
               {billing.billing.entitlementStatus === "grace" ? (

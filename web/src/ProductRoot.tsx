@@ -8,7 +8,6 @@ import "@fontsource/bricolage-grotesque/latin-600.css";
 import "@fontsource/bricolage-grotesque/latin-700.css";
 import DemoHostedApp from "./DemoHostedApp";
 import HostedApp from "./HostedApp";
-import PaddleCheckoutPage from "./PaddleCheckoutPage";
 import { demoMode } from "./api";
 import "./styles.css";
 import "./redesign.css";
@@ -17,8 +16,6 @@ const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export default function ProductRoot() {
 	if (demoMode) return <DemoHostedApp />;
-	if (window.location.pathname === "/checkout") return <PaddleCheckoutPage />;
-
   if (clerkPublishableKey) {
     return (
       <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/sign-in">

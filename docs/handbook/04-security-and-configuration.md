@@ -199,18 +199,18 @@ feature.
 `CLERK_PUBLISHABLE_KEY` is required server-side but current Go code does not use
 it. The separate Vite key is what the browser uses: duplication can drift.
 
-### Paddle commerce
+### Dodo Payments commerce
 
 | Variable | Default | Roles | Secret | Notes |
 |---|---|---|---|---|
-| `PADDLE_API_KEY` | empty | web | **yes** | must be set with webhook secret and Pro price; credentials alone do not enable production checkout |
-| `PADDLE_API_BASE_URL` | `https://api.paddle.com` | web | no | staging requires `sandbox-api.paddle.com`; production requires `api.paddle.com` |
-| `PADDLE_WEBHOOK_SECRET` | empty | web | **yes** | verifies signed reconciliation events; distinct from API key |
-| `PADDLE_PRO_PRICE_ID` | empty | web | no/sensitive config | server-owned price allowlist for Pro entitlement |
+| `DODO_PAYMENTS_API_KEY` | empty | web | **yes** | must be set with webhook secret and both product IDs |
+| `DODO_PAYMENTS_API_BASE_URL` | `https://test.dodopayments.com` | web | no | production requires `live.dodopayments.com` |
+| `DODO_PAYMENTS_WEBHOOK_SECRET` | empty | web | **yes** | verifies Standard Webhooks signatures; distinct from API key |
+| `DODO_PAYMENTS_ESSENTIAL_PRODUCT_ID` / `DODO_PAYMENTS_PRO_PRODUCT_ID` | empty | web | no/sensitive config | server-owned product allowlist for entitlement |
 | `PAID_COMMERCE_APPROVED` | false | web/production | no | must be true before production checkout is available |
 | `PAID_COMMERCE_APPROVAL_REFERENCE` | empty | web/production | no | bounded non-secret pointer to entity/tax/refund/support and staging approval evidence |
 
-Production startup fails when Paddle credentials exist without explicit
+Production startup fails when Dodo Payments credentials exist without explicit
 commerce approval and its evidence reference. This separates possession of a
 provider credential from authority to sell. Signed webhook processing remains
 available for reconciliation when configured; the checkout and portal surfaces

@@ -29,7 +29,7 @@ Have these accounts and values ready:
   `Learnloom <dossiers@learnloom.blog>`.
 - A private Cloudflare R2 bucket and bucket-scoped S3 credentials.
 - Access to the DNS provider for `learnloom.blog`.
-- A Paddle account approved for the business entity and payout country before
+- A Dodo Payments account approved for the business entity and payout country before
   paid commerce is enabled.
 
 Generate URL-safe secrets locally. Do not paste the output into chat, source
@@ -49,46 +49,27 @@ Go and frontend release inputs into the binary. Leave
 deploying an externally built image, and then use its immutable 40-character
 Git SHA or 64-character release digest—not a branch, mutable tag, or `unknown`.
 
-### Paddle Billing
+### Dodo Payments billing
 
-Keep all Paddle credential fields blank until sandbox/staging verification is
-ready. When enabled, set these five values together — `PADDLE_API_KEY`,
-`PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_ESSENTIAL_PRICE_ID`,
-and `PADDLE_PRO_PRICE_ID` — plus `PADDLE_API_BASE_URL`. The application
-validates them as a set and rejects a partial configuration at startup.
+Keep provider fields blank until test-mode verification is ready. Set
+`DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_WEBHOOK_SECRET`,
+`DODO_PAYMENTS_ESSENTIAL_PRODUCT_ID`, and `DODO_PAYMENTS_PRO_PRODUCT_ID`
+together. Product IDs begin with `pdt_` and must differ. Use
+`https://test.dodopayments.com` outside production and
+`https://live.dodopayments.com` in production; startup rejects mixed modes.
 
-Live and sandbox values differ in three places and must never be mixed with
-each other:
-
-- `PADDLE_API_BASE_URL`: `https://api.paddle.com` in production,
-  `https://sandbox-api.paddle.com` in staging. The application rejects the
-  wrong host for the environment.
-- `PADDLE_CLIENT_TOKEN`: the public Paddle.js token loaded by the checkout
-  page. It must begin with `live_` in production and `test_` in staging; the
-  prefix is enforced at startup.
-- Price IDs: sandbox-only `PADDLE_ESSENTIAL_PRICE_ID` and
-  `PADDLE_PRO_PRICE_ID` in staging, live price IDs in production. The two
-  price IDs must differ from each other.
-
-Paddle credentials do not authorize live sales. Keep
+Dodo Payments credentials do not authorize live sales. Keep
 `PAID_COMMERCE_APPROVED=false` until the exact entity, payout country, seller/
 merchant disclosures, tax and invoice treatment, refund/cancellation policy,
-support contact, and Paddle staging lifecycle have named approval evidence.
+support contact, and Dodo test lifecycle have named approval evidence.
 Then set it to `true` and set `PAID_COMMERCE_APPROVAL_REFERENCE` to a bounded,
 non-secret internal evidence pointer. Production startup rejects credentials
-without both fields; staging rejects the live Paddle API, and production rejects
-the sandbox API.
+without both fields.
 
-In Paddle, subscribe the endpoint
-`https://app.learnloom.blog/webhooks/paddle` (use the staging hostname in
-staging) to:
-
-- subscription created, activated, trialing, updated, past due, paused,
-  resumed, and canceled events;
-- transaction completed and payment failed events;
-- adjustment created and updated events.
-
-The API key needs transaction-write and customer-portal-session-write access.
+In Dodo Payments, subscribe `https://app.learnloom.blog/webhooks/dodo` to
+subscription active/updated/on-hold/paused/unpaused/renewed/plan-changed/
+cancelled/failed/expired, payment succeeded/failed, and refund succeeded.
+The API key needs checkout-session and customer-portal-session write access.
 The webhook signing secret is distinct from the API key.
 
 ### Cloudflare R2

@@ -87,7 +87,7 @@ Every week:
    `design_partner_quality_samples`.
 4. Choose the largest activation or retention constraint supported by behavior,
    interviews, and quality samples. Fix that constraint only.
-5. Review failures, latency, generation cost, Paddle fees, support volume, and
+5. Review failures, latency, generation cost, Dodo Payments fees, support volume, and
    all other known COGS. Do not use model-only margin as the commercial gate.
 
 Record non-model costs in `operational_cogs_events` using an immutable provider

@@ -140,7 +140,7 @@ func (s *Server) handleControl(
 			}
 		}
 		writeJSON(response, http.StatusOK, map[string]any{
-			"billing": entitlement, "commerceAvailable": s.paddleConfigured(),
+			"billing": entitlement, "commerceAvailable": s.dodoConfigured(),
 		})
 		return
 	}
@@ -149,7 +149,7 @@ func (s *Server) handleControl(
 			methodNotAllowed(response, http.MethodPost)
 			return
 		}
-		if !s.paddleConfigured() {
+		if !s.dodoConfigured() {
 			writeProblem(response, http.StatusServiceUnavailable, "billing_unavailable", "Billing is not available yet.")
 			return
 		}
@@ -159,7 +159,7 @@ func (s *Server) handleControl(
 		if !decodeJSON(response, request, s.cfg.MaxRequestBodyBytes, &body) {
 			return
 		}
-		if _, ok := s.paddlePriceForPlan(body.PlanID); !ok {
+		if _, ok := s.dodoProductForPlan(body.PlanID); !ok {
 			writeProblem(response, http.StatusBadRequest, "invalid_request", "Choose Essential or Pro.")
 			return
 		}
@@ -180,7 +180,7 @@ func (s *Server) handleControl(
 			return
 		}
 		if pendingID != "" {
-			checkoutURL, err := s.paddleCheckoutURL(pendingID)
+			checkoutURL, err := s.dodoCheckoutURL(pendingID)
 			if err != nil {
 				s.internalError(response, request, err)
 				return
@@ -188,22 +188,22 @@ func (s *Server) handleControl(
 			writeJSON(response, http.StatusOK, map[string]string{"url": checkoutURL})
 			return
 		}
-		// Creating a checkout calls Paddle and can mint a billable
+		// Creating a checkout calls Dodo Payments and can mint a billable
 		// transaction, so cap creation attempts per account and client.
-		// The pending-checkout reuse above never calls Paddle and remains
+		// The pending-checkout reuse above never calls Dodo Payments and remains
 		// available to genuine retries; only new creations are limited.
 		if !s.allowAction(response, request, "billing-checkout", time.Hour, 10) {
 			return
 		}
-		// Reuse the stored Paddle customer when a previously billed account
+		// Reuse the stored Dodo Payments customer when a previously billed account
 		// returns; a missing customer is fine because the first checkout
-		// creates it on Paddle's side.
+		// creates it on Dodo Payments' side.
 		customerID, err := s.store.GetBillingProviderCustomerID(request.Context(), current.Account.ID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			s.internalError(response, request, err)
 			return
 		}
-		transactionID, checkoutURL, err := s.createPaddleCheckout(
+		transactionID, checkoutURL, err := s.createDodoCheckout(
 			request.Context(), current.Account.ID, body.PlanID, customerID,
 		)
 		if err != nil {
@@ -218,7 +218,7 @@ func (s *Server) handleControl(
 			return
 		}
 		if selectedID != transactionID {
-			checkoutURL, err = s.paddleCheckoutURL(selectedID)
+			checkoutURL, err = s.dodoCheckoutURL(selectedID)
 			if err != nil {
 				s.internalError(response, request, err)
 				return
@@ -238,7 +238,7 @@ func (s *Server) handleControl(
 			methodNotAllowed(response, http.MethodPost)
 			return
 		}
-		if !s.paddleConfigured() {
+		if !s.dodoConfigured() {
 			writeProblem(response, http.StatusServiceUnavailable, "billing_unavailable", "Billing is not available yet.")
 			return
 		}
@@ -251,7 +251,7 @@ func (s *Server) handleControl(
 			s.internalError(response, request, err)
 			return
 		}
-		portalURL, err := s.createPaddlePortal(request.Context(), customerID)
+		portalURL, err := s.createDodoPortal(request.Context(), customerID)
 		if err != nil {
 			s.internalError(response, request, err)
 			return

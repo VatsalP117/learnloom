@@ -167,25 +167,24 @@ func TestValidateForRequiresImmutableReleaseOutsideDevelopment(t *testing.T) {
 
 func TestValidateForSeparatesSandboxTestingFromApprovedProductionCommerce(t *testing.T) {
 	t.Parallel()
-	configurePaddle := func(cfg *Config) {
-		cfg.Paddle.APIKey = "paddle-key"
-		cfg.Paddle.WebhookSecret = "webhook-secret"
-		cfg.Paddle.EssentialPriceID = "pri_essential"
-		cfg.Paddle.ProPriceID = "pri_pro"
-		cfg.Paddle.ClientToken = "test_client"
+	configureDodo := func(cfg *Config) {
+		cfg.DodoPayments.APIKey = "dodo-key"
+		cfg.DodoPayments.WebhookSecret = "d2Vic2VjcmV0"
+		cfg.DodoPayments.EssentialProductID = "pdt_essential"
+		cfg.DodoPayments.ProProductID = "pdt_pro"
 	}
 
 	staging := validWorkerConfig()
 	staging.Environment = "staging"
 	staging.ReleaseVersion = strings.Repeat("a", 40)
-	configurePaddle(&staging)
-	staging.Paddle.APIBaseURL = "https://api.paddle.com"
-	if err := staging.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "sandbox-api.paddle.com") {
-		t.Fatalf("staging live Paddle endpoint should fail: %v", err)
+	configureDodo(&staging)
+	staging.DodoPayments.APIBaseURL = "https://live.dodopayments.com"
+	if err := staging.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "test.dodopayments.com") {
+		t.Fatalf("staging live Dodo endpoint should fail: %v", err)
 	}
-	staging.Paddle.APIBaseURL = "https://sandbox-api.paddle.com"
+	staging.DodoPayments.APIBaseURL = "https://test.dodopayments.com"
 	if err := staging.ValidateFor("worker"); err != nil {
-		t.Fatalf("staging sandbox Paddle failed: %v", err)
+		t.Fatalf("staging Dodo test mode failed: %v", err)
 	}
 
 	production := validWorkerConfig()
@@ -193,20 +192,19 @@ func TestValidateForSeparatesSandboxTestingFromApprovedProductionCommerce(t *tes
 	production.ReleaseVersion = strings.Repeat("b", 40)
 	production.AllowInsecurePrivateServices = true
 	production.Database.URL = "postgres://learnloom:secret@postgres:5432/learnloom?sslmode=disable"
-	configurePaddle(&production)
-	production.Paddle.ClientToken = "live_client"
-	production.Paddle.APIBaseURL = "https://api.paddle.com"
+	configureDodo(&production)
+	production.DodoPayments.APIBaseURL = "https://live.dodopayments.com"
 	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "PAID_COMMERCE_APPROVED") {
 		t.Fatalf("unapproved production commerce should fail: %v", err)
 	}
-	production.Paddle.CommerceApproved = true
-	production.Paddle.ApprovalReference = "legal/entity-tax-refund-review-01"
+	production.DodoPayments.CommerceApproved = true
+	production.DodoPayments.ApprovalReference = "legal/entity-tax-refund-review-01"
 	if err := production.ValidateFor("worker"); err != nil {
 		t.Fatalf("approved production commerce failed: %v", err)
 	}
-	production.Paddle.APIBaseURL = "https://sandbox-api.paddle.com"
-	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "api.paddle.com in production") {
-		t.Fatalf("production sandbox Paddle endpoint should fail: %v", err)
+	production.DodoPayments.APIBaseURL = "https://test.dodopayments.com"
+	if err := production.ValidateFor("worker"); err == nil || !strings.Contains(err.Error(), "live.dodopayments.com") {
+		t.Fatalf("production Dodo test endpoint should fail: %v", err)
 	}
 }
 

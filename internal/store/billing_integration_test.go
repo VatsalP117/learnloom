@@ -165,7 +165,7 @@ func TestBillingLifecycleIsReplaySafeAndMonotonicIntegration(t *testing.T) {
 	var eventCount int
 	if err := database.pool.QueryRow(ctx, `
 		SELECT count(*) FROM billing_webhook_events
-		WHERE provider = 'paddle' AND event_id = $1
+		WHERE provider = 'dodo' AND event_id = $1
 	`, trial.ProviderEventID).Scan(&eventCount); err != nil || eventCount != 1 {
 		t.Fatalf("billing replay count=%d err=%v", eventCount, err)
 	}
@@ -183,7 +183,7 @@ func TestBillingLifecycleIsReplaySafeAndMonotonicIntegration(t *testing.T) {
 	var processedAt *time.Time
 	if err := database.pool.QueryRow(ctx, `
 		SELECT processed_at FROM billing_webhook_events
-		WHERE provider = 'paddle' AND event_id = $1
+		WHERE provider = 'dodo' AND event_id = $1
 	`, ignored.ProviderEventID).Scan(&processedAt); err != nil || processedAt == nil {
 		t.Fatalf("ignored webhook was not audited: processed_at=%v err=%v", processedAt, err)
 	}
@@ -426,7 +426,7 @@ func activateIntegrationPlan(
 	}
 	_, err := database.pool.Exec(ctx, `
 		UPDATE account_billing SET
-		  provider = 'paddle', plan_id = $2, subscription_status = 'active',
+		  provider = 'dodo', plan_id = $2, subscription_status = 'active',
 		  entitlement_status = 'active', current_period_start = $3,
 		  current_period_end = $3::timestamptz + interval '30 days', updated_at = $3
 		WHERE account_id = $1

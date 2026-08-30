@@ -157,7 +157,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: A Paddle webhook has remained unprocessed for more than five minutes
+          summary: A Dodo Payments webhook has remained unprocessed for more than five minutes
           description: "{{ $value }} second age for the oldest unprocessed billing webhook."
       - alert: LearnloomBillingGenerationPaused
         expr: learnloom_billing_accounts{entitlement="generation_paused"} > 0

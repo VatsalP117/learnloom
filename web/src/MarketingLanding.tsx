@@ -174,7 +174,7 @@ export default function MarketingLanding() {
             <article><p>Essential</p><h3>$9</h3><span>per month</span><ul><li><Check size={15} /> Up to 3 learning streams</li><li><Check size={15} /> Unlimited generated lessons</li><li><Check size={15} /> Private archive, review, and publishing</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Choose Essential <ArrowRight size={15} /></a></article>
             <article className="featured"><p>Pro</p><h3>$19</h3><span>per month</span><ul><li><Check size={15} /> Unlimited learning streams</li><li><Check size={15} /> Unlimited generated lessons</li><li><Check size={15} /> Full learning and publishing loop</li></ul><a className="ll-button ll-button-dark" href={`${appOrigin}/sign-up`}>Choose Pro <ArrowRight size={15} /></a></article>
           </div>
-          <p className="ll-pricing-note">No permanent free plan. Taxes may be added or included based on location and are shown before payment. Paddle acts as merchant of record and provides invoices. Cancel in the hosted portal; existing lessons remain readable, while new generation stops when paid access ends.</p>
+          <p className="ll-pricing-note">No permanent free plan. Taxes may be added or included based on location and are shown before payment. Dodo Payments acts as merchant of record and provides invoices. Cancel in the hosted portal; existing lessons remain readable, while new generation stops when paid access ends.</p>
         </section>
 
         <section className="ll-email-section">

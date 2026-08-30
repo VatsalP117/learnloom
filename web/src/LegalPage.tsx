@@ -92,7 +92,7 @@ function PrivacyContent() {
       </LegalSection>
 
       <LegalSection title="4. Service providers">
-        <p>We use trusted service providers to operate Learnloom, including Clerk for identity, hosting and database providers, object storage, AI model providers, source-discovery services, Resend for transactional, learning, and confirmed public-path email delivery, and Paddle as merchant of record for payments, subscription management, invoices, tax calculation and remittance, and fraud prevention. They process information under their own contractual and security obligations.</p>
+        <p>We use trusted service providers to operate Learnloom, including Clerk for identity, hosting and database providers, object storage, AI model providers, source-discovery services, Resend for transactional, learning, and confirmed public-path email delivery, and Dodo Payments as merchant of record for payments, subscription management, invoices, tax calculation and remittance, and fraud prevention. They process information under their own contractual and security obligations.</p>
       </LegalSection>
 
       <LegalSection title="5. Public publishing">
@@ -175,7 +175,7 @@ function TermsContent() {
       </LegalSection>
 
       <LegalSection title="9. Plans, billing, taxes, and refunds">
-        <p>Learnloom has paid monthly plans and no permanent free plan. Current stream limits, prices, any trial terms, and renewal timing are shown before purchase. Paid subscriptions renew automatically until canceled. Paddle acts as merchant of record: checkout shows the applicable price, currency, and taxes before you pay, and Paddle provides invoices and payment support through its hosted portal.</p>
+        <p>Learnloom has paid monthly plans and no permanent free plan. Current stream limits, prices, any trial terms, and renewal timing are shown before purchase. Paid subscriptions renew automatically until canceled. Dodo Payments acts as merchant of record: checkout shows the applicable price, currency, and taxes before you pay, and Dodo Payments provides invoices and payment support through its hosted portal.</p>
         <p>You can cancel through the billing portal. Cancellation normally takes effect at the end of the paid period; existing learning content remains readable, while new streams and lesson generation stop when paid access ends. Payment failure may create a limited grace period before generation pauses. Refunds are handled according to applicable law and the policy presented at checkout; contact <a href="mailto:support@learnloom.blog">support@learnloom.blog</a> if a purchase is incorrect or the service was not delivered as described.</p>
       </LegalSection>
 
