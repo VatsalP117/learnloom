@@ -8,8 +8,7 @@ import {
   useAuth,
   useClerk,
 } from "@clerk/react";
-import { useEffect, useState } from "react";
-import App from "./App";
+import { lazy, Suspense, useEffect, useState } from "react";
 import AuthPage from "./AuthPage";
 import CalmLoader from "./CalmLoader";
 import { SessionActionsProvider } from "./LearningShell";
@@ -20,6 +19,10 @@ import {
 } from "./startingPath";
 import type { Profile } from "./types";
 import { preloadWorkspace } from "./useWorkspace";
+
+// The authenticated app graph stays out of the signed-out /sign-in and
+// /sign-up critical path; it loads only once a session is confirmed.
+const App = lazy(() => import("./App"));
 
 export default function HostedApp() {
   const path = window.location.pathname;
@@ -103,6 +106,10 @@ function OnboardingGate() {
   useEffect(() => {
     configureAPI(getToken);
     const controller = new AbortController();
+    // Start the authenticated app chunks in parallel with the profile fetch;
+    // lazy() reuses the same module promises, so no duplicate network request.
+    void import("./App");
+    void import("./AppGraph");
     preloadWorkspace().catch(() => {
       // useWorkspace owns the learner-facing retry and error state.
     });
@@ -131,11 +138,17 @@ function OnboardingGate() {
   }
   return (
     <SessionActionsProvider onSignOut={() => clerk.signOut({ redirectUrl: "/sign-in" })}>
-      <App
-        capabilities={profile.capabilities ?? {}}
-        site={profile.site}
-        onSiteUpdate={(site) => setProfile({ ...profile, site })}
-      />
+      <Suspense fallback={<CalmLoader label="Preparing your workspace…" />}>
+        <App
+          capabilities={profile.capabilities ?? {}}
+          site={profile.site}
+          onSiteUpdate={(site) => setProfile({ ...profile, site })}
+          initialNotifications={profile.notifications}
+          onNotificationsUpdate={(notifications) =>
+            setProfile((current) => (current ? { ...current, notifications } : current))
+          }
+        />
+      </Suspense>
     </SessionActionsProvider>
   );
 }

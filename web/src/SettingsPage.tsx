@@ -14,9 +14,27 @@ const defaultPreferences: NotificationPreferences = {
   timeZone: "UTC",
 };
 
-export default function SettingsPage() {
-  const [preferences, setPreferences] = useState(defaultPreferences);
-  const [loading, setLoading] = useState(true);
+function seededPreferences(initial?: NotificationPreferences): NotificationPreferences {
+  return initial?.configured
+    ? initial
+    : {
+        ...defaultPreferences,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      };
+}
+
+export default function SettingsPage({
+  initialNotifications,
+  onNotificationsUpdate,
+}: {
+  initialNotifications?: NotificationPreferences;
+  onNotificationsUpdate?: (notifications: NotificationPreferences) => void;
+}) {
+  const [preferences, setPreferences] = useState(() => seededPreferences(initialNotifications));
+  // The onboarding gate already fetched /api/me, so preferences render
+  // immediately from the seeded profile values. Only callers that render
+  // Settings without a profile fall back to the legacy /api/me fetch.
+  const [loading, setLoading] = useState(() => !initialNotifications);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -28,23 +46,18 @@ export default function SettingsPage() {
   const [checkoutStatus, setCheckoutStatus] = useState<"" | "activating" | "active">("");
 
   useEffect(() => {
+    if (initialNotifications) return;
     const controller = new AbortController();
     apiJSON<Profile>("/api/me", { signal: controller.signal })
       .then((profile) => {
-        const notifications = profile.notifications;
-        setPreferences(notifications?.configured
-          ? notifications
-          : {
-              ...defaultPreferences,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-            });
+        setPreferences(seededPreferences(profile.notifications));
       })
       .catch((requestError) => {
         if (requestError.name !== "AbortError") setError(requestError.message);
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, []);
+  }, [initialNotifications]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,6 +90,7 @@ export default function SettingsPage() {
         { method: "POST", body: preferences },
       );
       setPreferences(response.notifications);
+      onNotificationsUpdate?.(response.notifications);
       setSaved(true);
     } catch (requestError) {
       setError(requestError instanceof Error
