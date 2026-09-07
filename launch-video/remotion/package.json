@@ -9,6 +9,8 @@
     "render:v2": "remotion render src/index.jsx LearnloomLaunchV2 ../output/learnloom-launch-v2.mp4",
     "render:v3": "remotion render src/index.jsx LearnloomLaunchV3 ../output/learnloom-launch-v3.mp4",
     "render:v4": "remotion render src/index.jsx LearnloomLaunchV4 ../output/learnloom-launch-v4.mp4",
+    "render:micro": "remotion render src/index.jsx LearnloomMicroLaunch ../output/learnloom-micro-launch.mp4",
+    "still:micro": "remotion still src/index.jsx LearnloomMicroLaunch ../output/learnloom-micro-launch-preview.png --frame=220",
     "music:v1.1": "node scripts/generate-launch-music-v1-1.mjs && ffmpeg -y -hide_banner -loglevel error -i public/launch-music-v1-1.wav -c:a aac -b:a 192k public/launch-music-v1-1.m4a && node -e \"require('node:fs').unlinkSync('public/launch-music-v1-1.wav')\"",
     "sfx": "node scripts/generate-launch-sfx.mjs && ffmpeg -y -hide_banner -loglevel error -i public/launch-sfx-v1.wav -c:a aac -b:a 192k public/launch-sfx-v1.m4a && node -e \"require('node:fs').unlinkSync('public/launch-sfx-v1.wav')\"",
     "still": "remotion still src/index.jsx LearnloomLaunch ../output/remotion-preview.png",

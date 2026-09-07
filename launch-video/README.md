@@ -106,3 +106,25 @@ npm run render:v4
 ```
 
 The render is exported to `launch-video/output/learnloom-launch-v4.mp4`.
+
+## Micro launch cut
+
+`LearnloomMicroLaunch` is an additive 12-second (360-frame) micro launch film
+living under `launch-video/remotion/src/micro/` — one scene file per beat.
+Its motion grammar is airy white canvas, oversized editorial type, tight
+magnetic easing, and a single lime accent on forest/ink. Beats: one typed
+question (0–78), three sources assembling into a Knowledge Dossier (78–154),
+the dossier morphing into a product window on the existing
+`product-clips/lesson.webm` (154–270), continuity into `library.webm` with
+“Every lesson has somewhere to live.” (270–312), and a clean brand card close
+(312–360). Audio reuses `launch-music-v1-1.m4a` with three restrained key cues
+from `sfx-source/`.
+
+```sh
+cd launch-video/remotion
+npm run render:micro
+npm run still:micro
+```
+
+The render exports `launch-video/output/learnloom-micro-launch.mp4`; the still
+writes `launch-video/output/learnloom-micro-launch-preview.png` at frame 220.

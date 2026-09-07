@@ -1,7 +1,19 @@
+// The dashboard styles and product font families live with the authenticated
+// graph so signed-out /sign-in and /sign-up pages never download them.
+import "@fontsource/manrope/latin-400.css";
+import "@fontsource/manrope/latin-500.css";
+import "@fontsource/manrope/latin-600.css";
+import "@fontsource/manrope/latin-700.css";
+import "@fontsource/bricolage-grotesque/latin-500.css";
+import "@fontsource/bricolage-grotesque/latin-600.css";
+import "@fontsource/bricolage-grotesque/latin-700.css";
 import { Menu, Plus } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import BrandMark from "./BrandMark";
 import CalmLoader from "./CalmLoader";
+import { loadProductStylesheet } from "./fontshare";
+import "./styles.css";
+import "./redesign.css";
 import LibraryPage from "./LibraryPage";
 import PublishingPage from "./PublishingPage";
 import ReviewPage from "./ReviewPage";
@@ -87,6 +99,13 @@ export default function AppGraph({
       window.removeEventListener("popstate", updateLocation);
       document.removeEventListener("click", navigate);
     };
+  }, []);
+
+  useEffect(() => {
+    // Satoshi (Fontshare) is the dashboard product face; fetch it only once
+    // the authenticated graph mounts, and only in a browser (node renders
+    // have no DOM). The helper dedupes repeated mounts.
+    loadProductStylesheet(typeof document === "undefined" ? undefined : document);
   }, []);
 
   useEffect(() => {

@@ -1,16 +1,7 @@
 import { ClerkProvider } from "@clerk/react";
-import "@fontsource/manrope/latin-400.css";
-import "@fontsource/manrope/latin-500.css";
-import "@fontsource/manrope/latin-600.css";
-import "@fontsource/manrope/latin-700.css";
-import "@fontsource/bricolage-grotesque/latin-500.css";
-import "@fontsource/bricolage-grotesque/latin-600.css";
-import "@fontsource/bricolage-grotesque/latin-700.css";
 import DemoHostedApp from "./DemoHostedApp";
 import HostedApp from "./HostedApp";
 import { demoMode } from "./api";
-import "./styles.css";
-import "./redesign.css";
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 

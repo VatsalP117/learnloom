@@ -8,6 +8,15 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
+// Only the Manrope/Bricolage weights the auth pages actually resolve
+// (550/650/750 requests match 600/700); the full product set stays with the
+// authenticated dashboard graph.
+import "@fontsource/manrope/latin-400.css";
+import "@fontsource/manrope/latin-600.css";
+import "@fontsource/manrope/latin-700.css";
+import "@fontsource/bricolage-grotesque/latin-500.css";
+import "@fontsource/bricolage-grotesque/latin-600.css";
+import "@fontsource/bricolage-grotesque/latin-700.css";
 import BrandMark from "./BrandMark";
 import CalmLoader from "./CalmLoader";
 import {

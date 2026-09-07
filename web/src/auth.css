@@ -1,3 +1,25 @@
+/* Atelier tokens the auth pages use, mirrored from redesign.css so the
+   dashboard stylesheet never needs to load on /sign-in and /sign-up. */
+:root {
+  --atelier-ink: #151719;
+  --atelier-display: "Bricolage Grotesque", sans-serif;
+  --atelier-body: "Manrope", sans-serif;
+}
+
+/* The dashboard stylesheet used to provide these global guarantees; keep
+   them scoped to the auth shell so it stays correct without it. */
+.custom-auth-shell,
+.custom-auth-shell * {
+  box-sizing: border-box;
+}
+
+.custom-auth-shell button,
+.custom-auth-shell input,
+.custom-auth-shell textarea,
+.custom-auth-shell select {
+  font: inherit;
+}
+
 .custom-auth-shell {
   min-height: 100vh;
   display: grid;

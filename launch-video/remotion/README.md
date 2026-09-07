@@ -59,3 +59,23 @@ full-bleed product actions, and carries only the continuous music bed—no typin
 or transition sound effects. A dedicated domain reveal introduces each learner's
 personal learning home. Render it with `npm run render:v4`; the output is
 `../output/learnloom-launch-v4.mp4`.
+
+## Micro launch cut
+
+`LearnloomMicroLaunch` is an additive 12-second (360-frame) micro launch film
+with a separate scene file for each beat under `src/micro/`. It opens on a
+single typed question, assembles three visible sources into a Knowledge
+Dossier, morphs the dossier into a rounded product window playing the existing
+`public/product-clips/lesson.webm` and `library.webm`, and closes on a clean
+brand card. It uses Bricolage Grotesque for display copy, Manrope for UI text,
+and only the existing `launch-music-v1-1.m4a` plus restrained key cues from
+`public/sfx-source/`. Scene boundaries: 0–78 question, 78–154 sources,
+154–270 product payoff, 270–312 learning home, 312–360 brand close.
+
+```sh
+npm run render:micro
+npm run still:micro
+```
+
+`render:micro` exports `../output/learnloom-micro-launch.mp4`;
+`still:micro` writes `../output/learnloom-micro-launch-preview.png` at frame 220.
